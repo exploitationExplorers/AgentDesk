@@ -210,6 +210,17 @@ export function normalizeCommitMessage(raw: string): string {
       .map((l) => l.trim())
       .find((l) => l && !l.startsWith("#")) ?? text;
   text = text.replace(/^['"`]+|['"`]+$/g, "").trim();
+
+  // commitlint subject-case 禁止 sentence/start/pascal/upper-case；
+  // 模型常写出 AI、Token 等，把 subject 中的拉丁大写一律小写。
+  const conventional = /^(\w+(?:\([^)]*\))?!?:\s*)(.+)$/;
+  const match = conventional.exec(text);
+  if (match?.[1] && match[2]) {
+    text = `${match[1]}${match[2].replace(/[A-Z]+/g, (s) => s.toLowerCase())}`;
+  } else {
+    text = text.replace(/[A-Z]+/g, (s) => s.toLowerCase());
+  }
+
   return text.slice(0, 200);
 }
 

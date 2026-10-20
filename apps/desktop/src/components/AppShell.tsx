@@ -22,6 +22,7 @@ import { api } from "../lib/api";
 import { applyTheme, useUi } from "../stores/ui";
 import { ApprovalToasts } from "./ApprovalToasts";
 import { CommandPalette } from "./CommandPalette";
+import { Toasts } from "./Toasts";
 
 const NAV: Array<{ to: string; label: string; icon: LucideIcon }> = [
   { to: "/", label: "Bot", icon: MessageSquare },
@@ -192,6 +193,7 @@ export function AppShell() {
         </main>
       </div>
       <CommandPalette />
+      <Toasts />
       <ApprovalToasts />
     </TooltipProvider>
   );

@@ -476,19 +476,23 @@ export class ProjectService {
     const p = this.get(id);
     if (!p.owner || !p.repo || !p.host) return [];
     const host = p.host.split(":")[0]!;
-    const adapter = createAdapter(
-      p.platform,
-      p.host,
-      this.secrets.get(tokenId(p.platform, host)) ?? undefined,
-    );
+    const token = this.secrets.get(tokenId(p.platform, host)) ?? undefined;
+    if (!token && (p.platform === "github" || p.platform === "gitee" || p.platform === "gitlab")) {
+      throw new AppError(
+        ErrorCode.BadRequest,
+        `未配置 ${p.platform} Token，无法拉取 PR/Issue。请到 设置 > Git 平台 添加私人令牌。`,
+      );
+    }
+    const adapter = createAdapter(p.platform, p.host, token);
     if (!adapter) return [];
     try {
       return await adapter.listActivity(p.owner, p.repo);
     } catch (error) {
-      throw new AppError(
-        ErrorCode.IntegrationFailed,
-        `拉取 ${p.platform} 数据失败：${errorMessage(error)}`,
-      );
+      const raw = errorMessage(error);
+      const hint = /rate limit|API rate limit/i.test(raw)
+        ? `GitHub API 请求次数已用尽（未登录限额很低）。请到 设置 > Git 平台 配置 Token 后重试。`
+        : `拉取 ${p.platform} 数据失败：${raw}`;
+      throw new AppError(ErrorCode.IntegrationFailed, hint);
     }
   }
 
