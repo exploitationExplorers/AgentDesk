@@ -58,6 +58,19 @@ UNKNOWN_API_KEY=zzzzzzzzzzzz
   });
 });
 
+describe("normalizeCommitMessage", () => {
+  it("从 JSON / 代码块提取 subject", async () => {
+    const { normalizeCommitMessage } = await import("../src/git/local");
+    expect(
+      normalizeCommitMessage(
+        '{"subject": "feat(projects): add AI-generated commit message and push workflow"}',
+      ),
+    ).toBe("feat(projects): add AI-generated commit message and push workflow");
+    expect(normalizeCommitMessage("```\nfix: handle timeout\n```")).toBe("fix: handle timeout");
+    expect(normalizeCommitMessage('"chore: tidy"')).toBe("chore: tidy");
+  });
+});
+
 describe("cc-switch importer", () => {
   it("Claude 中转站", () => {
     const c = candidateFromCcProvider(

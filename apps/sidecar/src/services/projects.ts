@@ -1,27 +1,27 @@
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { spawn } from "node:child_process";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { completeText, type ModelResolver } from "@agentdesk/agent-core";
 import {
   createAdapter,
   findRepositories,
-  gitAddAll,
   gitChangeSummary,
-  gitCommit,
   gitLog,
   gitPull,
-  gitPush,
   gitStatus,
   inspectRepository,
   isDirectory,
   launchProject,
   listClaudeSessions,
+  normalizeCommitMessage,
 } from "@agentdesk/integrations";
 import {
   AiCommitInput,
   AppError,
   ErrorCode,
+  type AiCommitJob,
   type AiCommitPreview,
-  type AiCommitResult,
   type ClaudeSession,
   type CommitInfo,
   type GitAccount,
@@ -32,8 +32,10 @@ import {
 import type { Db } from "../db/client";
 import { Collection } from "../db/collection";
 import type { SecretStore } from "../secrets";
-import { errorMessage, nowIso, shortHash } from "../util";
+import { errorMessage, newId, nowIso, shortHash } from "../util";
 import type { SettingsService } from "./settings";
+
+const WORKER = join(dirname(fileURLToPath(import.meta.url)), "../../scripts/ai-commit-worker.mjs");
 
 type GitAccountDoc = Omit<GitAccount, "hasToken"> & { id: string };
 
@@ -50,6 +52,7 @@ export class ProjectService {
     private readonly secrets: SecretStore,
     private readonly settings: SettingsService,
     private readonly models: ModelResolver,
+    private readonly dataDir: string,
   ) {
     this.projects = new Collection<Project>(db, "projects");
     this.accounts = new Collection<GitAccountDoc>(db, "gitAccounts");
@@ -181,24 +184,19 @@ export class ProjectService {
         throw new AppError(ErrorCode.BadRequest, "请先在 设置 > 模型 Provider 中配置可用模型");
       }
       try {
-        suggestedMessage =
-          (
-            await completeText({
-              models,
-              systemPrompt: `你是资深工程师，根据 git diff 写一条简洁的 commit message。
-要求：
-- 使用 Conventional Commits：feat/fix/docs/refactor/chore/test/perf/style 等
-- 只输出一行英文 subject，不超过 72 字符，不要句号，不要代码块，不要解释
-- 如实反映改动意图，不要编造未出现的功能`,
-              prompt: `仓库：${project.name}\n分支：${summary.branch ?? "?"}\n\ngit status:\n${summary.status}\n\ndiff:\n${diffForAi || "(无 diff，仅有状态)"}`,
-              maxTokens: 80,
-              signal: AbortSignal.timeout(45_000),
-            })
-          )
-            .trim()
-            .split("\n")
-            .map((l) => l.replace(/^[`'"\s]+|[`'"\s]+$/g, ""))
-            .find((l) => l.length > 0) ?? suggestedMessage;
+        const raw = await completeText({
+          models,
+          systemPrompt: `你是资深工程师，根据 git diff 写一条 commit message。
+硬性要求：
+- 只输出一行纯文本，格式：type(scope): subject（Conventional Commits）
+- type 仅限 feat/fix/docs/refactor/chore/test/perf/style
+- 不超过 72 字符，不要句号结尾
+- 禁止输出 JSON、Markdown 代码块、引号包裹或任何解释`,
+          prompt: `仓库：${project.name}\n分支：${summary.branch ?? "?"}\n\ngit status:\n${summary.status}\n\ndiff:\n${diffForAi || "(无 diff，仅有状态)"}\n\n只回复一行 commit subject：`,
+          maxTokens: 60,
+          signal: AbortSignal.timeout(45_000),
+        });
+        suggestedMessage = normalizeCommitMessage(raw) || suggestedMessage;
       } catch (error) {
         throw new AppError(
           ErrorCode.ProviderUnavailable,
@@ -223,8 +221,11 @@ export class ProjectService {
     };
   }
 
-  /** 按确认的 message 提交并推送（可只推送已有未推送提交）。 */
-  async aiCommit(id: string, input: unknown): Promise<AiCommitResult> {
+  /**
+   * 启动独立进程执行 commit/push，立即返回 jobId。
+   * 前端轮询 getAiCommitJob，避免 husky 改文件把 tsx watch 的 sidecar 重启掉。
+   */
+  async startAiCommit(id: string, input: unknown): Promise<{ jobId: string }> {
     const data = AiCommitInput.parse(input);
     const project = this.get(id);
     const summary = await gitChangeSummary(project.path);
@@ -233,51 +234,87 @@ export class ProjectService {
       throw new AppError(ErrorCode.BadRequest, "没有可提交或推送的改动");
     }
 
-    let commitHash = "";
-    let message = data.message.trim();
-    if (hasChanges) {
+    let message = normalizeCommitMessage(data.message);
+    const needsCommit = hasChanges;
+    if (needsCommit) {
       if (!message) throw new AppError(ErrorCode.BadRequest, "请填写提交说明");
-      if (!summary.hasStaged) {
-        if (!data.stageAll)
-          throw new AppError(ErrorCode.BadRequest, "暂存区为空：请先 git add，或勾选暂存全部改动");
-        await gitAddAll(project.path);
+      if (
+        !/^(feat|fix|docs|refactor|chore|test|perf|style|build|ci|revert)(\(.+\))?!?: /.test(
+          message,
+        )
+      ) {
+        throw new AppError(
+          ErrorCode.BadRequest,
+          `提交说明需符合 Conventional Commits，例如 feat(projects): add ai commit。当前：${message}`,
+        );
       }
-      try {
-        commitHash = await gitCommit(project.path, message);
-      } catch (error) {
-        throw new AppError(ErrorCode.IntegrationFailed, errorMessage(error));
+      if (!summary.hasStaged && !data.stageAll) {
+        throw new AppError(ErrorCode.BadRequest, "暂存区为空：请先 git add，或勾选暂存全部改动");
       }
     } else {
       message = message || project.lastCommit?.message || "(no new commit)";
-      commitHash = project.lastCommit?.hash.slice(0, 7) ?? "";
     }
 
-    let pushOutput = "";
-    let pushed = false;
-    if (data.push) {
-      try {
-        pushOutput = await gitPush(project.path);
-        pushed = true;
-      } catch (error) {
-        // 提交已成功时把 push 失败明确抛出，避免用户以为两边都失败
-        throw new AppError(
-          ErrorCode.IntegrationFailed,
-          commitHash
-            ? `已提交 ${commitHash}，但推送失败：${errorMessage(error)}`
-            : `推送失败：${errorMessage(error)}`,
-        );
-      }
+    if (!existsSync(WORKER)) {
+      throw new AppError(ErrorCode.IntegrationFailed, `找不到提交 worker：${WORKER}`);
     }
 
-    const refreshed = await this.refresh(project.id);
-    return {
-      projectId: project.id,
-      message,
-      commitHash,
-      pushed,
-      pushOutput,
-      project: refreshed,
+    const jobId = newId();
+    const jobsDir = join(this.dataDir, "jobs");
+    mkdirSync(jobsDir, { recursive: true });
+    const jobPath = join(jobsDir, `${jobId}.json`);
+    writeFileSync(
+      jobPath,
+      JSON.stringify({
+        id: jobId,
+        status: "running",
+        projectId: project.id,
+        repoPath: project.path,
+        message,
+        needsCommit,
+        stageAll: needsCommit && (data.stageAll || !summary.hasStaged),
+        push: data.push,
+        commitHash: needsCommit ? "" : (project.lastCommit?.hash.slice(0, 7) ?? ""),
+      }),
+    );
+
+    const child = spawn(process.execPath, [WORKER, jobPath], {
+      detached: true,
+      stdio: "ignore",
+      windowsHide: true,
+    });
+    child.unref();
+    return { jobId };
+  }
+
+  async getAiCommitJob(id: string, jobId: string): Promise<AiCommitJob> {
+    this.get(id);
+    const jobPath = join(this.dataDir, "jobs", `${jobId}.json`);
+    if (!existsSync(jobPath)) throw new AppError(ErrorCode.NotFound, "提交任务不存在");
+    const raw = JSON.parse(readFileSync(jobPath, "utf8")) as {
+      id: string;
+      status: "running" | "done" | "error";
+      error?: string;
+      result?: {
+        projectId: string;
+        message: string;
+        commitHash: string;
+        pushed: boolean;
+        pushOutput: string;
+      };
     };
+    if (raw.status === "done" && raw.result) {
+      const project = await this.refresh(id);
+      return {
+        id: raw.id,
+        status: "done",
+        result: { ...raw.result, project },
+      };
+    }
+    if (raw.status === "error") {
+      return { id: raw.id, status: "error", error: raw.error ?? "提交失败" };
+    }
+    return { id: raw.id, status: "running" };
   }
 
   async activity(id: string): Promise<RemoteActivity[]> {

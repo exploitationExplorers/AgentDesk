@@ -83,7 +83,7 @@ export const AiCommitResult = z.object({
   commitHash: z.string(),
   pushed: z.boolean(),
   pushOutput: z.string(),
-  project: Project,
+  project: Project.optional(),
 });
 export type AiCommitResult = z.infer<typeof AiCommitResult>;
 
@@ -96,3 +96,12 @@ export const AiCommitInput = z.object({
   push: z.boolean().default(true),
 });
 export type AiCommitInput = z.infer<typeof AiCommitInput>;
+
+/** 异步提交任务：独立进程跑 git，避免 husky 改文件触发 sidecar 热重载导致 Failed to fetch */
+export const AiCommitJob = z.object({
+  id: z.string(),
+  status: z.enum(["running", "done", "error"]),
+  error: z.string().optional(),
+  result: AiCommitResult.optional(),
+});
+export type AiCommitJob = z.infer<typeof AiCommitJob>;
