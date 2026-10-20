@@ -1,0 +1,15 @@
+node_modules
+dist
+bin
+.turbo
+*.log
+.env
+.env.local
+.data
+apps/desktop/src-tauri/target
+apps/desktop/src-tauri/gen/schemas
+apps/desktop/src-tauri/binaries/*
+!apps/desktop/src-tauri/binaries/.gitkeep
+playwright-report
+test-results
+release/

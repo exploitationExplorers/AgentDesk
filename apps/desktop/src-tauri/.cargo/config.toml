@@ -1,0 +1,3 @@
+[resolver]
+# 本机 rustc 版本较旧时，自动选择兼容的依赖版本
+incompatible-rust-versions = "fallback"
