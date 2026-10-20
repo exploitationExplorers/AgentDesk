@@ -111,10 +111,20 @@ export const api = {
     const started = Date.now();
     for (;;) {
       if (Date.now() - started > 5 * 60_000) throw new Error("提交超时：请查看终端 husky/git 输出");
-      await new Promise((r) => setTimeout(r, 600));
-      const job = await http.get<AiCommitJob>(`/projects/${id}/ai-commit/jobs/${jobId}`);
-      if (job.status === "done" && job.result) return job.result;
-      if (job.status === "error") throw new Error(job.error ?? "提交失败");
+      await new Promise((r) => setTimeout(r, 800));
+      try {
+        const job = await http.get<AiCommitJob>(`/projects/${id}/ai-commit/jobs/${jobId}`);
+        if (job.status === "done" && job.result) return job.result;
+        if (job.status === "error") throw new Error(job.error ?? "提交失败");
+      } catch (error) {
+        // sidecar 热重载时会出现 Failed to fetch；独立 worker 仍在跑，继续轮询即可
+        const msg = error instanceof Error ? error.message : String(error);
+        const transient =
+          /fetch|network|ECONNREFUSED|Failed to fetch|Load failed|\b502\b|\b503\b|\b504\b/i.test(
+            msg,
+          );
+        if (!transient) throw error;
+      }
     }
   },
   launchProject: (id: string, target: LaunchTarget) =>
