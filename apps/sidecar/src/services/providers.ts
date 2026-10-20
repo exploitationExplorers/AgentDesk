@@ -5,6 +5,7 @@ import {
   type ResolvedModel,
 } from "@agentdesk/agent-core";
 import {
+  detectProxyFromCcSwitch,
   importFromCcSwitch,
   importFromDotenvFile,
   toPublicCandidate,
@@ -22,8 +23,10 @@ import {
 import type { Db } from "../db/client";
 import { readExternalSqlite } from "../db/client";
 import { Collection } from "../db/collection";
+import { applyProxy, resolveProxy } from "../proxy";
 import type { SecretStore } from "../secrets";
 import { errorMessage, newId, nowIso } from "../util";
+import type { SettingsService } from "./settings";
 
 type StoredProvider = Omit<Provider, "hasKey">;
 type BindingDoc = AgentModelBinding & { id: string };
@@ -37,6 +40,7 @@ export class ProviderService implements ModelResolver {
   constructor(
     db: Db,
     private readonly secrets: SecretStore,
+    private readonly settings?: SettingsService,
   ) {
     this.providers = new Collection<StoredProvider>(db, "providers");
     this.bindings = new Collection<BindingDoc>(db, "agentBindings");
@@ -117,9 +121,14 @@ export class ProviderService implements ModelResolver {
     const existing = this.list();
     const created: Provider[] = [];
     for (const c of raw.filter((r) => candidateIds.includes(r.candidateId))) {
-      const duplicate = existing.find(
-        (p) => p.baseUrl === c.baseUrl.replace(/\/+$/, "") && p.name === c.name,
-      );
+      const base = c.baseUrl.replace(/\/+$/, "");
+      // 「Claude Code 当前配置」覆盖同中转站已导入的 Anthropic Provider，避免沿用 CC Switch 库里的旧 Key
+      const isActiveClaude = c.name.includes("当前配置") || /[/\\]\.claude[/\\]settings\.json$/i.test(c.origin);
+      const duplicate =
+        existing.find((p) => p.baseUrl === base && p.name === c.name) ??
+        (isActiveClaude
+          ? existing.find((p) => p.baseUrl === base && p.api === c.api && p.source === "cc-switch")
+          : undefined);
       const model =
         c.model ?? (c.api === "anthropic-messages" ? "claude-sonnet-4-5" : "gpt-4o-mini");
       const payload = {
@@ -132,9 +141,24 @@ export class ProviderService implements ModelResolver {
         enabled: true,
         apiKey: c.apiKey,
       };
-      created.push(duplicate ? this.update(duplicate.id, payload) : this.create(payload));
+      const saved = duplicate ? this.update(duplicate.id, payload) : this.create(payload);
+      created.push(saved);
+      if (!duplicate) existing.push(saved);
+      else Object.assign(duplicate, saved);
     }
+    if (source === "cc-switch") await this.syncProxyFromCcSwitch();
     return created;
+  }
+
+  /** 导入 CC Switch 时顺带带上它的 HTTPS_PROXY，避免直连中转站一直转圈。 */
+  private async syncProxyFromCcSwitch(): Promise<void> {
+    if (!this.settings) return;
+    const current = this.settings.get().proxy?.trim();
+    if (current) return;
+    const proxy = await detectProxyFromCcSwitch(readExternalSqlite);
+    if (!proxy) return;
+    const next = this.settings.update({ proxy });
+    applyProxy(resolveProxy(next.proxy));
   }
 
   async test(

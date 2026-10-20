@@ -14,10 +14,12 @@ import {
   Plus,
   RefreshCw,
   Search,
+  Sparkles,
   Terminal,
+  Upload,
 } from "lucide-react";
-import { useMemo, useState } from "react";
-import type { GitPlatform, LaunchTarget, Project } from "@agentdesk/shared";
+import { useEffect, useMemo, useState } from "react";
+import type { AiCommitPreview, GitPlatform, LaunchTarget, Project } from "@agentdesk/shared";
 import {
   Badge,
   Button,
@@ -30,6 +32,7 @@ import {
   PageHeader,
   Segmented,
   Spinner,
+  Textarea,
   Tooltip,
   cn,
 } from "@agentdesk/ui";
@@ -91,7 +94,181 @@ function LaunchButtons({ project, size = "sm" }: { project: Project; size?: "sm"
   );
 }
 
-function ProjectCard({ project, onOpen }: { project: Project; onOpen: () => void }) {
+function AiCommitDialog({
+  project,
+  open,
+  onOpenChange,
+}: {
+  project: Project;
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+}) {
+  const queryClient = useQueryClient();
+  const [message, setMessage] = useState("");
+  const [stageAll, setStageAll] = useState(true);
+  const [push, setPush] = useState(true);
+  const [preview, setPreview] = useState<AiCommitPreview | null>(null);
+
+  const load = useMutation({
+    mutationFn: () => api.aiCommitPreview(project.id),
+    onSuccess: (data) => {
+      setPreview(data);
+      setMessage(data.suggestedMessage);
+      setStageAll(data.willStageAll || !data.hasStaged);
+    },
+  });
+
+  const commit = useMutation({
+    mutationFn: () =>
+      api.aiCommit(project.id, {
+        message: message.trim(),
+        stageAll,
+        push,
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["projects"] });
+      void queryClient.invalidateQueries({ queryKey: ["project-commits", project.id] });
+      onOpenChange(false);
+    },
+  });
+
+  useEffect(() => {
+    if (!open) {
+      setPreview(null);
+      setMessage("");
+      load.reset();
+      commit.reset();
+      return;
+    }
+    load.mutate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅在打开时拉预览
+  }, [open, project.id]);
+
+  const needsCommit = Boolean(preview && (preview.hasStaged || preview.hasUnstaged));
+  const canSubmit =
+    preview &&
+    !load.isPending &&
+    ((needsCommit && message.trim().length > 0) || (!needsCommit && preview.ahead > 0));
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={`AI 提交并推送 · ${project.name}`}
+      footer={
+        <>
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>
+            取消
+          </Button>
+          <Button
+            variant="primary"
+            loading={commit.isPending}
+            disabled={!canSubmit}
+            onClick={() => commit.mutate()}
+          >
+            <Upload className="h-3.5 w-3.5" />
+            {needsCommit ? (push ? "提交并推送" : "仅提交") : "推送到远程"}
+          </Button>
+        </>
+      }
+    >
+      {load.isPending ? (
+        <div className="flex items-center gap-2 py-8 text-[13px] text-muted">
+          <Spinner />
+          正在检测改动并用 AI 生成提交说明…
+        </div>
+      ) : load.error ? (
+        <p className="text-[13px] text-danger">{load.error.message}</p>
+      ) : preview ? (
+        <div className="grid gap-4">
+          <div className="flex flex-wrap items-center gap-2 text-[12px]">
+            {preview.branch ? <Badge>{preview.branch}</Badge> : null}
+            {preview.stagedFiles.length ? (
+              <Badge tone="brand">暂存 {preview.stagedFiles.length}</Badge>
+            ) : null}
+            {preview.unstagedFiles.length ? (
+              <Badge tone="warning">未暂存 {preview.unstagedFiles.length}</Badge>
+            ) : null}
+            {preview.ahead ? <Badge tone="info">未推送 {preview.ahead}</Badge> : null}
+          </div>
+
+          {needsCommit ? (
+            <Field
+              label="提交说明"
+              hint={
+                preview.willStageAll
+                  ? "暂存区为空，确认后会先 git add -A 再提交"
+                  : "根据暂存区 / 工作区 diff 由 AI 生成，可直接改"
+              }
+            >
+              <Textarea
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                rows={3}
+                className="font-mono text-[12.5px]"
+                autoFocus
+              />
+            </Field>
+          ) : (
+            <p className="text-[13px] text-muted">
+              工作区干净，将把本地已有的 {preview.ahead} 个提交推送到远程。
+            </p>
+          )}
+
+          <div className="flex flex-wrap gap-4 text-[12.5px] text-muted">
+            {preview.willStageAll || preview.hasUnstaged ? (
+              <label className="inline-flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={stageAll}
+                  onChange={(e) => setStageAll(e.target.checked)}
+                  disabled={!preview.hasUnstaged}
+                />
+                暂存全部改动（git add -A）
+              </label>
+            ) : null}
+            <label className="inline-flex items-center gap-2">
+              <input type="checkbox" checked={push} onChange={(e) => setPush(e.target.checked)} />
+              提交后推送到远程
+            </label>
+          </div>
+
+          {preview.status ? (
+            <pre className="max-h-28 overflow-auto rounded-lg bg-surface-2 p-2.5 font-mono text-[11px] text-muted">
+              {preview.status}
+            </pre>
+          ) : null}
+          {preview.diffPreview ? (
+            <details>
+              <summary className="cursor-pointer text-[12px] text-subtle">查看 diff 预览</summary>
+              <pre className="mt-2 max-h-48 overflow-auto rounded-lg bg-surface-2 p-2.5 font-mono text-[10.5px] text-muted">
+                {preview.diffPreview}
+              </pre>
+            </details>
+          ) : null}
+          {commit.error ? <p className="text-[12.5px] text-danger">{commit.error.message}</p> : null}
+          {commit.data ? (
+            <p className="text-[12.5px] text-success">
+              {commit.data.commitHash ? `已提交 ${commit.data.commitHash}` : "无需新提交"}
+              {commit.data.pushed ? " · 已推送" : ""}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+    </Dialog>
+  );
+}
+
+function ProjectCard({
+  project,
+  onOpen,
+  onAiCommit,
+}: {
+  project: Project;
+  onOpen: () => void;
+  onAiCommit: () => void;
+}) {
+  const highlight = project.dirtyFiles > 0 || project.ahead > 0;
   return (
     <Card
       className="group cursor-pointer p-4 transition-colors hover:border-border-strong"
@@ -108,7 +285,25 @@ function ProjectCard({ project, onOpen }: { project: Project; onOpen: () => void
             {project.owner ? `${project.owner}/${project.repo}` : project.path}
           </p>
         </div>
-        <LaunchButtons project={project} />
+        <div className="flex items-center gap-1">
+          <Tooltip content="AI 生成提交说明并推送" side="top">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onAiCommit();
+              }}
+              className={cn(
+                "grid h-7 w-7 place-items-center rounded-lg hover:bg-brand/10",
+                highlight ? "text-brand" : "text-muted hover:text-brand",
+              )}
+              aria-label="AI 提交推送"
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+            </button>
+          </Tooltip>
+          <LaunchButtons project={project} />
+        </div>
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-1.5">
         {project.branch ? <Badge>{project.branch}</Badge> : null}
@@ -142,7 +337,15 @@ function ProjectCard({ project, onOpen }: { project: Project; onOpen: () => void
   );
 }
 
-function ProjectDrawer({ project, onClose }: { project: Project; onClose: () => void }) {
+function ProjectDrawer({
+  project,
+  onClose,
+  onAiCommit,
+}: {
+  project: Project;
+  onClose: () => void;
+  onAiCommit: () => void;
+}) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const setChatPrefill = useUi((s) => s.setChatPrefill);
@@ -176,7 +379,6 @@ function ProjectDrawer({ project, onClose }: { project: Project; onClose: () => 
     project.host && project.owner
       ? `https://${project.host}/${project.owner}/${project.repo}`
       : null;
-
   return (
     <Drawer open onOpenChange={(o) => !o && onClose()} title={project.name} width={600}>
       <div className="grid gap-6">
@@ -188,6 +390,10 @@ function ProjectDrawer({ project, onClose }: { project: Project; onClose: () => 
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
             <LaunchButtons project={project} size="md" />
+            <Button variant="primary" onClick={onAiCommit}>
+              <Sparkles className="h-3.5 w-3.5" />
+              AI 提交推送
+            </Button>
           </div>
           <div className="mt-2 flex flex-wrap gap-2">
             <Button
@@ -380,6 +586,7 @@ export function ProjectsPage() {
   const [q, setQ] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const [aiCommitId, setAiCommitId] = useState<string | null>(null);
   const scan = useMutation({
     mutationFn: api.scanProjects,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["projects"] }),
@@ -402,6 +609,7 @@ export function ProjectsPage() {
     return p.platform === filter;
   });
   const opened = data.find((p) => p.id === openId);
+  const aiCommitProject = data.find((p) => p.id === aiCommitId);
 
   return (
     <div className="h-full overflow-y-auto">
@@ -467,7 +675,12 @@ export function ProjectsPage() {
         ) : visible.length ? (
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {visible.map((p) => (
-              <ProjectCard key={p.id} project={p} onOpen={() => setOpenId(p.id)} />
+              <ProjectCard
+                key={p.id}
+                project={p}
+                onOpen={() => setOpenId(p.id)}
+                onAiCommit={() => setAiCommitId(p.id)}
+              />
             ))}
           </div>
         ) : (
@@ -501,8 +714,21 @@ export function ProjectsPage() {
           </section>
         ) : null}
       </div>
-      {opened ? <ProjectDrawer project={opened} onClose={() => setOpenId(null)} /> : null}
+      {opened ? (
+        <ProjectDrawer
+          project={opened}
+          onClose={() => setOpenId(null)}
+          onAiCommit={() => setAiCommitId(opened.id)}
+        />
+      ) : null}
       {adding ? <AddProjectDialog open onOpenChange={setAdding} /> : null}
+      {aiCommitProject ? (
+        <AiCommitDialog
+          project={aiCommitProject}
+          open
+          onOpenChange={(o) => !o && setAiCommitId(null)}
+        />
+      ) : null}
     </div>
   );
 }
