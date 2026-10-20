@@ -188,19 +188,17 @@ export async function gitAddAll(path: string): Promise<void> {
 }
 
 export async function gitCommit(path: string, message: string): Promise<string> {
-  const result = await run(
-    "git",
-    ["-C", path, "commit", "-m", message],
-    { timeoutMs: 60_000 },
-  );
-  if (result.code !== 0) throw new Error(result.stderr.trim() || result.stdout.trim() || "git commit 失败");
+  const result = await run("git", ["-C", path, "commit", "-m", message], { timeoutMs: 60_000 });
+  if (result.code !== 0)
+    throw new Error(result.stderr.trim() || result.stdout.trim() || "git commit 失败");
   const hash = await git(path, "rev-parse", "--short", "HEAD");
   return hash.code === 0 ? hash.stdout.trim() : "ok";
 }
 
 export async function gitPush(path: string): Promise<string> {
   const result = await run("git", ["-C", path, "push"], { timeoutMs: 180_000 });
-  if (result.code !== 0) throw new Error(result.stderr.trim() || result.stdout.trim() || "git push 失败");
+  if (result.code !== 0)
+    throw new Error(result.stderr.trim() || result.stdout.trim() || "git push 失败");
   return (result.stdout.trim() || result.stderr.trim() || "push ok").slice(0, 4_000);
 }
 

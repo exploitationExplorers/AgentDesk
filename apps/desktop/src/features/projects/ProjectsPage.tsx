@@ -246,7 +246,9 @@ function AiCommitDialog({
               </pre>
             </details>
           ) : null}
-          {commit.error ? <p className="text-[12.5px] text-danger">{commit.error.message}</p> : null}
+          {commit.error ? (
+            <p className="text-[12.5px] text-danger">{commit.error.message}</p>
+          ) : null}
           {commit.data ? (
             <p className="text-[12.5px] text-success">
               {commit.data.commitHash ? `已提交 ${commit.data.commitHash}` : "无需新提交"}

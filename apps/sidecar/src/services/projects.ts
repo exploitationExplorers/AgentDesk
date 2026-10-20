@@ -181,23 +181,24 @@ export class ProjectService {
         throw new AppError(ErrorCode.BadRequest, "请先在 设置 > 模型 Provider 中配置可用模型");
       }
       try {
-        suggestedMessage = (
-          await completeText({
-            models,
-            systemPrompt: `你是资深工程师，根据 git diff 写一条简洁的 commit message。
+        suggestedMessage =
+          (
+            await completeText({
+              models,
+              systemPrompt: `你是资深工程师，根据 git diff 写一条简洁的 commit message。
 要求：
 - 使用 Conventional Commits：feat/fix/docs/refactor/chore/test/perf/style 等
 - 只输出一行英文 subject，不超过 72 字符，不要句号，不要代码块，不要解释
 - 如实反映改动意图，不要编造未出现的功能`,
-            prompt: `仓库：${project.name}\n分支：${summary.branch ?? "?"}\n\ngit status:\n${summary.status}\n\ndiff:\n${diffForAi || "(无 diff，仅有状态)"}`,
-            maxTokens: 80,
-            signal: AbortSignal.timeout(45_000),
-          })
-        )
-          .trim()
-          .split("\n")
-          .map((l) => l.replace(/^[`'"\s]+|[`'"\s]+$/g, ""))
-          .find((l) => l.length > 0) ?? suggestedMessage;
+              prompt: `仓库：${project.name}\n分支：${summary.branch ?? "?"}\n\ngit status:\n${summary.status}\n\ndiff:\n${diffForAi || "(无 diff，仅有状态)"}`,
+              maxTokens: 80,
+              signal: AbortSignal.timeout(45_000),
+            })
+          )
+            .trim()
+            .split("\n")
+            .map((l) => l.replace(/^[`'"\s]+|[`'"\s]+$/g, ""))
+            .find((l) => l.length > 0) ?? suggestedMessage;
       } catch (error) {
         throw new AppError(
           ErrorCode.ProviderUnavailable,
