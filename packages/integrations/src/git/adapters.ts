@@ -1,8 +1,21 @@
 import { Octokit } from "@octokit/rest";
 import type { RemoteActivity } from "@agentdesk/shared";
 
+export interface ListedRemoteRepo {
+  id: string;
+  name: string;
+  fullName: string;
+  description: string | null;
+  cloneUrl: string;
+  htmlUrl: string;
+  private: boolean;
+  updatedAt: string | null;
+}
+
 export interface RemoteAdapter {
   listActivity(owner: string, repo: string): Promise<RemoteActivity[]>;
+  /** 列出当前 Token 可见的仓库（用于导入选择） */
+  listRepos?(): Promise<ListedRemoteRepo[]>;
 }
 
 export class GitHubAdapter implements RemoteAdapter {
@@ -38,6 +51,24 @@ export class GitHubAdapter implements RemoteAdapter {
           updatedAt: i.updated_at,
         })),
     ];
+  }
+
+  async listRepos(): Promise<ListedRemoteRepo[]> {
+    const repos = await this.client.paginate(this.client.repos.listForAuthenticatedUser, {
+      per_page: 100,
+      sort: "updated",
+      affiliation: "owner,collaborator,organization_member",
+    });
+    return repos.map((r) => ({
+      id: String(r.id),
+      name: r.name,
+      fullName: r.full_name,
+      description: r.description,
+      cloneUrl: r.clone_url,
+      htmlUrl: r.html_url,
+      private: r.private,
+      updatedAt: r.updated_at,
+    }));
   }
 }
 
@@ -87,6 +118,45 @@ export class GiteeAdapter implements RemoteAdapter {
         updatedAt: i.updated_at,
       });
     return [...pulls.map(map("pull_request")), ...issues.map(map("issue"))];
+  }
+
+  async listRepos(): Promise<ListedRemoteRepo[]> {
+    type GiteeRepo = {
+      id: number;
+      name: string;
+      full_name: string;
+      description: string | null;
+      html_url: string;
+      private: boolean;
+      updated_at: string;
+      namespace?: { path: string };
+    };
+    const out: ListedRemoteRepo[] = [];
+    for (let page = 1; page <= 10; page++) {
+      const batch = await getJson<GiteeRepo[]>(
+        this.url("/user/repos", {
+          type: "all",
+          sort: "updated",
+          per_page: "100",
+          page: String(page),
+        }),
+      );
+      if (!batch.length) break;
+      for (const r of batch) {
+        out.push({
+          id: String(r.id),
+          name: r.name,
+          fullName: r.full_name,
+          description: r.description,
+          cloneUrl: `https://gitee.com/${r.full_name}.git`,
+          htmlUrl: r.html_url,
+          private: r.private,
+          updatedAt: r.updated_at,
+        });
+      }
+      if (batch.length < 100) break;
+    }
+    return out;
   }
 }
 

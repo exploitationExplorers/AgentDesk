@@ -240,6 +240,18 @@ export async function gitPush(path: string): Promise<string> {
   return (result.stdout.trim() || result.stderr.trim() || "push ok").slice(0, 4_000);
 }
 
+export async function gitClone(url: string, target: string): Promise<void> {
+  const result = await run("git", ["clone", "--", url, target], { timeoutMs: 300_000 });
+  if (result.code !== 0) throw new Error(formatGitError(result, "git clone 失败"));
+}
+
+/** 规范化 remote，用于匹配「Gitee 上的仓库」与本地克隆是否是同一个 */
+export function remoteIdentity(url: string, gitlabHosts: string[] = []): string | null {
+  const parsed = parseRemote(url, gitlabHosts);
+  if (!parsed) return null;
+  return `${parsed.platform}:${parsed.owner}/${parsed.repo}`.toLowerCase();
+}
+
 export async function isDirectory(path: string): Promise<boolean> {
   try {
     return (await stat(path)).isDirectory();

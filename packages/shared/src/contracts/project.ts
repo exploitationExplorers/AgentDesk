@@ -61,6 +61,24 @@ export type ClaudeSession = z.infer<typeof ClaudeSession>;
 export const LaunchTarget = z.enum(["cursor", "claude", "terminal", "explorer"]);
 export type LaunchTarget = z.infer<typeof LaunchTarget>;
 
+/** 远程平台上的仓库，供「从 Gitee/GitHub 添加」下拉选择 */
+export const RemoteRepo = z.object({
+  id: z.string(),
+  platform: z.enum(["github", "gitee", "gitlab"]),
+  name: z.string(),
+  fullName: z.string(),
+  description: z.string().nullable(),
+  cloneUrl: z.string(),
+  htmlUrl: z.string(),
+  private: z.boolean(),
+  updatedAt: z.string().nullable(),
+  /** 若已在扫描目录中找到本地克隆 */
+  localPath: z.string().nullable(),
+  /** 是否已在项目中心 */
+  imported: z.boolean(),
+});
+export type RemoteRepo = z.infer<typeof RemoteRepo>;
+
 /** AI 提交推送预览：状态摘要 + 建议的 commit message */
 export const AiCommitPreview = z.object({
   projectId: z.string(),
