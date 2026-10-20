@@ -12,6 +12,25 @@ export function projectRoutes({ projects }: Container) {
     const { path } = z.object({ path: z.string().min(1) }).parse(await c.req.json());
     return c.json(await projects.add(path), 201);
   });
+  app.get("/projects/remote", async (c) => {
+    const platform = z
+      .enum(["github", "gitee", "gitlab"])
+      .parse(c.req.query("platform") || "gitee");
+    return c.json(await projects.listRemoteRepos(platform));
+  });
+  app.post("/projects/import-remote", async (c) => {
+    const body = z
+      .object({
+        platform: z.enum(["github", "gitee", "gitlab"]),
+        cloneUrl: z.string().min(1),
+        fullName: z.string().optional(),
+      })
+      .parse(await c.req.json());
+    return c.json(
+      await projects.importRemoteRepo(body.platform, body.cloneUrl, body.fullName),
+      201,
+    );
+  });
   app.patch("/projects/:id", async (c) => {
     const patch = z
       .object({ pinned: z.boolean().optional(), tags: z.array(z.string()).optional() })

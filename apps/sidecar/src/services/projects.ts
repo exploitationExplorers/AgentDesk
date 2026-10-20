@@ -7,6 +7,7 @@ import {
   createAdapter,
   findRepositories,
   gitChangeSummary,
+  gitClone,
   gitLog,
   gitPull,
   gitStatus,
@@ -15,6 +16,7 @@ import {
   launchProject,
   listClaudeSessions,
   normalizeCommitMessage,
+  remoteIdentity,
 } from "@agentdesk/integrations";
 import {
   AiCommitInput,
@@ -28,6 +30,7 @@ import {
   type LaunchTarget,
   type Project,
   type RemoteActivity,
+  type RemoteRepo,
 } from "@agentdesk/shared";
 import type { Db } from "../db/client";
 import { Collection } from "../db/collection";
@@ -133,6 +136,158 @@ export class ProjectService {
     if (!existsSync(resolve(full, ".git")))
       throw new AppError(ErrorCode.BadRequest, "该目录不是 Git 仓库");
     return this.upsertFromPath(full);
+  }
+
+  /** 列出平台上的远程仓库，并标注本地是否已有克隆 / 是否已导入 */
+  async listRemoteRepos(platform: "github" | "gitee" | "gitlab"): Promise<RemoteRepo[]> {
+    const { adapter, token } = this.requireAdapter(platform);
+    if (!adapter.listRepos)
+      throw new AppError(ErrorCode.BadRequest, `${platform} 暂不支持仓库列表导入`);
+    if (!token)
+      throw new AppError(ErrorCode.BadRequest, `请先在 设置 > Git 平台 中配置 ${platform} Token`);
+
+    let listed;
+    try {
+      listed = await adapter.listRepos();
+    } catch (error) {
+      throw new AppError(
+        ErrorCode.IntegrationFailed,
+        `拉取 ${platform} 仓库列表失败：${errorMessage(error)}`,
+      );
+    }
+
+    const hosts = this.gitlabHosts();
+    const localByIdentity = await this.mapLocalRemoteIdentities(hosts);
+    const imported = new Set(
+      this.list()
+        .map((p) => (p.remoteUrl ? remoteIdentity(p.remoteUrl, hosts) : null))
+        .filter((x): x is string => Boolean(x)),
+    );
+
+    return listed.map((r) => {
+      const identity =
+        remoteIdentity(r.cloneUrl, hosts) ?? `${platform}:${r.fullName}`.toLowerCase();
+      return {
+        id: r.id,
+        platform,
+        name: r.name,
+        fullName: r.fullName,
+        description: r.description,
+        cloneUrl: r.cloneUrl,
+        htmlUrl: r.htmlUrl,
+        private: r.private,
+        updatedAt: r.updatedAt,
+        localPath: localByIdentity.get(identity) ?? null,
+        imported: imported.has(identity),
+      };
+    });
+  }
+
+  /**
+   * 从远程仓库导入：优先关联扫描目录中的本地克隆；
+   * 否则 clone 到第一个扫描目录下。
+   */
+  async importRemoteRepo(
+    platform: "github" | "gitee" | "gitlab",
+    cloneUrl: string,
+    fullName?: string,
+  ): Promise<Project> {
+    const { token } = this.requireAdapter(platform);
+    const hosts = this.gitlabHosts();
+    const identity = remoteIdentity(cloneUrl, hosts);
+    if (!identity) throw new AppError(ErrorCode.BadRequest, "无效的仓库地址");
+
+    const localByIdentity = await this.mapLocalRemoteIdentities(hosts);
+    const existingPath = localByIdentity.get(identity);
+    if (existingPath) return this.add(existingPath);
+
+    const already = this.list().find(
+      (p) => p.remoteUrl && remoteIdentity(p.remoteUrl, hosts) === identity,
+    );
+    if (already) return this.refresh(already.id);
+
+    const roots = this.settings.get().scanRoots.filter((r) => existsSync(r));
+    if (roots.length === 0)
+      throw new AppError(
+        ErrorCode.BadRequest,
+        "请先在 设置 > 通用 中添加扫描目录，导入时会 clone 到该目录",
+      );
+
+    const repoName =
+      fullName
+        ?.split("/")
+        .pop()
+        ?.replace(/\.git$/, "") ||
+      cloneUrl
+        .replace(/\.git$/, "")
+        .split("/")
+        .pop() ||
+      "repo";
+    const target = join(roots[0]!, repoName);
+    if (existsSync(target)) {
+      if (existsSync(resolve(target, ".git"))) return this.add(target);
+      throw new AppError(ErrorCode.BadRequest, `目标目录已存在且不是 Git 仓库：${target}`);
+    }
+
+    const authUrl = token ? injectCloneToken(cloneUrl, token) : cloneUrl;
+    try {
+      await gitClone(authUrl, target);
+    } catch (error) {
+      throw new AppError(ErrorCode.IntegrationFailed, errorMessage(error));
+    }
+    return this.add(target);
+  }
+
+  private requireAdapter(platform: "github" | "gitee" | "gitlab"): {
+    adapter: NonNullable<ReturnType<typeof createAdapter>>;
+    host: string;
+    token: string | undefined;
+  } {
+    const host = DEFAULT_HOSTS[platform] || "";
+    const account =
+      this.accounts.list().find((a) => a.platform === platform) ??
+      (host ? { id: `${platform}:${host}`, platform, host } : null);
+    if (!account?.host)
+      throw new AppError(ErrorCode.BadRequest, `请先在 设置 > Git 平台 中添加 ${platform}`);
+    const token = this.secrets.get(tokenId(account.platform, account.host)) ?? undefined;
+    const adapter = createAdapter(account.platform, account.host, token);
+    if (!adapter) throw new AppError(ErrorCode.BadRequest, `不支持的平台：${platform}`);
+    return { adapter, host: account.host, token };
+  }
+
+  /** 扫描目录内所有仓库的 remote → 本地路径 */
+  private async mapLocalRemoteIdentities(hosts: string[]): Promise<Map<string, string>> {
+    const map = new Map<string, string>();
+    const roots = this.settings.get().scanRoots.filter((r) => existsSync(r));
+    if (!roots.length) {
+      for (const p of this.list()) {
+        if (!p.remoteUrl) continue;
+        const id = remoteIdentity(p.remoteUrl, hosts);
+        if (id) map.set(id, p.path);
+      }
+      return map;
+    }
+    const paths = await findRepositories(roots);
+    for (const batch of chunk(paths, 12)) {
+      await Promise.all(
+        batch.map(async (path) => {
+          try {
+            const info = await inspectRepository(path, hosts);
+            if (!info.remoteUrl) return;
+            const id = remoteIdentity(info.remoteUrl, hosts);
+            if (id && !map.has(id)) map.set(id, path);
+          } catch {
+            /* skip */
+          }
+        }),
+      );
+    }
+    for (const p of this.list()) {
+      if (!p.remoteUrl) continue;
+      const id = remoteIdentity(p.remoteUrl, hosts);
+      if (id && !map.has(id)) map.set(id, p.path);
+    }
+    return map;
   }
 
   async refresh(id: string): Promise<Project> {
@@ -391,4 +546,18 @@ function chunk<T>(items: T[], size: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
   return out;
+}
+
+/** 把 Token 写入 clone URL，便于私有仓库拉取（不落盘到 git remote） */
+function injectCloneToken(cloneUrl: string, token: string): string {
+  try {
+    const u = new URL(cloneUrl);
+    if (!u.username) {
+      u.username = "oauth2";
+      u.password = token;
+    }
+    return u.toString();
+  } catch {
+    return cloneUrl;
+  }
 }

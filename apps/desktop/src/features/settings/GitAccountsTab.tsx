@@ -39,8 +39,8 @@ export function GitAccountsTab() {
   return (
     <div className="grid gap-5">
       <p className="text-[13px] text-muted">
-        Token 用于拉取 PR/MR 和 Issue。添加 GitLab 主机后，remote 指向该域名的项目会被识别为
-        GitLab。
+        Token 用于拉取 PR/MR、Issue，以及在「项目中心 → 添加」中下拉选择远程仓库导入。添加 GitLab
+        主机后，remote 指向该域名的项目会被识别为 GitLab。
       </p>
       {data.length ? (
         <Card>

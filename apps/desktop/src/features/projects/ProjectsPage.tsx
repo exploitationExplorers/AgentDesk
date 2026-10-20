@@ -31,6 +31,7 @@ import {
   Input,
   PageHeader,
   Segmented,
+  Select,
   Spinner,
   Textarea,
   Tooltip,
@@ -549,38 +550,184 @@ function AddProjectDialog({
   onOpenChange: (o: boolean) => void;
 }) {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const [mode, setMode] = useState<"remote" | "path">("remote");
+  const [platform, setPlatform] = useState<"github" | "gitee" | "gitlab">("gitee");
+  const [repoId, setRepoId] = useState("");
   const [path, setPath] = useState("");
-  const add = useMutation({
+  const [filter, setFilter] = useState("");
+
+  const accounts = useQuery({ queryKey: ["git-accounts"], queryFn: api.gitAccounts });
+  const hasToken = (accounts.data ?? []).some((a) => a.platform === platform && a.hasToken);
+
+  const remotes = useQuery({
+    queryKey: ["remote-repos", platform],
+    queryFn: () => api.listRemoteRepos(platform),
+    enabled: open && mode === "remote" && hasToken,
+  });
+
+  const filtered = useMemo(() => {
+    const list = remotes.data ?? [];
+    const q = filter.trim().toLowerCase();
+    if (!q) return list;
+    return list.filter(
+      (r) =>
+        r.fullName.toLowerCase().includes(q) || (r.description ?? "").toLowerCase().includes(q),
+    );
+  }, [remotes.data, filter]);
+
+  const selected = (remotes.data ?? []).find((r) => r.id === repoId);
+
+  const importRemote = useMutation({
+    mutationFn: () => {
+      if (!selected) throw new Error("请选择仓库");
+      return api.importRemoteRepo({
+        platform,
+        cloneUrl: selected.cloneUrl,
+        fullName: selected.fullName,
+      });
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["projects"] });
+      void queryClient.invalidateQueries({ queryKey: ["remote-repos", platform] });
+      onOpenChange(false);
+    },
+  });
+
+  const addPath = useMutation({
     mutationFn: () => api.addProject(path),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["projects"] });
       onOpenChange(false);
     },
   });
+
+  const busy = importRemote.isPending || addPath.isPending;
+  const err = importRemote.error?.message || addPath.error?.message || remotes.error?.message;
+
   return (
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      title="手动添加项目"
+      title="添加项目"
       footer={
-        <Button
-          variant="primary"
-          loading={add.isPending}
-          onClick={() => add.mutate()}
-          disabled={!path}
-        >
-          添加
-        </Button>
+        mode === "remote" ? (
+          <Button
+            variant="primary"
+            loading={importRemote.isPending}
+            onClick={() => importRemote.mutate()}
+            disabled={!selected || selected.imported || !hasToken}
+          >
+            {selected?.localPath ? "关联本地仓库" : selected?.imported ? "已添加" : "导入"}
+          </Button>
+        ) : (
+          <Button
+            variant="primary"
+            loading={addPath.isPending}
+            onClick={() => addPath.mutate()}
+            disabled={!path}
+          >
+            添加
+          </Button>
+        )
       }
     >
-      <Field label="本地仓库路径" hint={add.error?.message}>
-        <Input
-          value={path}
-          onChange={(e) => setPath(e.target.value)}
-          placeholder="D:\\work\\im-server"
-          autoFocus
+      <div className="grid gap-4">
+        <Segmented
+          value={mode}
+          onChange={setMode}
+          options={[
+            { value: "remote", label: "从平台选择" },
+            { value: "path", label: "本地路径" },
+          ]}
         />
-      </Field>
+
+        {mode === "remote" ? (
+          <>
+            <Field label="平台">
+              <Select
+                value={platform}
+                onChange={(e) => {
+                  setPlatform(e.target.value as "github" | "gitee" | "gitlab");
+                  setRepoId("");
+                }}
+              >
+                <option value="gitee">Gitee</option>
+                <option value="github">GitHub</option>
+                <option value="gitlab">GitLab</option>
+              </Select>
+            </Field>
+
+            {!hasToken ? (
+              <div className="rounded-xl border border-warning/40 bg-warning/10 px-3 py-2.5 text-[12.5px] text-warning">
+                尚未配置 {platform} Token。
+                <button
+                  type="button"
+                  className="ml-1 underline"
+                  onClick={() => {
+                    onOpenChange(false);
+                    void navigate({ to: "/settings", search: { tab: "git" } });
+                  }}
+                >
+                  去设置 → Git 平台
+                </button>
+                填写私人令牌后，即可下拉选择仓库。
+              </div>
+            ) : remotes.isLoading ? (
+              <Spinner />
+            ) : (
+              <>
+                <Field label="筛选仓库">
+                  <Input
+                    value={filter}
+                    onChange={(e) => setFilter(e.target.value)}
+                    placeholder="按名称搜索…"
+                    autoFocus
+                  />
+                </Field>
+                <Field
+                  label="选择仓库"
+                  hint={
+                    selected?.localPath
+                      ? `将关联已有本地目录：${selected.localPath}`
+                      : selected
+                        ? "本地未找到克隆，将 clone 到第一个扫描目录"
+                        : undefined
+                  }
+                >
+                  <Select
+                    value={repoId}
+                    onChange={(e) => setRepoId(e.target.value)}
+                    disabled={busy || !filtered.length}
+                  >
+                    <option value="">
+                      {filtered.length ? `共 ${filtered.length} 个仓库…` : "没有可导入的仓库"}
+                    </option>
+                    {filtered.map((r) => (
+                      <option key={r.id} value={r.id} disabled={r.imported}>
+                        {r.fullName}
+                        {r.private ? "（私有）" : ""}
+                        {r.imported ? " · 已添加" : r.localPath ? " · 本地已有" : ""}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+              </>
+            )}
+          </>
+        ) : (
+          <Field label="本地仓库路径">
+            <Input
+              value={path}
+              onChange={(e) => setPath(e.target.value)}
+              placeholder="D:\\jiedan\\billiards-tribe\\manager_react"
+              autoFocus
+            />
+          </Field>
+        )}
+
+        {err ? <p className="text-[12px] text-danger">{err}</p> : null}
+      </div>
     </Dialog>
   );
 }

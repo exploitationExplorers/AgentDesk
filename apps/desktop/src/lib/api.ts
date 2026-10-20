@@ -24,6 +24,7 @@ import type {
   ProviderInput,
   RecipeStep,
   RemoteActivity,
+  RemoteRepo,
   Server,
   ServerInput,
 } from "@agentdesk/shared";
@@ -90,6 +91,13 @@ export const api = {
   projects: () => http.get<Project[]>("/projects"),
   scanProjects: () => http.post<{ found: number; removed: number }>("/projects/scan"),
   addProject: (path: string) => http.post<Project>("/projects", { path }),
+  listRemoteRepos: (platform: "github" | "gitee" | "gitlab") =>
+    http.get<RemoteRepo[]>("/projects/remote", { platform }),
+  importRemoteRepo: (input: {
+    platform: "github" | "gitee" | "gitlab";
+    cloneUrl: string;
+    fullName?: string;
+  }) => http.post<Project>("/projects/import-remote", input),
   patchProject: (id: string, patch: { pinned?: boolean; tags?: string[] }) =>
     http.patch<Project>(`/projects/${id}`, patch),
   removeProject: (id: string) => http.delete(`/projects/${id}`),
