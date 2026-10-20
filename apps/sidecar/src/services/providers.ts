@@ -123,7 +123,8 @@ export class ProviderService implements ModelResolver {
     for (const c of raw.filter((r) => candidateIds.includes(r.candidateId))) {
       const base = c.baseUrl.replace(/\/+$/, "");
       // 「Claude Code 当前配置」覆盖同中转站已导入的 Anthropic Provider，避免沿用 CC Switch 库里的旧 Key
-      const isActiveClaude = c.name.includes("当前配置") || /[/\\]\.claude[/\\]settings\.json$/i.test(c.origin);
+      const isActiveClaude =
+        c.name.includes("当前配置") || /[/\\]\.claude[/\\]settings\.json$/i.test(c.origin);
       const duplicate =
         existing.find((p) => p.baseUrl === base && p.name === c.name) ??
         (isActiveClaude
