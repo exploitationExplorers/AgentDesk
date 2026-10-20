@@ -131,6 +131,7 @@ function AiCommitDialog({
       onOpenChange(false);
     },
   });
+  const committing = commit.isPending;
 
   useEffect(() => {
     if (!open) {
@@ -162,12 +163,12 @@ function AiCommitDialog({
           </Button>
           <Button
             variant="primary"
-            loading={commit.isPending}
-            disabled={!canSubmit}
+            loading={committing}
+            disabled={!canSubmit || committing}
             onClick={() => commit.mutate()}
           >
             <Upload className="h-3.5 w-3.5" />
-            {needsCommit ? (push ? "提交并推送" : "仅提交") : "推送到远程"}
+            {committing ? "提交中…" : needsCommit ? (push ? "提交并推送" : "仅提交") : "推送到远程"}
           </Button>
         </>
       }
@@ -246,8 +247,16 @@ function AiCommitDialog({
               </pre>
             </details>
           ) : null}
+          {committing ? (
+            <p className="flex items-center gap-2 text-[12.5px] text-muted">
+              <Spinner className="h-3.5 w-3.5" />
+              正在独立进程中执行 git commit / push（含 husky），请稍候…
+            </p>
+          ) : null}
           {commit.error ? (
-            <p className="text-[12.5px] text-danger">{commit.error.message}</p>
+            <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded-lg border border-danger/30 bg-danger/5 p-2.5 text-[11.5px] text-danger">
+              {commit.error.message}
+            </pre>
           ) : null}
           {commit.data ? (
             <p className="text-[12.5px] text-success">

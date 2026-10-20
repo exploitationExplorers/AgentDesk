@@ -1,6 +1,7 @@
 import type {
   AgentModelBinding,
   AgentStreamEvent,
+  AiCommitJob,
   AiCommitPreview,
   AiCommitResult,
   AppSettings,
@@ -97,8 +98,25 @@ export const api = {
   projectCommits: (id: string) => http.get<CommitInfo[]>(`/projects/${id}/commits`),
   pullProject: (id: string) => http.post<{ output: string }>(`/projects/${id}/pull`),
   aiCommitPreview: (id: string) => http.post<AiCommitPreview>(`/projects/${id}/ai-commit/preview`),
-  aiCommit: (id: string, body: { message: string; stageAll?: boolean; push?: boolean }) =>
-    http.post<AiCommitResult>(`/projects/${id}/ai-commit`, body),
+  aiCommitStart: (id: string, body: { message: string; stageAll?: boolean; push?: boolean }) =>
+    http.post<{ jobId: string }>(`/projects/${id}/ai-commit`, body),
+  aiCommitJob: (id: string, jobId: string) =>
+    http.get<AiCommitJob>(`/projects/${id}/ai-commit/jobs/${jobId}`),
+  /** 启动异步提交并轮询直到完成（避免 husky 触发 sidecar 热重载导致 Failed to fetch） */
+  aiCommit: async (
+    id: string,
+    body: { message: string; stageAll?: boolean; push?: boolean },
+  ): Promise<AiCommitResult> => {
+    const { jobId } = await http.post<{ jobId: string }>(`/projects/${id}/ai-commit`, body);
+    const started = Date.now();
+    for (;;) {
+      if (Date.now() - started > 5 * 60_000) throw new Error("提交超时：请查看终端 husky/git 输出");
+      await new Promise((r) => setTimeout(r, 600));
+      const job = await http.get<AiCommitJob>(`/projects/${id}/ai-commit/jobs/${jobId}`);
+      if (job.status === "done" && job.result) return job.result;
+      if (job.status === "error") throw new Error(job.error ?? "提交失败");
+    }
+  },
   launchProject: (id: string, target: LaunchTarget) =>
     http.post<Project>(`/projects/${id}/launch`, { target }),
   claudeSessions: (projectId?: string) =>

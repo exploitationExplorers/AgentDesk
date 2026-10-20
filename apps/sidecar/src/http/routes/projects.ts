@@ -34,7 +34,10 @@ export function projectRoutes({ projects }: Container) {
     c.json(await projects.prepareAiCommit(c.req.param("id"))),
   );
   app.post("/projects/:id/ai-commit", async (c) =>
-    c.json(await projects.aiCommit(c.req.param("id"), await c.req.json())),
+    c.json(await projects.startAiCommit(c.req.param("id"), await c.req.json())),
+  );
+  app.get("/projects/:id/ai-commit/jobs/:jobId", async (c) =>
+    c.json(await projects.getAiCommitJob(c.req.param("id"), c.req.param("jobId"))),
   );
   app.post("/projects/:id/launch", async (c) => {
     const { target } = z.object({ target: LaunchTarget }).parse(await c.req.json());

@@ -187,18 +187,56 @@ export async function gitAddAll(path: string): Promise<void> {
   if (result.code !== 0) throw new Error(result.stderr.trim() || "git add 失败");
 }
 
+/** 把模型偶发输出的 JSON / 代码块收成一行 Conventional Commit subject。 */
+export function normalizeCommitMessage(raw: string): string {
+  let text = raw.trim();
+  const fenced = /^```(?:\w+)?\s*([\s\S]*?)```$/m.exec(text);
+  if (fenced?.[1]) text = fenced[1].trim();
+
+  if (text.startsWith("{")) {
+    try {
+      const obj = JSON.parse(text) as Record<string, unknown>;
+      const subject = obj.subject ?? obj.message ?? obj.commit ?? obj.title;
+      if (typeof subject === "string" && subject.trim()) text = subject.trim();
+    } catch {
+      const m = /"subject"\s*:\s*"((?:\\.|[^"\\])*)"/.exec(text);
+      if (m?.[1]) text = m[1].replace(/\\"/g, '"');
+    }
+  }
+
+  text =
+    text
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .find((l) => l && !l.startsWith("#")) ?? text;
+  text = text.replace(/^['"`]+|['"`]+$/g, "").trim();
+  return text.slice(0, 200);
+}
+
+function formatGitError(result: { stdout: string; stderr: string }, fallback: string): string {
+  const combined = [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
+  if (!combined) return fallback;
+  const lines = combined.split(/\r?\n/);
+  const important = lines.filter((l) =>
+    /✖|error|rejected|DENIED|fatal|subject may|type may|commitlint|FAILED|failed/i.test(l),
+  );
+  return (important.length ? important.slice(-20) : lines.slice(-30)).join("\n").slice(0, 2_500);
+}
+
 export async function gitCommit(path: string, message: string): Promise<string> {
-  const result = await run("git", ["-C", path, "commit", "-m", message], { timeoutMs: 60_000 });
-  if (result.code !== 0)
-    throw new Error(result.stderr.trim() || result.stdout.trim() || "git commit 失败");
+  const normalized = normalizeCommitMessage(message);
+  if (!normalized) throw new Error("提交说明为空");
+  const result = await run("git", ["-C", path, "commit", "-m", normalized], {
+    timeoutMs: 180_000,
+  });
+  if (result.code !== 0) throw new Error(formatGitError(result, "git commit 失败"));
   const hash = await git(path, "rev-parse", "--short", "HEAD");
   return hash.code === 0 ? hash.stdout.trim() : "ok";
 }
 
 export async function gitPush(path: string): Promise<string> {
   const result = await run("git", ["-C", path, "push"], { timeoutMs: 180_000 });
-  if (result.code !== 0)
-    throw new Error(result.stderr.trim() || result.stdout.trim() || "git push 失败");
+  if (result.code !== 0) throw new Error(formatGitError(result, "git push 失败"));
   return (result.stdout.trim() || result.stderr.trim() || "push ok").slice(0, 4_000);
 }
 
