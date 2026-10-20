@@ -74,6 +74,38 @@ describe("cc-switch importer", () => {
     expect(c).toMatchObject({ api: "anthropic-messages", baseUrl: "https://relay.cc" });
   });
 
+  it("读取 Claude Code 当前 settings.json", async () => {
+    const { mkdtemp, writeFile, rm } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const { candidateFromActiveClaudeSettings } = await import("../src/importers/cc-switch");
+    const dir = await mkdtemp(join(tmpdir(), "agentdesk-claude-"));
+    const path = join(dir, "settings.json");
+    await writeFile(
+      path,
+      JSON.stringify({
+        env: {
+          ANTHROPIC_AUTH_TOKEN: "sk-live-abcdef",
+          ANTHROPIC_BASE_URL: "https://api.example.com",
+          ANTHROPIC_MODEL: "claude-fable-5",
+          HTTPS_PROXY: "http://127.0.0.1:7890",
+        },
+      }),
+    );
+    try {
+      const c = await candidateFromActiveClaudeSettings(path);
+      expect(c).toMatchObject({
+        name: "Claude Code 当前配置",
+        api: "anthropic-messages",
+        baseUrl: "https://api.example.com",
+        model: "claude-fable-5",
+        apiKey: "sk-live-abcdef",
+      });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it("Codex 配置解析 toml base_url", () => {
     const c = candidateFromCcProvider(
       {

@@ -72,6 +72,14 @@ function stringifyResult(value: unknown): string {
  * 单次模型调用，支持备用模型切换：只有在尚未产生任何输出时才切换，
  * 避免同一轮回答被两个模型拼接。
  */
+/** 单次模型请求上限，避免中转站不可达时 Bot 一直转圈 */
+const MODEL_CALL_TIMEOUT_MS = 90_000;
+
+function withTimeout(signal: AbortSignal | undefined, ms: number): AbortSignal {
+  const timeout = AbortSignal.timeout(ms);
+  return signal ? AbortSignal.any([signal, timeout]) : timeout;
+}
+
 async function callModel(
   models: ResolvedModel[],
   context: Parameters<typeof stream>[1],
@@ -83,7 +91,11 @@ async function callModel(
   for (const candidate of models) {
     for (let attempt = 0; attempt <= TRANSIENT_RETRIES; attempt++) {
       let produced = false;
-      const events = stream(candidate.model, context, { apiKey: candidate.apiKey, signal });
+      const callSignal = withTimeout(signal, MODEL_CALL_TIMEOUT_MS);
+      const events = stream(candidate.model, context, {
+        apiKey: candidate.apiKey,
+        signal: callSignal,
+      });
       for await (const event of events) {
         if (event.type === "text_delta") {
           produced = true;
@@ -93,7 +105,12 @@ async function callModel(
         }
       }
       const message = await events.result();
-      if (message.stopReason === "aborted") throw new Error("已取消");
+      if (message.stopReason === "aborted") {
+        if (signal?.aborted) throw new Error("已取消");
+        lastError =
+          "请求超时：请检查 设置 → 通用 → HTTP 代理（Claude Code 能通时通常需要填写 Clash 等本地代理，如 http://127.0.0.1:7890）";
+        break;
+      }
       if (message.stopReason !== "error") return { message, providerId: candidate.providerId };
       lastError = message.errorMessage ?? lastError;
       if (produced) throw new Error(`模型调用失败：${lastError}`);

@@ -60,3 +60,39 @@ export type ClaudeSession = z.infer<typeof ClaudeSession>;
 
 export const LaunchTarget = z.enum(["cursor", "claude", "terminal", "explorer"]);
 export type LaunchTarget = z.infer<typeof LaunchTarget>;
+
+/** AI 提交推送预览：状态摘要 + 建议的 commit message */
+export const AiCommitPreview = z.object({
+  projectId: z.string(),
+  branch: z.string().nullable(),
+  status: z.string(),
+  stagedFiles: z.array(z.string()),
+  unstagedFiles: z.array(z.string()),
+  hasStaged: z.boolean(),
+  hasUnstaged: z.boolean(),
+  ahead: z.number().int(),
+  willStageAll: z.boolean(),
+  suggestedMessage: z.string(),
+  diffPreview: z.string(),
+});
+export type AiCommitPreview = z.infer<typeof AiCommitPreview>;
+
+export const AiCommitResult = z.object({
+  projectId: z.string(),
+  message: z.string(),
+  commitHash: z.string(),
+  pushed: z.boolean(),
+  pushOutput: z.string(),
+  project: Project,
+});
+export type AiCommitResult = z.infer<typeof AiCommitResult>;
+
+export const AiCommitInput = z.object({
+  /** 有本地改动时必填；仅推送未推送提交时可为空 */
+  message: z.string().max(2_000).default(""),
+  /** 暂存区为空时是否 git add -A；默认 true */
+  stageAll: z.boolean().default(true),
+  /** 提交后是否 push；默认 true */
+  push: z.boolean().default(true),
+});
+export type AiCommitInput = z.infer<typeof AiCommitInput>;

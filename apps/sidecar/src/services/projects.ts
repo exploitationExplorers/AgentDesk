@@ -1,10 +1,15 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
+import { completeText, type ModelResolver } from "@agentdesk/agent-core";
 import {
   createAdapter,
   findRepositories,
+  gitAddAll,
+  gitChangeSummary,
+  gitCommit,
   gitLog,
   gitPull,
+  gitPush,
   gitStatus,
   inspectRepository,
   isDirectory,
@@ -12,8 +17,11 @@ import {
   listClaudeSessions,
 } from "@agentdesk/integrations";
 import {
+  AiCommitInput,
   AppError,
   ErrorCode,
+  type AiCommitPreview,
+  type AiCommitResult,
   type ClaudeSession,
   type CommitInfo,
   type GitAccount,
@@ -41,6 +49,7 @@ export class ProjectService {
     db: Db,
     private readonly secrets: SecretStore,
     private readonly settings: SettingsService,
+    private readonly models: ModelResolver,
   ) {
     this.projects = new Collection<Project>(db, "projects");
     this.accounts = new Collection<GitAccountDoc>(db, "gitAccounts");
@@ -152,6 +161,122 @@ export class ProjectService {
     const output = await gitPull(project.path);
     await this.refresh(project.id);
     return output;
+  }
+
+  /** 检测暂存区/工作区变更，用 AI 生成 Conventional Commits 风格的提交说明。 */
+  async prepareAiCommit(id: string): Promise<AiCommitPreview> {
+    const project = this.get(id);
+    const summary = await gitChangeSummary(project.path);
+    if (!summary.hasStaged && !summary.hasUnstaged && summary.ahead === 0) {
+      throw new AppError(ErrorCode.BadRequest, "没有可提交或推送的改动");
+    }
+    const willStageAll = !summary.hasStaged && summary.hasUnstaged;
+    const diffForAi = summary.hasStaged
+      ? summary.stagedDiff
+      : summary.unstagedDiff || summary.status;
+    let suggestedMessage = "chore: update";
+    if (diffForAi.trim() || summary.status.trim()) {
+      const models = await this.models.resolve("project");
+      if (models.length === 0) {
+        throw new AppError(ErrorCode.BadRequest, "请先在 设置 > 模型 Provider 中配置可用模型");
+      }
+      try {
+        suggestedMessage = (
+          await completeText({
+            models,
+            systemPrompt: `你是资深工程师，根据 git diff 写一条简洁的 commit message。
+要求：
+- 使用 Conventional Commits：feat/fix/docs/refactor/chore/test/perf/style 等
+- 只输出一行英文 subject，不超过 72 字符，不要句号，不要代码块，不要解释
+- 如实反映改动意图，不要编造未出现的功能`,
+            prompt: `仓库：${project.name}\n分支：${summary.branch ?? "?"}\n\ngit status:\n${summary.status}\n\ndiff:\n${diffForAi || "(无 diff，仅有状态)"}`,
+            maxTokens: 80,
+            signal: AbortSignal.timeout(45_000),
+          })
+        )
+          .trim()
+          .split("\n")
+          .map((l) => l.replace(/^[`'"\s]+|[`'"\s]+$/g, ""))
+          .find((l) => l.length > 0) ?? suggestedMessage;
+      } catch (error) {
+        throw new AppError(
+          ErrorCode.ProviderUnavailable,
+          `生成提交说明失败：${errorMessage(error)}`,
+        );
+      }
+    } else if (summary.ahead > 0) {
+      suggestedMessage = "";
+    }
+    return {
+      projectId: project.id,
+      branch: summary.branch,
+      status: summary.status,
+      stagedFiles: summary.stagedFiles,
+      unstagedFiles: summary.unstagedFiles,
+      hasStaged: summary.hasStaged,
+      hasUnstaged: summary.hasUnstaged,
+      ahead: summary.ahead,
+      willStageAll,
+      suggestedMessage,
+      diffPreview: (summary.hasStaged ? summary.stagedDiff : summary.unstagedDiff).slice(0, 6_000),
+    };
+  }
+
+  /** 按确认的 message 提交并推送（可只推送已有未推送提交）。 */
+  async aiCommit(id: string, input: unknown): Promise<AiCommitResult> {
+    const data = AiCommitInput.parse(input);
+    const project = this.get(id);
+    const summary = await gitChangeSummary(project.path);
+    const hasChanges = summary.hasStaged || summary.hasUnstaged;
+    if (!hasChanges && summary.ahead === 0) {
+      throw new AppError(ErrorCode.BadRequest, "没有可提交或推送的改动");
+    }
+
+    let commitHash = "";
+    let message = data.message.trim();
+    if (hasChanges) {
+      if (!message) throw new AppError(ErrorCode.BadRequest, "请填写提交说明");
+      if (!summary.hasStaged) {
+        if (!data.stageAll)
+          throw new AppError(ErrorCode.BadRequest, "暂存区为空：请先 git add，或勾选暂存全部改动");
+        await gitAddAll(project.path);
+      }
+      try {
+        commitHash = await gitCommit(project.path, message);
+      } catch (error) {
+        throw new AppError(ErrorCode.IntegrationFailed, errorMessage(error));
+      }
+    } else {
+      message = message || project.lastCommit?.message || "(no new commit)";
+      commitHash = project.lastCommit?.hash.slice(0, 7) ?? "";
+    }
+
+    let pushOutput = "";
+    let pushed = false;
+    if (data.push) {
+      try {
+        pushOutput = await gitPush(project.path);
+        pushed = true;
+      } catch (error) {
+        // 提交已成功时把 push 失败明确抛出，避免用户以为两边都失败
+        throw new AppError(
+          ErrorCode.IntegrationFailed,
+          commitHash
+            ? `已提交 ${commitHash}，但推送失败：${errorMessage(error)}`
+            : `推送失败：${errorMessage(error)}`,
+        );
+      }
+    }
+
+    const refreshed = await this.refresh(project.id);
+    return {
+      projectId: project.id,
+      message,
+      commitHash,
+      pushed,
+      pushOutput,
+      project: refreshed,
+    };
   }
 
   async activity(id: string): Promise<RemoteActivity[]> {

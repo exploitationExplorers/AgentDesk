@@ -327,15 +327,19 @@ function ProviderRow({ provider, onEdit }: { provider: Provider; onEdit: () => v
       </button>
       {test.data ? (
         <span
-          className={`flex items-center gap-1 text-[12px] ${test.data.ok ? "text-success" : "text-danger"}`}
+          className={`max-w-[220px] truncate text-[12px] ${test.data.ok ? "text-success" : "text-danger"}`}
           title={test.data.error ?? test.data.reply}
         >
-          {test.data.ok ? (
-            <CheckCircle2 className="h-3.5 w-3.5" />
-          ) : (
-            <XCircle className="h-3.5 w-3.5" />
-          )}
-          {test.data.ok ? `${test.data.latencyMs}ms` : "失败"}
+          <span className="inline-flex items-center gap-1">
+            {test.data.ok ? (
+              <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+            ) : (
+              <XCircle className="h-3.5 w-3.5 shrink-0" />
+            )}
+            {test.data.ok
+              ? `${test.data.latencyMs}ms`
+              : (test.data.error?.replace(/^模型调用失败：/, "").slice(0, 48) ?? "失败")}
+          </span>
         </span>
       ) : null}
       <Button size="sm" variant="ghost" loading={test.isPending} onClick={() => test.mutate()}>

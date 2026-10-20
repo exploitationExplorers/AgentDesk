@@ -93,10 +93,81 @@ function providersFromConfigJson(json: Record<string, unknown>): CcProvider[] {
   return out;
 }
 
+/** Claude Code 当前生效的 settings.json（CC Switch 切换后会写入这里）。 */
+export function claudeSettingsPath(): string {
+  return join(homedir(), ".claude", "settings.json");
+}
+
+/**
+ * 读取 Claude Code 当前正在使用的 Key / Base URL。
+ * CC Switch 数据库里的 Provider 可能与当前生效配置不同步，优先用这份。
+ */
+export async function candidateFromActiveClaudeSettings(
+  path = claudeSettingsPath(),
+): Promise<RawProviderCandidate | null> {
+  if (!existsSync(path)) return null;
+  try {
+    const json = asRecord(JSON.parse(await readFile(path, "utf8")));
+    const env = asRecord(json.env);
+    const apiKey = String(env.ANTHROPIC_AUTH_TOKEN ?? env.ANTHROPIC_API_KEY ?? "");
+    const baseUrl = String(env.ANTHROPIC_BASE_URL ?? "").replace(/\/+$/, "");
+    if (!apiKey || !baseUrl) return null;
+    return {
+      candidateId: `cc-switch:active-claude:${baseUrl}`,
+      name: "Claude Code 当前配置",
+      api: "anthropic-messages",
+      baseUrl,
+      model: (env.ANTHROPIC_MODEL as string | undefined) ?? undefined,
+      apiKey,
+      source: "cc-switch",
+      origin: path,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** 从 CC Switch / Claude settings 里收集 HTTPS_PROXY（Claude Code 能通、AgentDesk 不通时多半差这个）。 */
+export async function detectProxyFromCcSwitch(
+  readSqlite?: SqliteReader,
+  dir = ccSwitchDir(),
+): Promise<string | null> {
+  const pick = (value: unknown) => {
+    const s = String(value ?? "").trim();
+    return /^https?:\/\//i.test(s) ? s : null;
+  };
+
+  const settingsPath = claudeSettingsPath();
+  if (existsSync(settingsPath)) {
+    try {
+      const env = asRecord(asRecord(JSON.parse(await readFile(settingsPath, "utf8"))).env);
+      const proxy = pick(env.HTTPS_PROXY ?? env.HTTP_PROXY);
+      if (proxy) return proxy;
+    } catch {
+      // ignore
+    }
+  }
+
+  const dbPath = join(dir, "cc-switch.db");
+  if (readSqlite && existsSync(dbPath)) {
+    try {
+      for (const row of readSqlite(dbPath, "SELECT settings_config FROM providers")) {
+        const env = asRecord(asRecord(row.settings_config ?? row.settingsConfig).env);
+        const proxy = pick(env.HTTPS_PROXY ?? env.HTTP_PROXY);
+        if (proxy) return proxy;
+      }
+    } catch {
+      // ignore
+    }
+  }
+  return null;
+}
+
 /**
  * 兼容 CC Switch 的两种存储：
  * - v3.x 早期：~/.cc-switch/config.json
  * - 新版：~/.cc-switch/cc-switch.db（providers 表）
+ * - 额外：~/.claude/settings.json（当前 Claude Code 真正在用的配置，优先展示）
  */
 export async function importFromCcSwitch(
   readSqlite?: SqliteReader,
@@ -134,7 +205,7 @@ export async function importFromCcSwitch(
   }
 
   const seen = new Set<string>();
-  return providers
+  const fromStore = providers
     .map(({ p, origin }) => candidateFromCcProvider(p, origin))
     .filter((c): c is RawProviderCandidate => {
       if (!c) return false;
@@ -143,4 +214,20 @@ export async function importFromCcSwitch(
       seen.add(key);
       return true;
     });
+
+  const active = await candidateFromActiveClaudeSettings();
+  if (active) {
+    const key = `${active.baseUrl}|${active.apiKey}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      return [active, ...fromStore];
+    }
+    // Key 已在库里：把对应项挪到最前并改名为当前配置，方便用户识别
+    const idx = fromStore.findIndex((c) => `${c.baseUrl}|${c.apiKey}` === key);
+    if (idx >= 0) {
+      const [hit] = fromStore.splice(idx, 1);
+      return [{ ...hit!, name: "Claude Code 当前配置", origin: active.origin }, ...fromStore];
+    }
+  }
+  return fromStore;
 }

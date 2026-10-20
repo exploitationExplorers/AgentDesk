@@ -6,7 +6,15 @@ export * from "./launch";
 export * from "./claude-sessions";
 export * from "./importers/types";
 export * from "./importers/dotenv";
-export * from "./importers/cc-switch";
+export {
+  candidateFromActiveClaudeSettings,
+  candidateFromCcProvider,
+  ccSwitchDir,
+  claudeSettingsPath,
+  detectProxyFromCcSwitch,
+  importFromCcSwitch,
+  type SqliteReader,
+} from "./importers/cc-switch";
 export * from "./feed/types";
 export * from "./feed/github-trending";
 export * from "./feed/huggingface";

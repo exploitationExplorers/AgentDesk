@@ -45,8 +45,8 @@ export async function createContainer(
   const secrets = new SecretStore(db, config.masterKey, config.dataDir);
   const settings = new SettingsService(db);
   const approvals = new ApprovalService(db, hub);
-  const providers = new ProviderService(db, secrets);
-  const projects = new ProjectService(db, secrets, settings);
+  const providers = new ProviderService(db, secrets, settings);
+  const projects = new ProjectService(db, secrets, settings, providers);
   const feed = new FeedService(db, settings, providers, hub);
   const deploy = new DeployService(
     db,

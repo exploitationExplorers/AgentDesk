@@ -1,6 +1,8 @@
 import type {
   AgentModelBinding,
   AgentStreamEvent,
+  AiCommitPreview,
+  AiCommitResult,
   AppSettings,
   Approval,
   ChatMessage,
@@ -94,6 +96,9 @@ export const api = {
   projectActivity: (id: string) => http.get<RemoteActivity[]>(`/projects/${id}/activity`),
   projectCommits: (id: string) => http.get<CommitInfo[]>(`/projects/${id}/commits`),
   pullProject: (id: string) => http.post<{ output: string }>(`/projects/${id}/pull`),
+  aiCommitPreview: (id: string) => http.post<AiCommitPreview>(`/projects/${id}/ai-commit/preview`),
+  aiCommit: (id: string, body: { message: string; stageAll?: boolean; push?: boolean }) =>
+    http.post<AiCommitResult>(`/projects/${id}/ai-commit`, body),
   launchProject: (id: string, target: LaunchTarget) =>
     http.post<Project>(`/projects/${id}/launch`, { target }),
   claudeSessions: (projectId?: string) =>

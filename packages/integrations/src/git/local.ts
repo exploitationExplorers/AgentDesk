@@ -121,6 +121,89 @@ export async function gitStatus(path: string): Promise<string> {
   return result.stdout.trim();
 }
 
+export interface GitChangeSummary {
+  branch: string | null;
+  status: string;
+  stagedDiff: string;
+  unstagedDiff: string;
+  stagedFiles: string[];
+  unstagedFiles: string[];
+  hasStaged: boolean;
+  hasUnstaged: boolean;
+  ahead: number;
+}
+
+function porcelainFiles(status: string, staged: boolean): string[] {
+  return status
+    .split("\n")
+    .map((l) => l.trimEnd())
+    .filter((l) => l.length >= 3 && !l.startsWith("##"))
+    .filter((l) => {
+      const x = l[0] ?? " ";
+      const y = l[1] ?? " ";
+      return staged ? x !== " " && x !== "?" : y !== " " || x === "?";
+    })
+    .map((l) => l.slice(3).trim());
+}
+
+/** 汇总暂存区 / 工作区变更，供 AI 写 commit message。 */
+export async function gitChangeSummary(path: string): Promise<GitChangeSummary> {
+  const [status, staged, unstaged, branch, counts] = await Promise.all([
+    git(path, "status", "--short", "--branch"),
+    git(path, "diff", "--cached", "--stat", "--patch", "--find-renames"),
+    git(path, "diff", "--stat", "--patch", "--find-renames"),
+    git(path, "rev-parse", "--abbrev-ref", "HEAD"),
+    git(path, "rev-list", "--left-right", "--count", "@{u}...HEAD"),
+  ]);
+  const short = status.code === 0 ? status.stdout.trim() : "";
+  const stagedDiff = staged.code === 0 ? staged.stdout.trim() : "";
+  // 未跟踪文件不会出现在 git diff 里，补一份名称列表
+  const untracked = short
+    .split("\n")
+    .filter((l) => l.startsWith("??"))
+    .map((l) => l.slice(3).trim());
+  let unstagedDiff = unstaged.code === 0 ? unstaged.stdout.trim() : "";
+  if (untracked.length) {
+    unstagedDiff = [unstagedDiff, `Untracked files:\n${untracked.map((f) => `  ${f}`).join("\n")}`]
+      .filter(Boolean)
+      .join("\n\n");
+  }
+  const [, ahead] = counts.code === 0 ? counts.stdout.trim().split(/\s+/).map(Number) : [0, 0];
+  return {
+    branch: branch.code === 0 ? branch.stdout.trim() : null,
+    status: short,
+    stagedDiff: stagedDiff.slice(0, 24_000),
+    unstagedDiff: unstagedDiff.slice(0, 24_000),
+    stagedFiles: porcelainFiles(short, true),
+    unstagedFiles: porcelainFiles(short, false),
+    hasStaged: stagedDiff.length > 0 || porcelainFiles(short, true).length > 0,
+    hasUnstaged: unstagedDiff.length > 0 || porcelainFiles(short, false).length > 0,
+    ahead: ahead || 0,
+  };
+}
+
+export async function gitAddAll(path: string): Promise<void> {
+  const result = await git(path, "add", "-A");
+  if (result.code !== 0) throw new Error(result.stderr.trim() || "git add 失败");
+}
+
+export async function gitCommit(path: string, message: string): Promise<string> {
+  const result = await run(
+    "git",
+    ["-C", path, "commit", "-m", message],
+    { timeoutMs: 60_000 },
+  );
+  if (result.code !== 0) throw new Error(result.stderr.trim() || result.stdout.trim() || "git commit 失败");
+  const hash = await git(path, "rev-parse", "--short", "HEAD");
+  return hash.code === 0 ? hash.stdout.trim() : "ok";
+}
+
+export async function gitPush(path: string): Promise<string> {
+  const result = await run("git", ["-C", path, "push"], { timeoutMs: 180_000 });
+  if (result.code !== 0) throw new Error(result.stderr.trim() || result.stdout.trim() || "git push 失败");
+  return (result.stdout.trim() || result.stderr.trim() || "push ok").slice(0, 4_000);
+}
+
 export async function isDirectory(path: string): Promise<boolean> {
   try {
     return (await stat(path)).isDirectory();
