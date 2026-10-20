@@ -1,0 +1,16 @@
+@import "@agentdesk/ui/styles.css";
+@import "@xyflow/react/dist/style.css";
+
+.react-flow {
+  --xy-background-color: transparent;
+  --xy-edge-stroke: var(--ad-border-strong);
+  --xy-edge-stroke-selected: var(--ad-brand);
+  --xy-connectionline-stroke: var(--ad-brand);
+  --xy-controls-button-background-color: var(--ad-surface);
+  --xy-controls-button-background-color-hover: var(--ad-surface-2);
+  --xy-controls-button-color: var(--ad-muted);
+  --xy-controls-button-border-color: var(--ad-border);
+  --xy-minimap-background-color: var(--ad-surface);
+  --xy-handle-background-color: var(--ad-brand);
+  --xy-handle-border-color: var(--ad-bg);
+}

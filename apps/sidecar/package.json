@@ -1,0 +1,35 @@
+{
+  "name": "@agentdesk/sidecar",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --clear-screen=false src/index.ts",
+    "start": "tsx src/index.ts",
+    "build": "tsx scripts/build.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@agentdesk/agent-core": "workspace:*",
+    "@agentdesk/integrations": "workspace:*",
+    "@agentdesk/shared": "workspace:*",
+    "@agentdesk/workflow": "workspace:*",
+    "@hono/node-server": "^1.19.5",
+    "better-sqlite3": "^12.4.1",
+    "drizzle-orm": "^0.44.6",
+    "hono": "^4.10.1",
+    "node-html-parser": "^7.0.1",
+    "undici": "^7.30.1",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@mariozechner/pi-ai": "^0.73.1",
+    "@opentelemetry/api": "^1.9.1",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.18.10",
+    "esbuild": "^0.25.11",
+    "tsx": "^4.20.6",
+    "vitest": "^3.2.4"
+  }
+}

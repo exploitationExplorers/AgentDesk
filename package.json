@@ -1,0 +1,53 @@
+{
+  "name": "agentdesk",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "个人 Agent 工作台：项目管理、自动部署、技术热榜、多 Agent Bot 与可视化工作流",
+  "packageManager": "pnpm@10.33.3",
+  "engines": {
+    "node": ">=22",
+    "pnpm": ">=10"
+  },
+  "scripts": {
+    "dev": "turbo run dev --parallel --filter=@agentdesk/sidecar --filter=@agentdesk/desktop",
+    "dev:sidecar": "pnpm --filter @agentdesk/sidecar dev",
+    "dev:web": "pnpm --filter @agentdesk/desktop dev",
+    "tauri": "pnpm --filter @agentdesk/desktop tauri",
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "turbo run test",
+    "e2e": "pnpm --filter @agentdesk/desktop e2e",
+    "changeset": "changeset",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.29.7",
+    "@commitlint/cli": "^19.8.1",
+    "@commitlint/config-conventional": "^19.8.1",
+    "@eslint/js": "^9.37.0",
+    "eslint": "^9.37.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "globals": "^16.4.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.4",
+    "prettier": "^3.6.2",
+    "turbo": "^2.5.8",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.1"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,mjs}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,css,yaml,yml}": [
+      "prettier --write"
+    ]
+  }
+}

@@ -1,0 +1,173 @@
+@import "tailwindcss";
+
+@source "./";
+@source "../../../apps/desktop/src";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: "Inter", "PingFang SC", "Microsoft YaHei UI", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+
+  --color-bg: var(--ad-bg);
+  --color-surface: var(--ad-surface);
+  --color-surface-2: var(--ad-surface-2);
+  --color-elevated: var(--ad-elevated);
+  --color-border: var(--ad-border);
+  --color-border-strong: var(--ad-border-strong);
+  --color-fg: var(--ad-fg);
+  --color-muted: var(--ad-muted);
+  --color-subtle: var(--ad-subtle);
+  --color-accent: var(--ad-accent);
+  --color-accent-fg: var(--ad-accent-fg);
+  --color-brand: var(--ad-brand);
+  --color-success: #3fb950;
+  --color-warning: #d29922;
+  --color-danger: #f85149;
+  --color-info: #58a6ff;
+
+  --radius-xl: 14px;
+  --radius-2xl: 20px;
+  --radius-3xl: 28px;
+
+  --animate-fade-in: fade-in 0.25s ease-out;
+  --animate-pulse-soft: pulse-soft 1.6s ease-in-out infinite;
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @keyframes pulse-soft {
+    0%,
+    100% {
+      opacity: 0.45;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+}
+
+:root {
+  --ad-bg: #fafafa;
+  --ad-surface: #ffffff;
+  --ad-surface-2: #f4f4f5;
+  --ad-elevated: #ffffff;
+  --ad-border: #e4e4e7;
+  --ad-border-strong: #d4d4d8;
+  --ad-fg: #18181b;
+  --ad-muted: #52525b;
+  --ad-subtle: #a1a1aa;
+  --ad-accent: #18181b;
+  --ad-accent-fg: #fafafa;
+  --ad-brand: #7c5cff;
+  color-scheme: light;
+}
+
+.dark {
+  --ad-bg: #0a0a0b;
+  --ad-surface: #111113;
+  --ad-surface-2: #18181b;
+  --ad-elevated: #1c1c20;
+  --ad-border: #26262b;
+  --ad-border-strong: #34343a;
+  --ad-fg: #ededef;
+  --ad-muted: #a0a0a8;
+  --ad-subtle: #6b6b73;
+  --ad-accent: #ededef;
+  --ad-accent-fg: #0a0a0b;
+  --ad-brand: #8b7bff;
+  color-scheme: dark;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-bg text-fg font-sans antialiased;
+    font-feature-settings: "cv11", "ss01";
+  }
+  * {
+    @apply border-border;
+  }
+  ::selection {
+    background: color-mix(in oklab, var(--ad-brand) 35%, transparent);
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--ad-border-strong);
+    border-radius: 999px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@layer components {
+  .ad-glow {
+    background:
+      radial-gradient(
+        600px 300px at 50% -10%,
+        color-mix(in oklab, var(--ad-brand) 18%, transparent),
+        transparent 70%
+      ),
+      var(--ad-bg);
+  }
+  .ad-prose {
+    @apply text-[14px] leading-7 text-fg;
+  }
+  .ad-prose h1 {
+    @apply mt-2 mb-3 text-xl font-semibold;
+  }
+  .ad-prose h2 {
+    @apply mt-5 mb-2 text-lg font-semibold;
+  }
+  .ad-prose h3 {
+    @apply mt-4 mb-2 font-semibold;
+  }
+  .ad-prose p {
+    @apply my-2;
+  }
+  .ad-prose ul {
+    @apply my-2 list-disc pl-5;
+  }
+  .ad-prose ol {
+    @apply my-2 list-decimal pl-5;
+  }
+  .ad-prose a {
+    @apply text-brand underline-offset-2 hover:underline;
+  }
+  .ad-prose code {
+    @apply rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[12.5px];
+  }
+  .ad-prose pre {
+    @apply my-3 overflow-x-auto rounded-xl border bg-surface-2 p-3;
+  }
+  .ad-prose pre code {
+    @apply bg-transparent p-0;
+  }
+  .ad-prose table {
+    @apply my-3 w-full border-collapse text-[13px];
+  }
+  .ad-prose th,
+  .ad-prose td {
+    @apply border px-2 py-1 text-left;
+  }
+  .ad-prose blockquote {
+    @apply my-2 border-l-2 border-border-strong pl-3 text-muted;
+  }
+}
