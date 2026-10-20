@@ -2,6 +2,20 @@
 
 一个运行在本机的 Agent Bot 桌面应用：统一管理 GitHub / Gitee / 公司 GitLab 项目，一键在 Cursor 或 Claude Code 打开，浏览器自动化完成宝塔面板部署，每天推送 GitHub 热榜与 AI 前沿速览，并提供类扣子的可视化工作流。
 
+## 界面预览
+
+**Bot · 多 Agent 对话**
+
+![Bot 对话首页](docs/screenshots/bot.png)
+
+|                  项目中心                  |                技术热榜                |
+| :----------------------------------------: | :------------------------------------: |
+| ![项目中心](docs/screenshots/projects.png) | ![技术热榜](docs/screenshots/feed.png) |
+
+|                  可视化工作流                  |               宝塔自动部署               |
+| :--------------------------------------------: | :--------------------------------------: |
+| ![工作流编辑器](docs/screenshots/workflow.png) | ![自动部署](docs/screenshots/deploy.png) |
+
 ## 功能
 
 | 模块   | 能力                                                                                                                                |
