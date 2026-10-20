@@ -39,6 +39,7 @@ import {
 } from "@agentdesk/ui";
 import { api } from "../../lib/api";
 import { timeAgo } from "../../lib/format";
+import { toast } from "../../lib/toast";
 import { useUi } from "../../stores/ui";
 
 const PLATFORM: Record<GitPlatform, { label: string; className: string }> = {
@@ -126,9 +127,16 @@ function AiCommitDialog({
         stageAll,
         push,
       }),
-    onSuccess: () => {
+    onSuccess: (result) => {
       void queryClient.invalidateQueries({ queryKey: ["projects"] });
       void queryClient.invalidateQueries({ queryKey: ["project-commits", project.id] });
+      const details: string[] = [];
+      if (result.commitHash) details.push(result.commitHash.slice(0, 7));
+      if (result.pushed) details.push("已推送");
+      toast(result.commitHash ? "提交成功" : result.pushed ? "推送成功" : "操作完成", {
+        description: [project.name, ...details].join(" · "),
+        tone: "success",
+      });
       onOpenChange(false);
     },
   });
@@ -467,9 +475,16 @@ function ProjectDrawer({
           {activity.isLoading ? (
             <Spinner />
           ) : activity.error ? (
-            <p className="text-[12.5px] text-muted">
-              {activity.error.message}（可在 设置 &gt; Git 平台 中配置 Token）
-            </p>
+            <div className="rounded-xl border border-warning/35 bg-warning/10 px-3 py-2.5 text-[12.5px] text-warning">
+              <p>{activity.error.message}</p>
+              <button
+                type="button"
+                className="mt-1.5 underline"
+                onClick={() => void navigate({ to: "/settings", search: { tab: "git" } })}
+              >
+                去设置 → Git 平台
+              </button>
+            </div>
           ) : activity.data?.length ? (
             <div className="grid gap-1">
               {activity.data.map((a) => (
