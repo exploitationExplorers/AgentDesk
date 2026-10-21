@@ -28,6 +28,11 @@ export const Project = z.object({
   pinned: z.boolean(),
   tags: z.array(z.string()),
   scannedAt: z.string(),
+  /** GitHub / Gitee 星标数；本地或未知平台为 null */
+  stars: z.number().int().nullable().default(null),
+  /** 上一次拉取的星标数，用于展示增量 */
+  prevStars: z.number().int().nullable().default(null),
+  starsFetchedAt: z.string().nullable().optional(),
 });
 export type Project = z.infer<typeof Project>;
 

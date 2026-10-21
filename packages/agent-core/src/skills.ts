@@ -19,7 +19,9 @@ export interface Skill {
 const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
 
 export function parseSkill(source: string, dir: string): Skill {
-  const match = FRONTMATTER.exec(source);
+  // PowerShell Set-Content -Encoding utf8 会写入 BOM，需剥离后再匹配 frontmatter
+  const text = source.replace(/^\uFEFF/, "");
+  const match = FRONTMATTER.exec(text);
   if (!match) throw new Error(`SKILL.md 缺少 frontmatter：${dir}`);
   const meta = (parseYaml(match[1] ?? "") ?? {}) as Record<string, unknown>;
   const list = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : []);

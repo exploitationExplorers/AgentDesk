@@ -124,6 +124,10 @@ export class WorkflowService {
 
   run(workflowId: string, inputs: Record<string, string>): WorkflowRun {
     const workflow = this.get(workflowId);
+    // 同工作流只保留一个进行中的实例，避免未点完的审批在全局页面堆叠
+    for (const [id, live] of this.live) {
+      if (live.workflowId === workflowId && live.status === "running") this.cancel(id);
+    }
     const resolvedInputs = Object.fromEntries(
       workflow.inputs.map((i) => [i.name, inputs[i.name] ?? i.default]),
     );
@@ -148,7 +152,7 @@ export class WorkflowService {
 
     const controller = new AbortController();
     this.controllers.set(run.id, controller);
-    const ctx = { approved: false };
+    const ctx = { approved: false, workflowName: workflow.name, runId: run.id };
 
     const onEvent = (event: WorkflowRunEvent) => {
       const current = this.live.get(run.id);
@@ -208,11 +212,18 @@ export class WorkflowService {
   }
 
   /** 宿主侧节点执行器：把工作流节点接到 Agent、工具、Git、部署和审批能力上 */
-  private handlers(ctx: { approved: boolean }): NodeHandlers {
+  private handlers(ctx: { approved: boolean; workflowName: string; runId: string }): NodeHandlers {
     const { approvals, providers, orchestrator, registry, projects, deploy, hub } = this.deps;
+    const wfPayload = { runId: ctx.runId, workflowName: ctx.workflowName };
     const approve = async (title: string, detail: string, signal: AbortSignal) => {
       const ok = await approvals.request(
-        { kind: "workflow", title, detail, risk: "confirm", payload: {} },
+        {
+          kind: "workflow",
+          title,
+          detail: `来自工作流「${ctx.workflowName}」\n${detail}`,
+          risk: "confirm",
+          payload: wfPayload,
+        },
         signal,
       );
       if (!ok) throw new Error("审批被拒绝");
@@ -231,15 +242,26 @@ export class WorkflowService {
       agent: async ({ config, signal, log }) => {
         const agent = AgentName.catch("orchestrator").parse(config.agent);
         const task = String(config.task ?? "");
-        const emit = (e: { type: string; name?: string }) => {
+        const emit = (e: { type: string; name?: string; delta?: string }) => {
           if (e.type === "tool_call" && e.name) log(`调用工具 ${e.name}`);
+          // claude.run 等工具的流式输出 → 工作流 node_log
+          if (e.type === "text_delta" && e.delta?.trim()) log(e.delta.trimEnd());
         };
         const requestApproval = (r: {
           title: string;
           detail: string;
           risk: "safe" | "confirm" | "dangerous";
           payload: unknown;
-        }) => approvals.request({ kind: "workflow", ...r }, signal);
+        }) =>
+          approvals.request(
+            {
+              kind: "workflow",
+              ...r,
+              detail: `来自工作流「${ctx.workflowName}」\n${r.detail}`,
+              payload: { ...wfPayload, ...(r.payload as object) },
+            },
+            signal,
+          );
         const result =
           agent === "orchestrator"
             ? await orchestrator.run({
@@ -259,7 +281,14 @@ export class WorkflowService {
                   signal,
                 },
               );
-        return result.text;
+        const text = (result.text ?? "").trim();
+        // 工作流「成功」= 节点未抛错；空回复常被误当成修完合 UAT，直接判失败
+        if (!text) {
+          throw new Error(
+            "Agent 未产出任何结论（可能只做了浏览/检索就结束）。仓库未必有改动，请查看日志后重试。",
+          );
+        }
+        return text;
       },
       tool: async ({ config, signal, log }) => {
         const name = String(config.tool ?? "");

@@ -4,6 +4,7 @@ import { AlertTriangle, MessageSquarePlus, Trash2, User } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentName } from "@agentdesk/shared";
 import { cn } from "@agentdesk/ui";
+import { BrowserLivePanel } from "../../components/BrowserLivePanel";
 import { Markdown } from "../../components/Markdown";
 import { AGENT_META } from "../../lib/agents";
 import { api } from "../../lib/api";
@@ -83,7 +84,7 @@ export function ChatPage() {
   const { c: conversationId } = chatRoute.useSearch();
   const navigate = useNavigate();
   const [agent, setAgent] = useState<AgentName>("orchestrator");
-  const { chatPrefill, setChatPrefill } = useUi();
+  const { chatPrefill, setChatPrefill, browserPanelOpen, activeBrowserSessionId } = useUi();
   const [prefill, setPrefill] = useState<string | undefined>();
   const bottom = useRef<HTMLDivElement>(null);
 
@@ -132,6 +133,7 @@ export function ChatPage() {
   );
 
   const empty = !conversationId && !live;
+  const showBrowser = browserPanelOpen && !!activeBrowserSessionId;
   return (
     <div className="flex h-full">
       <ConversationList activeId={conversationId} />
@@ -213,6 +215,7 @@ export function ChatPage() {
           </>
         )}
       </div>
+      {showBrowser ? <BrowserLivePanel sessionId={activeBrowserSessionId!} /> : null}
     </div>
   );
 }

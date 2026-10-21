@@ -8,6 +8,7 @@ export function projectRoutes({ projects }: Container) {
 
   app.get("/projects", (c) => c.json(projects.list()));
   app.post("/projects/scan", async (c) => c.json(await projects.scan()));
+  app.post("/projects/refresh-stars", async (c) => c.json(await projects.refreshStars()));
   app.post("/projects", async (c) => {
     const { path } = z.object({ path: z.string().min(1) }).parse(await c.req.json());
     return c.json(await projects.add(path), 201);

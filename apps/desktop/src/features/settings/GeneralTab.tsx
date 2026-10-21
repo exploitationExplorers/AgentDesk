@@ -12,8 +12,13 @@ export function GeneralTab() {
   const health = useQuery({ queryKey: ["health"], queryFn: api.health });
   const { theme, setTheme } = useUi();
   const [form, setForm] = useState<AppSettings | null>(null);
+  /** 单独编辑，避免 onChange 时 filter 空行导致无法按回车换行 */
+  const [scanRootsText, setScanRootsText] = useState("");
   useEffect(() => {
-    if (data) setForm(data);
+    if (data) {
+      setForm(data);
+      setScanRootsText(data.scanRoots.join("\n"));
+    }
   }, [data]);
 
   const save = useMutation({
@@ -26,26 +31,29 @@ export function GeneralTab() {
   const update = useMutation({ mutationFn: checkForUpdates });
 
   if (!form) return null;
+
+  const persist = () => {
+    const scanRoots = scanRootsText
+      .split(/\r?\n/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    save.mutate({ ...form, scanRoots });
+  };
+
   return (
     <div className="grid max-w-3xl gap-5">
       <Card className="grid gap-4 p-5">
         <h3 className="text-[14px] font-semibold">项目</h3>
         <Field
           label="扫描目录（每行一个）"
-          hint="会递归查找最多 4 层内的 Git 仓库，自动识别 GitHub / Gitee / GitLab"
+          hint="会递归查找最多 4 层内的 Git 仓库，自动识别 GitHub / Gitee / GitLab。按 Enter 换行后点保存。"
         >
           <Textarea
-            value={form.scanRoots.join("\n")}
-            onChange={(e) =>
-              setForm({
-                ...form,
-                scanRoots: e.target.value
-                  .split("\n")
-                  .map((s) => s.trim())
-                  .filter(Boolean),
-              })
-            }
-            placeholder={"D:\\agent\nD:\\work"}
+            value={scanRootsText}
+            onChange={(e) => setScanRootsText(e.target.value)}
+            rows={4}
+            placeholder={"D:\\agent\nD:\\jiedan\nD:\\qushiyun\\new"}
+            className="font-mono text-[12.5px]"
           />
         </Field>
         <div className="grid grid-cols-2 gap-4">
@@ -133,7 +141,7 @@ export function GeneralTab() {
       </Card>
 
       <div className="flex items-center gap-3">
-        <Button variant="primary" loading={save.isPending} onClick={() => save.mutate(form)}>
+        <Button variant="primary" loading={save.isPending} onClick={persist}>
           保存设置
         </Button>
         {save.isSuccess ? <span className="text-[12px] text-success">已保存</span> : null}

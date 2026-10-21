@@ -18,10 +18,19 @@ export const AGENT_DEFINITIONS: AgentDefinition[] = [
 - project：项目状态、仓库、分支、PR/MR、Claude 会话
 - deploy：宝塔服务器部署、部署记录
 - research：技术热榜、前沿技术讲解、网页阅读
-- code：用 Cursor / Claude Code / 终端打开项目，执行本地命令
+- code：浏览器自动化、本地改文件、Cursor/终端、git 命令
+用户给出禅道 bug 链接（bug-view）或要求修 bug 并发 UAT 时：优先 workflow.list / workflow.run 匹配「禅道」相关工作流；或委派 code 按 skill（qumall-zentao-bugfix → qumall-feature-to-uat）执行。
 可以在一轮中并行委派多个 Agent，最后综合它们的结论回答。`,
-    tools: ["projects.list", "feed.today", "deploy.list", "workflow.list", "workflow.run"],
-    maxTurns: 8,
+    tools: [
+      "projects.list",
+      "feed.today",
+      "deploy.list",
+      "workflow.list",
+      "workflow.run",
+      "browser.*",
+      "fs.*",
+    ],
+    maxTurns: 12,
   },
   {
     name: "project",
@@ -56,11 +65,25 @@ export const AGENT_DEFINITIONS: AgentDefinition[] = [
   {
     name: "code",
     title: "编码助手",
-    description: "用 Cursor、Claude Code 或终端打开项目，执行本地开发命令",
+    description: "浏览器自动化、本地改代码、Cursor/终端与 git 命令",
     systemPrompt: `${SHARED}
 
-你是编码助手。用户想开始写代码时，用 projects.open 在 Cursor 或 Claude Code 中打开对应项目。
-需要执行命令时用 shell.run，优先只读命令（git status、git log、测试），写操作会请求审批。`,
-    tools: ["projects.list", "projects.status", "projects.open", "claude.sessions", "shell.run"],
+你是编码助手，可在 AgentDesk 内完成「读网页/禅道 → Claude Code 改仓库 → 提交」闭环：
+1. 浏览器：browser.open（固定 sessionId 如 zentao 可复用登录）→ browser.act / browser.snapshot；需要验证码时 browser.reveal。
+2. 改代码（主路径）：读完 bug 后立刻调用 claude.run（project=仓库路径或 qumall-ui，prompt 写清标题/复现/约束/最小改动）。不要只做 fs.search/git grep 空转；fs.* 仅作核对。
+3. 提交发测：skills.load qumall-feature-to-uat 后用 shell.run 走 git（PowerShell 用分号）。
+4. 也可用 projects.open 打开 Cursor / 交互 Claude，但工作流自动化场景必须用 claude.run。
+处理禅道 bug 时先 skills.load qumall-zentao-bugfix；发测试时再 load qumall-feature-to-uat。中文回报必须非空，并列出改动文件。`,
+    tools: [
+      "projects.list",
+      "projects.status",
+      "projects.open",
+      "claude.sessions",
+      "claude.run",
+      "shell.run",
+      "browser.*",
+      "fs.*",
+    ],
+    maxTurns: 24,
   },
 ];

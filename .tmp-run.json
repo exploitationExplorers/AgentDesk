@@ -1,0 +1,21 @@
+﻿{
+  "id": "2abcc446-d7ef-4301-b5fa-40943c7bf2e3",
+  "workflowId": "52e09428-2b4c-44a3-9987-6aaf64b3b7e6",
+  "workflowName": "qumall-ui ç¦\u0085é Bug â ä¿®å®å UAT",
+  "status": "succeeded",
+  "inputs": {
+    "bugUrl": "http://121.40.16.93:8090/bug-view-65658.html",
+    "projectPath": "D:\\qushiyun\\new\\qumall-ui"
+  },
+  "nodeStates": {
+    "start": { "status": "succeeded", "output": "[Circular]" },
+    "approve": { "status": "succeeded", "output": { "approved": true } },
+    "fix": { "status": "succeeded", "output": "" },
+    "notify": { "status": "succeeded", "output": { "sent": true } },
+    "end": { "status": "succeeded", "output": "" }
+  },
+  "output": "",
+  "error": null,
+  "startedAt": "2026-10-21T02:19:28.435Z",
+  "endedAt": "2026-10-21T02:44:58.662Z"
+}

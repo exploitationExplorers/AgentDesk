@@ -16,6 +16,8 @@ export interface RemoteAdapter {
   listActivity(owner: string, repo: string): Promise<RemoteActivity[]>;
   /** 列出当前 Token 可见的仓库（用于导入选择） */
   listRepos?(): Promise<ListedRemoteRepo[]>;
+  /** 仓库星标数；失败返回 null */
+  getStars?(owner: string, repo: string): Promise<number | null>;
 }
 
 export class GitHubAdapter implements RemoteAdapter {
@@ -69,6 +71,15 @@ export class GitHubAdapter implements RemoteAdapter {
       private: r.private,
       updatedAt: r.updated_at,
     }));
+  }
+
+  async getStars(owner: string, repo: string): Promise<number | null> {
+    try {
+      const { data } = await this.client.repos.get({ owner, repo });
+      return typeof data.stargazers_count === "number" ? data.stargazers_count : null;
+    } catch {
+      return null;
+    }
   }
 }
 
@@ -158,6 +169,17 @@ export class GiteeAdapter implements RemoteAdapter {
     }
     return out;
   }
+
+  async getStars(owner: string, repo: string): Promise<number | null> {
+    try {
+      const data = await getJson<{ stargazers_count?: number }>(
+        this.url(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`),
+      );
+      return typeof data.stargazers_count === "number" ? data.stargazers_count : null;
+    } catch {
+      return null;
+    }
+  }
 }
 
 export class GitLabAdapter implements RemoteAdapter {
@@ -194,6 +216,18 @@ export class GitLabAdapter implements RemoteAdapter {
         updatedAt: i.updated_at,
       });
     return [...mrs.map(map("merge_request")), ...issues.map(map("issue"))];
+  }
+
+  async getStars(owner: string, repo: string): Promise<number | null> {
+    try {
+      const project = encodeURIComponent(`${owner}/${repo}`);
+      const base = `${this.host.startsWith("http") ? this.host : `https://${this.host}`}/api/v4/projects/${project}`;
+      const headers = this.token ? { "PRIVATE-TOKEN": this.token } : undefined;
+      const data = await getJson<{ star_count?: number }>(base, headers);
+      return typeof data.star_count === "number" ? data.star_count : null;
+    } catch {
+      return null;
+    }
   }
 }
 

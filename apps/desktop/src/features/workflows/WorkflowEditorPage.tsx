@@ -3,8 +3,6 @@ import { Link } from "@tanstack/react-router";
 import {
   Background,
   BackgroundVariant,
-  Controls,
-  MiniMap,
   ReactFlow,
   ReactFlowProvider,
   addEdge,
@@ -15,7 +13,16 @@ import {
   type Edge,
 } from "@xyflow/react";
 import { ArrowLeft, Check, Play, Save, Square, Terminal } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Component,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ErrorInfo,
+  type ReactNode,
+} from "react";
 import {
   NODE_SPECS,
   type NodeRunStatus,
@@ -24,15 +31,62 @@ import {
   type WorkflowRunEvent,
 } from "@agentdesk/workflow/dsl";
 import { Badge, Button, Dialog, Field, Input, Spinner, cn } from "@agentdesk/ui";
+import { BrowserLivePanel } from "../../components/BrowserLivePanel";
+import { TOOL_LABELS } from "../../lib/agents";
 import { api } from "../../lib/api";
 import { subscribe } from "../../lib/http";
 import { workflowEditorRoute } from "../../router";
+import { useUi } from "../../stores/ui";
 import { NodeConfigPanel, WorkflowMetaPanel, type WorkflowMeta } from "./ConfigPanel";
 import { FlowNodeView, type FlowNode } from "./FlowNode";
 import { NODE_COLOR, NODE_ICON, handleLabel } from "./nodeMeta";
 
 const nodeTypes = { wf: FlowNodeView };
 const PALETTE_GROUPS = ["基础", "AI", "逻辑", "集成"];
+
+/** React19 + xyflow 偶发 panZoom 清理异常时，整页 Error Overlay；这里吞掉并重挂载画布 */
+class FlowErrorBoundary extends Component<
+  { children: ReactNode; resetKey: string },
+  { error: Error | null; generation: number }
+> {
+  state = { error: null as Error | null, generation: 0 };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.warn("[workflow-flow]", error.message, info.componentStack);
+  }
+
+  componentDidUpdate(prev: { resetKey: string }) {
+    if (prev.resetKey !== this.props.resetKey && this.state.error) {
+      this.setState({ error: null, generation: this.state.generation + 1 });
+    }
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="grid h-full place-items-center gap-3 p-6 text-center">
+          <p className="text-[13px] text-danger">画布渲染异常：{this.state.error.message}</p>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => this.setState((s) => ({ error: null, generation: s.generation + 1 }))}
+          >
+            重新加载画布
+          </Button>
+        </div>
+      );
+    }
+    return (
+      <div key={this.state.generation} className="h-full w-full">
+        {this.props.children}
+      </div>
+    );
+  }
+}
 
 function toFlow(wf: Workflow): { nodes: FlowNode[]; edges: Edge[] } {
   const kindOf = new Map(wf.nodes.map((n) => [n.id, n.type]));
@@ -72,8 +126,17 @@ function describeEvent(e: WorkflowRunEvent, labelOf: (id: string) => string): Lo
         text: `▶ ${labelOf(e.nodeId)}${e.iteration !== undefined ? ` #${e.iteration + 1}` : ""}`,
         tone: "muted",
       };
-    case "node_log":
-      return { at, nodeId: e.nodeId, text: `  ${e.message}`, tone: "muted" };
+    case "node_log": {
+      const msg = e.message.replace(
+        /^调用工具 ([\w.]+)/,
+        (_m, name: string) => `调用工具 ${TOOL_LABELS[name] ?? name}`,
+      );
+      const tone =
+        msg.includes("[git]") || msg.includes("[Claude]") || msg.includes("[claude.run]")
+          ? "info"
+          : "muted";
+      return { at, nodeId: e.nodeId, text: `  ${msg}`, tone };
+    }
     case "node_end": {
       const out = typeof e.output === "string" ? e.output : JSON.stringify(e.output);
       return {
@@ -121,9 +184,111 @@ function Editor({ workflow }: { workflow: Workflow }) {
   const [askInputs, setAskInputs] = useState(false);
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
   const consoleEnd = useRef<HTMLDivElement>(null);
+  const openBrowserPanel = useUi((s) => s.openBrowserPanel);
+  const closeBrowserPanel = useUi((s) => s.closeBrowserPanel);
+  const browserPanelOpen = useUi((s) => s.browserPanelOpen);
+  const activeBrowserSessionId = useUi((s) => s.activeBrowserSessionId);
+
+  /** 底部日志/实况栏高度（可拖），默认 208px ≈ h-52 */
+  const [dockH, setDockH] = useState(() => {
+    try {
+      const n = Number(localStorage.getItem("wf-dock-h"));
+      if (Number.isFinite(n) && n >= 120 && n <= 560) return n;
+    } catch {
+      /* ignore */
+    }
+    return 208;
+  });
+  const dockHRef = useRef(dockH);
+  dockHRef.current = dockH;
+  const dragDock = useRef<{ startY: number; startH: number } | null>(null);
+
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      const d = dragDock.current;
+      if (!d) return;
+      const next = Math.min(560, Math.max(120, d.startH + (d.startY - e.clientY)));
+      dockHRef.current = next;
+      setDockH(next);
+    };
+    const onUp = () => {
+      if (!dragDock.current) return;
+      dragDock.current = null;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      try {
+        localStorage.setItem("wf-dock-h", String(dockHRef.current));
+      } catch {
+        /* ignore */
+      }
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+  }, []);
 
   const selected = nodes.find((n) => n.id === selectedId) ?? null;
   const markDirty = () => setDirty(true);
+
+  /**
+   * 延迟两帧再挂载画布：父容器需先完成 flex 布局，
+   * 否则 React19 + xyflow ZoomPane 首帧 panZoom 清理会抛 destroy is not a function。
+   */
+  const [canvasReady, setCanvasReady] = useState(false);
+  useEffect(() => {
+    let inner = 0;
+    const outer = window.requestAnimationFrame(() => {
+      inner = window.requestAnimationFrame(() => setCanvasReady(true));
+    });
+    return () => {
+      window.cancelAnimationFrame(outer);
+      window.cancelAnimationFrame(inner);
+    };
+  }, []);
+
+  // 进入编辑器时关掉残留实况面板，避免错误 session 干扰
+  useEffect(() => {
+    closeBrowserPanel();
+    // 仅随工作流 id 清理一次
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 故意不依赖 closeBrowserPanel 引用
+  }, [workflow.id]);
+
+  /** 工作流跑着时轮询浏览器会话；延迟挂面板，避免与画布同帧抢布局 */
+  useEffect(() => {
+    if (!running) return;
+    let cancelled = false;
+    let openTimer: ReturnType<typeof setTimeout> | undefined;
+    const tick = () => {
+      void api
+        .browserSessions()
+        .then((list) => {
+          const id = list[0]?.id;
+          if (cancelled || !id) return;
+          window.clearTimeout(openTimer);
+          openTimer = setTimeout(() => {
+            if (!cancelled) openBrowserPanel(id);
+          }, 120);
+        })
+        .catch(() => {
+          /* sidecar 未就绪时忽略 */
+        });
+    };
+    tick();
+    const t = window.setInterval(tick, 2500);
+    return () => {
+      cancelled = true;
+      window.clearInterval(t);
+      window.clearTimeout(openTimer);
+    };
+  }, [running, openBrowserPanel]);
+
+  const defaultEdgeOptions = useMemo(
+    () => ({ animated: running, style: { strokeWidth: 1.6 } }),
+    [running],
+  );
 
   const setStatuses = useCallback(
     (
@@ -142,9 +307,13 @@ function Editor({ workflow }: { workflow: Workflow }) {
     [setNodes],
   );
 
+  const flowRef = useRef(flow);
+  flowRef.current = flow;
+
   useEffect(() => {
     if (!runId) return;
-    const labelOf = (id: string) => (flow.getNode(id)?.data.label as string | undefined) ?? id;
+    const labelOf = (id: string) =>
+      (flowRef.current.getNode(id)?.data.label as string | undefined) ?? id;
     return subscribe<WorkflowRunEvent>(
       `/workflow-runs/${runId}/events`,
       (e) => {
@@ -161,9 +330,11 @@ function Editor({ workflow }: { workflow: Workflow }) {
       },
       { isFinal: (e) => e.type === "run_end" },
     );
-  }, [runId, flow, setStatuses, queryClient]);
+  }, [runId, setStatuses, queryClient]);
 
-  useEffect(() => consoleEnd.current?.scrollIntoView({ block: "end" }), [logs.length]);
+  useEffect(() => {
+    consoleEnd.current?.scrollIntoView({ block: "end" });
+  }, [logs.length]);
 
   const serialize = () => ({
     ...meta,
@@ -351,65 +522,113 @@ function Editor({ workflow }: { workflow: Workflow }) {
           ))}
         </div>
 
-        <div className="flex min-w-0 flex-1 flex-col">
-          <div className="min-h-0 flex-1">
-            <ReactFlow
-              nodes={nodes}
-              edges={edges}
-              nodeTypes={nodeTypes}
-              onNodesChange={(changes) => {
-                onNodesChange(changes);
-                if (
-                  changes.some((c) => c.type === "position" && c.dragging === false) ||
-                  changes.some((c) => c.type === "remove")
-                )
-                  markDirty();
-              }}
-              onEdgesChange={(changes) => {
-                onEdgesChange(changes);
-                if (changes.some((c) => c.type === "remove")) markDirty();
-              }}
-              onConnect={onConnect}
-              onNodeClick={(_, n) => setSelectedId(n.id)}
-              onPaneClick={() => setSelectedId(null)}
-              deleteKeyCode={["Delete", "Backspace"]}
-              defaultEdgeOptions={{ animated: running, style: { strokeWidth: 1.6 } }}
-              fitView
-              fitViewOptions={{ padding: 0.25 }}
-              proOptions={{ hideAttribution: true }}
-              colorMode={document.documentElement.classList.contains("dark") ? "dark" : "light"}
-            >
-              <Background variant={BackgroundVariant.Dots} gap={18} size={1.2} />
-              <Controls showInteractive={false} />
-              <MiniMap pannable zoomable className="!rounded-xl !border" />
-            </ReactFlow>
-          </div>
-          {logs.length ? (
-            <div className="h-44 shrink-0 overflow-y-auto border-t bg-surface/60 px-4 py-2 font-mono text-[11.5px] leading-5">
-              <div className="mb-1 flex items-center gap-1.5 font-sans text-[11.5px] font-medium text-subtle">
-                <Terminal className="h-3.5 w-3.5" />
-                运行日志
-                {running ? <Spinner className="h-3 w-3" /> : null}
-              </div>
-              {logs.map((l, i) => (
-                <div
-                  key={i}
-                  className={cn(
-                    "cursor-default whitespace-pre-wrap",
-                    {
-                      info: "text-info",
-                      success: "text-success",
-                      danger: "text-danger",
-                      muted: "text-muted",
-                    }[l.tone],
-                  )}
-                  onClick={() => l.nodeId && setSelectedId(l.nodeId)}
+        <div className="relative min-h-0 min-w-0 flex-1">
+          {/*
+            日志/实况用绝对定位叠在画布上，避免运行时突然插入底部栏改变
+            ReactFlow 容器高度，从而触发 xyflow panZoom destroy 竞态。
+          */}
+          <div className="absolute inset-0">
+            {canvasReady ? (
+              <FlowErrorBoundary resetKey={workflow.id}>
+                <ReactFlow
+                  nodes={nodes}
+                  edges={edges}
+                  nodeTypes={nodeTypes}
+                  onNodesChange={(changes) => {
+                    onNodesChange(changes);
+                    if (
+                      changes.some((c) => c.type === "position" && c.dragging === false) ||
+                      changes.some((c) => c.type === "remove")
+                    )
+                      markDirty();
+                  }}
+                  onEdgesChange={(changes) => {
+                    onEdgesChange(changes);
+                    if (changes.some((c) => c.type === "remove")) markDirty();
+                  }}
+                  onConnect={onConnect}
+                  onNodeClick={(_, n) => setSelectedId(n.id)}
+                  onPaneClick={() => setSelectedId(null)}
+                  deleteKeyCode={["Delete", "Backspace"]}
+                  defaultEdgeOptions={defaultEdgeOptions}
+                  fitView
+                  fitViewOptions={{ padding: 0.25 }}
+                  proOptions={{ hideAttribution: true }}
+                  colorMode="dark"
                 >
-                  <span className="mr-2 text-subtle">{l.at}</span>
-                  {l.text}
-                </div>
-              ))}
-              <div ref={consoleEnd} />
+                  <Background variant={BackgroundVariant.Dots} gap={18} size={1.2} />
+                </ReactFlow>
+              </FlowErrorBoundary>
+            ) : (
+              <div className="grid h-full place-items-center">
+                <Spinner />
+              </div>
+            )}
+          </div>
+          {logs.length || (browserPanelOpen && activeBrowserSessionId) ? (
+            <div
+              className="absolute inset-x-0 bottom-0 z-10 flex flex-col border-t bg-bg/95 backdrop-blur-sm"
+              style={{ height: dockH }}
+            >
+              <div
+                role="separator"
+                aria-orientation="horizontal"
+                aria-label="拖动调整日志高度"
+                title="上下拖动调整高度"
+                className="group flex h-2 shrink-0 cursor-ns-resize items-center justify-center hover:bg-surface-2"
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  dragDock.current = { startY: e.clientY, startH: dockHRef.current };
+                  document.body.style.cursor = "ns-resize";
+                  document.body.style.userSelect = "none";
+                }}
+              >
+                <span className="h-0.5 w-10 rounded-full bg-border group-hover:bg-muted" />
+              </div>
+              <div className="flex min-h-0 flex-1">
+                {logs.length ? (
+                  <div className="min-w-0 flex-1 overflow-y-auto bg-surface/60 px-4 py-2 font-mono text-[11.5px] leading-5">
+                    <div className="mb-1 flex items-center gap-1.5 font-sans text-[11.5px] font-medium text-subtle">
+                      <Terminal className="h-3.5 w-3.5" />
+                      运行日志
+                      {running ? (
+                        <>
+                          <Spinner className="h-3 w-3" />
+                          <span className="font-normal text-muted">
+                            Claude 改代码时会出现 [Claude]/[git] 行
+                          </span>
+                        </>
+                      ) : null}
+                    </div>
+                    {logs.map((l, i) => (
+                      <div
+                        key={i}
+                        className={cn(
+                          "cursor-default whitespace-pre-wrap",
+                          {
+                            info: "text-info",
+                            success: "text-success",
+                            danger: "text-danger",
+                            muted: "text-muted",
+                          }[l.tone],
+                        )}
+                        onClick={() => l.nodeId && setSelectedId(l.nodeId)}
+                      >
+                        <span className="mr-2 text-subtle">{l.at}</span>
+                        {l.text}
+                      </div>
+                    ))}
+                    <div ref={consoleEnd} />
+                  </div>
+                ) : null}
+                {browserPanelOpen && activeBrowserSessionId ? (
+                  <BrowserLivePanel
+                    sessionId={activeBrowserSessionId}
+                    compact
+                    className="w-[340px] shrink-0 border-l"
+                  />
+                ) : null}
+              </div>
             </div>
           ) : null}
         </div>

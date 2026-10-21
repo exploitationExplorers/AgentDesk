@@ -42,12 +42,20 @@ export function parseRemote(url: string, gitlabHosts: string[] = []): ParsedRemo
   const repo = segments.pop()!;
   const owner = segments.join("/");
   const bareHost = host.split(":")[0]!.toLowerCase();
+  const fullHost = host.toLowerCase();
+  const knownGitlab = gitlabHosts.some((h) => {
+    const cfg = h
+      .toLowerCase()
+      .replace(/^https?:\/\//, "")
+      .replace(/\/+$/, "");
+    const cfgBare = cfg.split(":")[0]!;
+    return cfg === fullHost || cfgBare === bareHost || cfg === bareHost;
+  });
 
   let platform: GitPlatform = "unknown";
   if (bareHost === "github.com") platform = "github";
   else if (bareHost === "gitee.com") platform = "gitee";
-  else if (bareHost.includes("gitlab") || gitlabHosts.some((h) => h.toLowerCase() === bareHost))
-    platform = "gitlab";
+  else if (bareHost.includes("gitlab") || knownGitlab) platform = "gitlab";
 
   const webHost = trimmed.startsWith("http") ? host : bareHost;
   const scheme = trimmed.startsWith("http://") ? "http" : "https";

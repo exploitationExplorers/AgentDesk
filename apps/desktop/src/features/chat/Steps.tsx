@@ -20,6 +20,22 @@ function preview(value: unknown): string {
   return text.length > 4000 ? `${text.slice(0, 4000)}\n…` : text;
 }
 
+function friendlyToolHint(name: string, args: unknown): string | null {
+  const a = (args ?? {}) as Record<string, unknown>;
+  if (name === "browser.open" && typeof a.url === "string") return a.url;
+  if (name === "browser.act" && typeof a.kind === "string")
+    return `${a.kind}${a.target ? ` ${a.target}` : ""}`;
+  if (
+    (name === "fs.write" || name === "fs.patch" || name === "fs.read") &&
+    typeof a.path === "string"
+  )
+    return String(a.path);
+  if (name === "fs.search" && typeof a.query === "string") return a.query;
+  if (name === "claude.run" && typeof a.project === "string")
+    return `${a.project}${typeof a.prompt === "string" ? ` · ${a.prompt.slice(0, 80)}` : ""}`;
+  return null;
+}
+
 function ToolStep({
   name,
   args,
@@ -36,6 +52,11 @@ function ToolStep({
   const [open, setOpen] = useState(false);
   const label = TOOL_LABELS[name] ?? name;
   const delegated = name === "agents.delegate" ? (args as { agent?: string; task?: string }) : null;
+  const hint = friendlyToolHint(name, args);
+  const shotUrl =
+    done && result && typeof result === "object" && "shotUrl" in (result as object)
+      ? String((result as { shotUrl?: string | null }).shotUrl ?? "")
+      : "";
   return (
     <div className="text-[12.5px]">
       <button
@@ -56,6 +77,8 @@ function ToolStep({
             → {AGENT_META[delegated.agent as keyof typeof AGENT_META]?.label ?? delegated.agent}：
             {delegated.task}
           </span>
+        ) : hint ? (
+          <span className="truncate font-mono text-[11px] text-subtle">{hint}</span>
         ) : (
           <span className="truncate font-mono text-[11px] text-subtle">{name}</span>
         )}
@@ -77,6 +100,9 @@ function ToolStep({
             >
               {preview(result)}
             </pre>
+          ) : null}
+          {shotUrl ? (
+            <p className="text-[11px] text-subtle">已更新实况截图（见右侧浏览器面板）</p>
           ) : null}
         </div>
       ) : null}
