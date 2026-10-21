@@ -8,7 +8,7 @@ import {
   type Server,
   type StepStatus,
 } from "@agentdesk/shared";
-import type { BrowserSessionManager } from "./browser";
+import type { BrowserSessionManager } from "../browser/session";
 
 export interface RecipeRunCallbacks {
   onStepStart: (index: number) => void;

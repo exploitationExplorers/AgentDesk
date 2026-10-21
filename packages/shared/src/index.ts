@@ -6,3 +6,4 @@ export * from "./contracts/feed";
 export * from "./contracts/chat";
 export * from "./contracts/approval";
 export * from "./contracts/settings";
+export * from "./contracts/browser";

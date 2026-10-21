@@ -9,7 +9,7 @@ export const AGENT_META: Record<
   project: { label: "项目", icon: FolderGit2, description: "仓库状态、PR/MR、Claude 会话" },
   deploy: { label: "部署", icon: Rocket, description: "宝塔一键部署与排障" },
   research: { label: "研究", icon: Telescope, description: "热榜与前沿技术讲解" },
-  code: { label: "编码", icon: Code2, description: "Cursor / Claude Code / 终端" },
+  code: { label: "编码", icon: Code2, description: "浏览器 / 改文件 / Cursor / 终端" },
 };
 
 export const TOOL_LABELS: Record<string, string> = {
@@ -21,6 +21,7 @@ export const TOOL_LABELS: Record<string, string> = {
   "projects.pull": "git pull",
   "projects.scan": "扫描项目",
   "claude.sessions": "Claude 会话",
+  "claude.run": "Claude Code 改代码",
   "deploy.list": "查看部署配方",
   "deploy.runs": "查看部署记录",
   "deploy.run": "执行部署",
@@ -33,4 +34,14 @@ export const TOOL_LABELS: Record<string, string> = {
   "workflow.run": "运行工作流",
   "shell.run": "执行命令",
   "skills.load": "加载技能",
+  "browser.open": "打开浏览器",
+  "browser.act": "浏览器操作",
+  "browser.snapshot": "读取页面",
+  "browser.reveal": "弹出浏览器接管",
+  "browser.close": "关闭浏览器",
+  "fs.read": "读取文件",
+  "fs.write": "写入文件",
+  "fs.patch": "修补文件",
+  "fs.glob": "列出文件",
+  "fs.search": "搜索代码",
 };

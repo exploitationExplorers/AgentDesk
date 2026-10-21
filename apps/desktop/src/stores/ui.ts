@@ -13,6 +13,12 @@ interface UiState {
   setTheme: (theme: Theme) => void;
   sidebarCollapsed: boolean;
   toggleSidebar: () => void;
+  /** 内嵌浏览器实况面板 */
+  browserPanelOpen: boolean;
+  activeBrowserSessionId: string | null;
+  openBrowserPanel: (sessionId: string) => void;
+  closeBrowserPanel: () => void;
+  setBrowserPanelOpen: (open: boolean) => void;
 }
 
 export const useUi = create<UiState>()(
@@ -26,6 +32,12 @@ export const useUi = create<UiState>()(
       setTheme: (theme) => set({ theme }),
       sidebarCollapsed: false,
       toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
+      browserPanelOpen: false,
+      activeBrowserSessionId: null,
+      openBrowserPanel: (sessionId) =>
+        set({ browserPanelOpen: true, activeBrowserSessionId: sessionId }),
+      closeBrowserPanel: () => set({ browserPanelOpen: false }),
+      setBrowserPanelOpen: (browserPanelOpen) => set({ browserPanelOpen }),
     }),
     {
       name: "agentdesk-ui",

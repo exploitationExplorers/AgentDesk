@@ -25,6 +25,7 @@ import type {
   RecipeStep,
   RemoteActivity,
   RemoteRepo,
+  BrowserSessionState,
   Server,
   ServerInput,
 } from "@agentdesk/shared";
@@ -90,6 +91,8 @@ export const api = {
 
   projects: () => http.get<Project[]>("/projects"),
   scanProjects: () => http.post<{ found: number; removed: number }>("/projects/scan"),
+  refreshProjectStars: () =>
+    http.post<{ updated: number; gained: number }>("/projects/refresh-stars"),
   addProject: (path: string) => http.post<Project>("/projects", { path }),
   listRemoteRepos: (platform: "github" | "gitee" | "gitlab") =>
     http.get<RemoteRepo[]>("/projects/remote", { platform }),
@@ -198,4 +201,13 @@ export const api = {
   workflowRuns: (workflowId?: string) => http.get<WorkflowRun[]>("/workflow-runs", { workflowId }),
   workflowRun: (id: string) => http.get<WorkflowRun>(`/workflow-runs/${id}`),
   cancelWorkflowRun: (id: string) => http.post(`/workflow-runs/${id}/cancel`),
+
+  browserSessions: () => http.get<BrowserSessionState[]>("/browser/sessions"),
+  browserSession: (id: string) =>
+    http.get<BrowserSessionState>(`/browser/sessions/${encodeURIComponent(id)}`),
+  browserOpen: (body: { sessionId?: string; url?: string; headless?: boolean }) =>
+    http.post<BrowserSessionState>("/browser/sessions", body),
+  browserReveal: (id: string) =>
+    http.post<BrowserSessionState>(`/browser/sessions/${encodeURIComponent(id)}/reveal`),
+  browserClose: (id: string) => http.delete(`/browser/sessions/${encodeURIComponent(id)}`),
 };

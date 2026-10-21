@@ -3,6 +3,7 @@ import { cors } from "hono/cors";
 import { ZodError } from "zod";
 import { AppError, ErrorCode, httpStatusOf } from "@agentdesk/shared";
 import type { Container } from "../container";
+import { browserRoutes } from "./routes/browser";
 import { chatRoutes } from "./routes/chat";
 import { deployRoutes } from "./routes/deploy";
 import { feedRoutes } from "./routes/feed";
@@ -49,6 +50,7 @@ export function createApp(container: Container): Hono {
   app.route("/api", projectRoutes(container));
   app.route("/api", feedRoutes(container));
   app.route("/api", deployRoutes(container));
+  app.route("/api", browserRoutes(container));
   app.route("/api", chatRoutes(container));
   app.route("/api", workflowRoutes(container));
 

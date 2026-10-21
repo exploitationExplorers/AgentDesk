@@ -34,6 +34,7 @@ import {
 } from "@agentdesk/shared";
 import type { Db } from "../db/client";
 import { Collection } from "../db/collection";
+import { GLOBAL_CHANNEL, type EventHub, type GlobalEvent } from "../events";
 import type { SecretStore } from "../secrets";
 import { errorMessage, newId, nowIso, shortHash } from "../util";
 import type { SettingsService } from "./settings";
@@ -46,9 +47,12 @@ const tokenId = (platform: string, host: string) => `git:${platform}:${host.toLo
 
 const DEFAULT_HOSTS: Record<string, string> = { github: "github.com", gitee: "gitee.com" };
 
+const STAR_PLATFORMS = new Set(["github", "gitee", "gitlab"]);
+
 export class ProjectService {
   private readonly projects: Collection<Project>;
   private readonly accounts: Collection<GitAccountDoc>;
+  private starsRefreshing: Promise<{ updated: number; gained: number }> | null = null;
 
   constructor(
     db: Db,
@@ -56,6 +60,7 @@ export class ProjectService {
     private readonly settings: SettingsService,
     private readonly models: ModelResolver,
     private readonly dataDir: string,
+    private readonly hub?: EventHub,
   ) {
     this.projects = new Collection<Project>(db, "projects");
     this.accounts = new Collection<GitAccountDoc>(db, "gitAccounts");
@@ -107,6 +112,10 @@ export class ProjectService {
       pinned: existing?.pinned ?? false,
       tags: existing?.tags ?? [],
       scannedAt: nowIso(),
+      // 本地 git 扫描不带星标，保留上次远程拉取的值
+      stars: existing?.stars ?? null,
+      prevStars: existing?.prevStars ?? null,
+      starsFetchedAt: existing?.starsFetchedAt ?? null,
     });
   }
 
@@ -127,7 +136,76 @@ export class ProjectService {
         removed++;
       }
     }
+    // 扫描后异步刷星标，不阻塞返回
+    void this.refreshStars().catch(() => {
+      /* ignore */
+    });
     return { found: paths.length, removed };
+  }
+
+  /**
+   * 拉取 GitHub / Gitee（及可访问的 GitLab）仓库星标。
+   * 有人点 star 时数量会上升，并推送桌面通知。
+   */
+  async refreshStars(options?: { minIntervalMs?: number }): Promise<{
+    updated: number;
+    gained: number;
+  }> {
+    if (this.starsRefreshing) return this.starsRefreshing;
+    const minInterval = options?.minIntervalMs ?? 2 * 60_000;
+    this.starsRefreshing = this.doRefreshStars(minInterval).finally(() => {
+      this.starsRefreshing = null;
+    });
+    return this.starsRefreshing;
+  }
+
+  private async doRefreshStars(
+    minIntervalMs: number,
+  ): Promise<{ updated: number; gained: number }> {
+    const now = Date.now();
+    const candidates = this.list().filter((p) => {
+      if (!STAR_PLATFORMS.has(p.platform) || !p.owner || !p.repo) return false;
+      if (!p.starsFetchedAt) return true;
+      const at = Date.parse(p.starsFetchedAt);
+      return !Number.isFinite(at) || now - at >= minIntervalMs;
+    });
+    if (!candidates.length) return { updated: 0, gained: 0 };
+
+    let updated = 0;
+    let gained = 0;
+    for (const batch of chunk(candidates, 6)) {
+      await Promise.all(
+        batch.map(async (p) => {
+          try {
+            const { adapter } = this.requireAdapter(p.platform as "github" | "gitee" | "gitlab");
+            if (!adapter.getStars) return;
+            const stars = await adapter.getStars(p.owner!, p.repo!);
+            if (stars == null) return;
+            const prev = p.stars;
+            const grew = prev != null && stars > prev;
+            this.projects.update(p.id, (cur) => ({
+              ...cur,
+              prevStars: prev ?? cur.prevStars ?? null,
+              stars,
+              starsFetchedAt: nowIso(),
+            }));
+            updated++;
+            if (grew) {
+              gained++;
+              const delta = stars - (prev ?? 0);
+              this.hub?.publish(GLOBAL_CHANNEL, {
+                type: "notification",
+                title: `${p.name} 新增 ${delta} 个 Star`,
+                body: `当前 ${stars} ★（${p.platform} · ${p.owner}/${p.repo}）`,
+              } satisfies GlobalEvent);
+            }
+          } catch {
+            /* token 未配置或私有仓：跳过 */
+          }
+        }),
+      );
+    }
+    return { updated, gained };
   }
 
   async add(path: string): Promise<Project> {
@@ -475,15 +553,14 @@ export class ProjectService {
   async activity(id: string): Promise<RemoteActivity[]> {
     const p = this.get(id);
     if (!p.owner || !p.repo || !p.host) return [];
-    const host = p.host.split(":")[0]!;
-    const token = this.secrets.get(tokenId(p.platform, host)) ?? undefined;
+    const { host: apiHost, token } = this.resolveAccountCreds(p.platform, p.host);
     if (!token && (p.platform === "github" || p.platform === "gitee" || p.platform === "gitlab")) {
       throw new AppError(
         ErrorCode.BadRequest,
         `未配置 ${p.platform} Token，无法拉取 PR/Issue。请到 设置 > Git 平台 添加私人令牌。`,
       );
     }
-    const adapter = createAdapter(p.platform, p.host, token);
+    const adapter = createAdapter(p.platform, apiHost, token);
     if (!adapter) return [];
     try {
       return await adapter.listActivity(p.owner, p.repo);
@@ -494,6 +571,26 @@ export class ProjectService {
         : `拉取 ${p.platform} 数据失败：${raw}`;
       throw new AppError(ErrorCode.IntegrationFailed, hint);
     }
+  }
+
+  /** 按平台 + 主机（允许带端口 / 仅域名）解析账号与 Token */
+  private resolveAccountCreds(
+    platform: string,
+    projectHost: string,
+  ): { host: string; token: string | undefined } {
+    const bare = projectHost.split(":")[0]!.toLowerCase();
+    const full = projectHost.toLowerCase();
+    const account = this.accounts.list().find((a) => {
+      if (a.platform !== platform) return false;
+      const h = a.host.toLowerCase();
+      const hBare = h.split(":")[0]!;
+      return h === full || hBare === bare || h === bare;
+    });
+    const host = account?.host || projectHost;
+    const token = account
+      ? (this.secrets.get(tokenId(account.platform, account.host)) ?? undefined)
+      : (this.secrets.get(tokenId(platform, bare)) ?? undefined);
+    return { host, token };
   }
 
   launch(ref: string, target: LaunchTarget): Project {

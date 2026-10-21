@@ -1,10 +1,22 @@
 import { parse } from "node-html-parser";
 import { ToolRegistry, Type, defineTool } from "@agentdesk/agent-core";
-import { runShell } from "@agentdesk/integrations";
+import {
+  fsGlob,
+  fsPatch,
+  fsRead,
+  fsSearch,
+  fsWrite,
+  gitChangedFiles,
+  runClaudePrint,
+  runShell,
+} from "@agentdesk/integrations";
 import type { RiskLevel } from "@agentdesk/shared";
+import { GLOBAL_CHANNEL, type EventHub, type GlobalEvent } from "../events";
+import type { BrowserService } from "../services/browser";
 import type { DeployService } from "../services/deploy";
 import type { FeedService } from "../services/feed";
 import type { ProjectService } from "../services/projects";
+import type { SettingsService } from "../services/settings";
 import type { WorkflowService } from "../services/workflows";
 import { localDate } from "../util";
 
@@ -12,6 +24,9 @@ export interface ToolDeps {
   projects: ProjectService;
   feed: FeedService;
   deploy: DeployService;
+  browser: BrowserService;
+  settings: SettingsService;
+  hub: EventHub;
   /** 工作流服务依赖工具注册表，这里延迟获取以打破循环依赖 */
   workflows: () => WorkflowService;
 }
@@ -39,8 +54,10 @@ function htmlToText(html: string): string {
 }
 
 export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
-  const { projects, feed, deploy } = deps;
+  const { projects, feed, deploy, browser, settings, hub } = deps;
   const registry = new ToolRegistry();
+
+  const projectRoot = (ref: string) => projects.find(ref).path;
 
   registry.register(
     defineTool({
@@ -125,6 +142,109 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
       risk: "safe",
       execute: async ({ project }) =>
         projects.claudeSessions(project ? projects.find(project).id : undefined),
+    }),
+    defineTool({
+      name: "claude.run",
+      description:
+        "无头调用本机 Claude Code（claude --print）在指定项目仓库里改代码并返回结论。修禅道 bug / 本地改文件优先用此工具，不要只靠 fs.search 空转。",
+      parameters: Type.Object({
+        project: Type.String({ description: "项目 ID、名称或路径" }),
+        prompt: Type.String({ description: "交给 Claude Code 的完整任务说明（含复现与约束）" }),
+        timeoutMin: Type.Optional(Type.Number({ description: "超时分钟数，默认 30，最大 90" })),
+        requireChanges: Type.Optional(
+          Type.Boolean({ description: "结束后必须有 git 改动，默认 true" }),
+        ),
+      }),
+      risk: "dangerous",
+      describeApproval: ({ project, prompt }) => {
+        const p = projects.find(project);
+        return {
+          title: `Claude Code 改代码：${p.name}`,
+          detail: `仓库：${p.path}\n\n${prompt.slice(0, 1200)}${prompt.length > 1200 ? "…" : ""}`,
+        };
+      },
+      execute: async ({ project, prompt, timeoutMin, requireChanges }, ctx) => {
+        const p = projects.find(project);
+        const minutes = Math.min(90, Math.max(5, timeoutMin ?? 30));
+        const needChanges = requireChanges !== false;
+        let buffer = "";
+        const flushLog = (force = false) => {
+          if (!buffer) return;
+          // 有换行就刷，保证 [Claude]/[git] 进度立刻进工作流日志
+          if (!force && !buffer.includes("\n") && buffer.length < 80) return;
+          const chunk = buffer;
+          buffer = "";
+          ctx.emit({ type: "text_delta", agent: ctx.agent, delta: chunk });
+        };
+
+        hub.publish(GLOBAL_CHANNEL, {
+          type: "notification",
+          title: `Claude Code 开始：${p.name}`,
+          body: prompt.slice(0, 200),
+        } satisfies GlobalEvent);
+        ctx.emit({
+          type: "text_delta",
+          agent: ctx.agent,
+          delta: `[claude.run] 仓库 ${p.path}\n[claude.run] 超时 ${minutes} 分钟；日志会出现 [Claude] 工具调用与 [git] 已改动\n`,
+        });
+
+        const result = await runClaudePrint({
+          cwd: p.path,
+          prompt,
+          claudeCommand: settings.get().claudeCommand,
+          timeoutMs: minutes * 60_000,
+          signal: ctx.signal,
+          permissionMode: "acceptEdits",
+          onOutput: (chunk) => {
+            buffer += chunk;
+            flushLog();
+          },
+        });
+        flushLog(true);
+
+        if (result.exitCode !== 0) {
+          hub.publish(GLOBAL_CHANNEL, {
+            type: "notification",
+            title: `Claude Code 失败：${p.name}`,
+            body: (result.text || result.raw).slice(0, 400),
+          } satisfies GlobalEvent);
+          throw new Error(
+            `Claude Code 退出码 ${result.exitCode}：${(result.text || result.raw).slice(0, 800)}`,
+          );
+        }
+
+        const changedFiles = await gitChangedFiles(p.path, ctx.signal);
+        if (needChanges && changedFiles.length === 0) {
+          hub.publish(GLOBAL_CHANNEL, {
+            type: "notification",
+            title: `Claude Code 无改动：${p.name}`,
+            body: "进程成功结束，但 git 工作区没有文件变更",
+          } satisfies GlobalEvent);
+          throw new Error(
+            "Claude Code 未产生文件改动（git status 干净）。请检查任务说明或权限后重试。",
+          );
+        }
+
+        const text = (result.text || "").trim() || "(Claude 无文本结论)";
+        hub.publish(GLOBAL_CHANNEL, {
+          type: "notification",
+          title: `Claude Code 完成：${p.name}`,
+          body:
+            changedFiles.length > 0
+              ? `改动 ${changedFiles.length} 个文件：${changedFiles.slice(0, 8).join(", ")}`
+              : text.slice(0, 200),
+        } satisfies GlobalEvent);
+
+        return {
+          text,
+          changedFiles,
+          sessionId: result.sessionId ?? null,
+          exitCode: result.exitCode,
+          durationMs: result.durationMs,
+          project: p.name,
+          path: p.path,
+        };
+      },
     }),
 
     defineTool({
@@ -333,6 +453,152 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
         });
         return { exitCode: result.code, output: (result.stdout + result.stderr).slice(-8000) };
       },
+    }),
+
+    defineTool({
+      name: "browser.open",
+      description:
+        "打开 Playwright 浏览器会话（桌面实况面板会显示截图）。sessionId 可固定如 zentao 以复用登录 Cookie",
+      parameters: Type.Object({
+        url: Type.Optional(Type.String()),
+        sessionId: Type.Optional(Type.String()),
+        headless: Type.Optional(Type.Boolean()),
+      }),
+      risk: "confirm",
+      describeApproval: ({ url, sessionId }) => ({
+        title: "打开浏览器会话",
+        detail: `session=${sessionId ?? "(自动)"} url=${url ?? "(空白页)"}`,
+      }),
+      execute: async ({ url, sessionId, headless }) =>
+        browser.open({ url, sessionId, headless: headless ?? true }),
+    }),
+    defineTool({
+      name: "browser.act",
+      description:
+        "在已打开的浏览器会话上操作：goto/click/fill/press/wait/evaluate/screenshot。禅道登录填表、点按钮用此工具",
+      parameters: Type.Object({
+        sessionId: Type.String(),
+        kind: Type.Union([
+          Type.Literal("goto"),
+          Type.Literal("click"),
+          Type.Literal("fill"),
+          Type.Literal("press"),
+          Type.Literal("wait"),
+          Type.Literal("evaluate"),
+          Type.Literal("screenshot"),
+        ]),
+        target: Type.Optional(Type.String()),
+        value: Type.Optional(Type.String()),
+        timeoutMs: Type.Optional(Type.Number()),
+      }),
+      risk: "confirm",
+      riskFor: ({ kind }) => (kind === "screenshot" || kind === "wait" ? "safe" : "confirm"),
+      describeApproval: ({ sessionId, kind, target }) => ({
+        title: `浏览器 ${kind}`,
+        detail: `session=${sessionId} target=${target ?? ""}`,
+      }),
+      execute: async ({ sessionId, kind, target, value, timeoutMs }) => {
+        const { result, session } = await browser.act(sessionId, {
+          kind,
+          target,
+          value,
+          timeoutMs,
+        });
+        return { ...result, sessionId: session.id, shotUrl: session.lastShotUrl };
+      },
+    }),
+    defineTool({
+      name: "browser.snapshot",
+      description: "读取当前页可见文本与常见 iframe 文本，并刷新实况截图",
+      parameters: Type.Object({ sessionId: Type.String() }),
+      risk: "safe",
+      execute: async ({ sessionId }) => browser.snapshot(sessionId),
+    }),
+    defineTool({
+      name: "browser.reveal",
+      description: "有头弹出系统浏览器（同一 Cookie），用于验证码或人工接管",
+      parameters: Type.Object({ sessionId: Type.String() }),
+      risk: "safe",
+      execute: async ({ sessionId }) => browser.reveal(sessionId),
+    }),
+    defineTool({
+      name: "browser.close",
+      description: "关闭浏览器会话",
+      parameters: Type.Object({ sessionId: Type.String() }),
+      risk: "safe",
+      execute: async ({ sessionId }) => {
+        await browser.close(sessionId);
+        return { ok: true, sessionId };
+      },
+    }),
+
+    defineTool({
+      name: "fs.read",
+      description: "读取已登记项目内的文本文件（路径相对项目根或绝对但不得越界）",
+      parameters: Type.Object({
+        project: Type.String({ description: "项目 ID、名称或路径" }),
+        path: Type.String(),
+      }),
+      risk: "safe",
+      execute: async ({ project, path }) => fsRead(projectRoot(project), path),
+    }),
+    defineTool({
+      name: "fs.write",
+      description: "写入项目内文件（覆盖），需审批",
+      parameters: Type.Object({
+        project: Type.String(),
+        path: Type.String(),
+        content: Type.String(),
+      }),
+      risk: "confirm",
+      describeApproval: ({ project, path, content }) => ({
+        title: `写入文件 ${path}`,
+        detail: `项目：${project}\n长度：${content.length} 字符\n预览：\n${content.slice(0, 800)}`,
+      }),
+      execute: async ({ project, path, content }) => fsWrite(projectRoot(project), path, content),
+    }),
+    defineTool({
+      name: "fs.patch",
+      description: "在项目文件中把 oldText 替换为 newText（可多处）",
+      parameters: Type.Object({
+        project: Type.String(),
+        path: Type.String(),
+        oldText: Type.String(),
+        newText: Type.String(),
+      }),
+      risk: "confirm",
+      describeApproval: ({ project, path, oldText, newText }) => ({
+        title: `修补文件 ${path}`,
+        detail: `项目：${project}\n- 旧：\n${oldText.slice(0, 400)}\n+ 新：\n${newText.slice(0, 400)}`,
+      }),
+      execute: async ({ project, path, oldText, newText }) =>
+        fsPatch(projectRoot(project), path, oldText, newText),
+    }),
+    defineTool({
+      name: "fs.glob",
+      description: "在项目内按 glob/子串列出文件路径",
+      parameters: Type.Object({
+        project: Type.String(),
+        pattern: Type.String(),
+        max: Type.Optional(Type.Number()),
+      }),
+      risk: "safe",
+      execute: async ({ project, pattern, max }) => ({
+        files: await fsGlob(projectRoot(project), pattern, max ?? 80),
+      }),
+    }),
+    defineTool({
+      name: "fs.search",
+      description: "在项目源码中搜索包含关键字的行",
+      parameters: Type.Object({
+        project: Type.String(),
+        query: Type.String(),
+        glob: Type.Optional(Type.String()),
+      }),
+      risk: "safe",
+      execute: async ({ project, query, glob }) => ({
+        hits: await fsSearch(projectRoot(project), query, glob),
+      }),
     }),
   );
   return registry;

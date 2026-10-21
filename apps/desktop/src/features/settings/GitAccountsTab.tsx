@@ -8,7 +8,8 @@ import { api } from "../../lib/api";
 const TOKEN_HELP: Record<GitAccount["platform"], string> = {
   github: "Settings → Developer settings → Personal access tokens，勾选 repo 只读即可",
   gitee: "设置 → 私人令牌，勾选 projects、pull_requests、issues",
-  gitlab: "User Settings → Access Tokens，勾选 read_api；主机填公司 GitLab 域名",
+  gitlab:
+    "公司 GitLab → 头像 → Preferences / Edit profile → Access Tokens；勾选 read_api（或 api）。主机填带端口的域名，例如 git.qushiyun.com:801",
 };
 
 export function GitAccountsTab() {
@@ -91,7 +92,7 @@ export function GitAccountsTab() {
               onChange={(e) => setForm({ ...form, host: e.target.value })}
               placeholder={
                 form.platform === "gitlab"
-                  ? "gitlab.company.com"
+                  ? "git.company.com 或 git.company.com:801"
                   : form.platform === "gitee"
                     ? "gitee.com"
                     : "github.com"

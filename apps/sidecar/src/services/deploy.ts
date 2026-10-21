@@ -54,14 +54,18 @@ export class DeployService {
     private readonly models: ModelResolver,
     settings: SettingsService,
     private readonly dataDir: string,
+    /** 与 BrowserService 共用，避免两套 Playwright profile */
+    browserManager?: BrowserSessionManager,
   ) {
     this.servers = new Collection<StoredServer>(db, "servers");
     this.recipes = new Collection<DeployRecipe>(db, "recipes");
     this.runs = new Collection<DeployRun>(db, "deployRuns");
-    this.browser = new BrowserSessionManager(
-      join(dataDir, "browser-profiles"),
-      () => settings.get().browserChannel,
-    );
+    this.browser =
+      browserManager ??
+      new BrowserSessionManager(
+        join(dataDir, "browser-profiles"),
+        () => settings.get().browserChannel,
+      );
     for (const run of this.runs.list()) {
       if (
         run.status === "running" ||

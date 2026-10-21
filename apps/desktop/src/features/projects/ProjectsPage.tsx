@@ -15,6 +15,7 @@ import {
   RefreshCw,
   Search,
   Sparkles,
+  Star,
   Terminal,
   Upload,
 } from "lucide-react";
@@ -38,9 +39,39 @@ import {
   cn,
 } from "@agentdesk/ui";
 import { api } from "../../lib/api";
-import { timeAgo } from "../../lib/format";
+import { compactNumber, timeAgo } from "../../lib/format";
 import { toast } from "../../lib/toast";
 import { useUi } from "../../stores/ui";
+
+function StarBadge({ project }: { project: Project }) {
+  if (project.stars == null) return null;
+  if (project.platform !== "github" && project.platform !== "gitee") return null;
+  const gained =
+    project.prevStars != null && project.stars > project.prevStars
+      ? project.stars - project.prevStars
+      : 0;
+  return (
+    <Tooltip
+      content={
+        gained
+          ? `自上次查看新增 ${gained} 个 Star（当前 ${project.stars}）`
+          : `${project.platform === "github" ? "GitHub" : "Gitee"} 星标 ${project.stars}`
+      }
+      side="top"
+    >
+      <span
+        className={cn(
+          "inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[11.5px] font-medium",
+          gained ? "bg-warning/15 text-warning" : "bg-surface-2 text-muted",
+        )}
+      >
+        <Star className={cn("h-3 w-3", gained ? "fill-warning" : "")} />
+        {compactNumber(project.stars)}
+        {gained ? <span className="ml-0.5">+{gained}</span> : null}
+      </span>
+    </Tooltip>
+  );
+}
 
 const PLATFORM: Record<GitPlatform, { label: string; className: string }> = {
   github: { label: "GitHub", className: "bg-[#24292f] text-white dark:bg-white dark:text-black" },
@@ -299,6 +330,7 @@ function ProjectCard({
           <div className="flex items-center gap-2">
             <PlatformTag platform={project.platform} />
             <p className="truncate text-[14px] font-semibold">{project.name}</p>
+            <StarBadge project={project} />
             {project.pinned ? <Pin className="h-3 w-3 text-brand" /> : null}
           </div>
           <p className="mt-1 truncate font-mono text-[11px] text-subtle">
@@ -405,6 +437,7 @@ function ProjectDrawer({
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <PlatformTag platform={project.platform} />
+            <StarBadge project={project} />
             {project.branch ? <Badge>{project.branch}</Badge> : null}
             <span className="truncate font-mono text-[11.5px] text-subtle">{project.path}</span>
           </div>
@@ -762,8 +795,32 @@ export function ProjectsPage() {
   const [aiCommitId, setAiCommitId] = useState<string | null>(null);
   const scan = useMutation({
     mutationFn: api.scanProjects,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["projects"] }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["projects"] });
+      // 扫描后 sidecar 会异步刷星标；稍后再拉一次列表
+      window.setTimeout(() => {
+        void queryClient.invalidateQueries({ queryKey: ["projects"] });
+      }, 4_000);
+    },
   });
+
+  // 进入项目中心时后台刷新 GitHub/Gitee 星标
+  useEffect(() => {
+    let cancelled = false;
+    void api
+      .refreshProjectStars()
+      .then((r) => {
+        if (!cancelled && r.updated > 0) {
+          void queryClient.invalidateQueries({ queryKey: ["projects"] });
+        }
+      })
+      .catch(() => {
+        /* token 未配或网络失败时静默 */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [queryClient]);
 
   const counts = useMemo(() => {
     const c: Record<string, number> = { all: data.length, attention: 0 };

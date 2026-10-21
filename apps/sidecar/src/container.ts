@@ -1,4 +1,6 @@
+import { join } from "node:path";
 import { Orchestrator, SkillRegistry } from "@agentdesk/agent-core";
+import { BrowserSessionManager } from "@agentdesk/integrations";
 import { AGENT_DEFINITIONS } from "./agents/definitions";
 import { buildToolRegistry } from "./agents/tools";
 import type { SidecarConfig } from "./config";
@@ -6,6 +8,7 @@ import { openDatabase, type DbHandle } from "./db/client";
 import { EventHub } from "./events";
 import { SecretStore } from "./secrets";
 import { ApprovalService } from "./services/approvals";
+import { BrowserService } from "./services/browser";
 import { ChatService } from "./services/chat";
 import { DeployService } from "./services/deploy";
 import { FeedService } from "./services/feed";
@@ -26,6 +29,7 @@ export interface Container {
   projects: ProjectService;
   feed: FeedService;
   deploy: DeployService;
+  browser: BrowserService;
   skills: SkillRegistry;
   orchestrator: Orchestrator;
   chat: ChatService;
@@ -46,8 +50,12 @@ export async function createContainer(
   const settings = new SettingsService(db);
   const approvals = new ApprovalService(db, hub);
   const providers = new ProviderService(db, secrets, settings);
-  const projects = new ProjectService(db, secrets, settings, providers, config.dataDir);
+  const projects = new ProjectService(db, secrets, settings, providers, config.dataDir, hub);
   const feed = new FeedService(db, settings, providers, hub);
+  const browserManager = new BrowserSessionManager(
+    join(config.dataDir, "browser-profiles"),
+    () => settings.get().browserChannel,
+  );
   const deploy = new DeployService(
     db,
     secrets,
@@ -56,7 +64,9 @@ export async function createContainer(
     providers,
     settings,
     config.dataDir,
+    browserManager,
   );
+  const browser = new BrowserService(browserManager, hub, config.dataDir);
 
   const skills = new SkillRegistry();
   await skills.loadFrom(config.skillDirs);
@@ -67,6 +77,9 @@ export async function createContainer(
     projects,
     feed,
     deploy,
+    browser,
+    settings,
+    hub,
     workflows: () => {
       if (!lazy.workflows) throw new Error("工作流服务尚未初始化");
       return lazy.workflows;
@@ -103,6 +116,7 @@ export async function createContainer(
     projects,
     feed,
     deploy,
+    browser,
     skills,
     orchestrator,
     chat,
@@ -111,7 +125,7 @@ export async function createContainer(
     registry,
     dispose: async () => {
       scheduler.stop();
-      await deploy.browser.closeAll();
+      await browserManager.closeAll();
       dbHandle.close();
     },
   };

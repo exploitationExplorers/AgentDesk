@@ -2,6 +2,17 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useRef, useState } from "react";
 import type { AgentName, AgentStreamEvent } from "@agentdesk/shared";
 import { api } from "../../lib/api";
+import { useUi } from "../../stores/ui";
+
+function sessionIdFromBrowserTool(name: string, args: unknown, result?: unknown): string | null {
+  if (!name.startsWith("browser.")) return null;
+  const a = (args ?? {}) as Record<string, unknown>;
+  if (typeof a.sessionId === "string" && a.sessionId) return a.sessionId;
+  const r = result as Record<string, unknown> | undefined;
+  if (r && typeof r.id === "string") return r.id;
+  if (r && typeof r.sessionId === "string") return r.sessionId;
+  return null;
+}
 
 export type LiveStep =
   | { kind: "route"; agent: AgentName; reason: string }
@@ -28,6 +39,7 @@ export interface LiveTurn {
 /** 管理一轮对话的流式状态；结束后刷新持久化消息并清空临时状态。 */
 export function useChatStream(onConversation: (id: string) => void) {
   const queryClient = useQueryClient();
+  const openBrowserPanel = useUi((s) => s.openBrowserPanel);
   const [live, setLive] = useState<LiveTurn | null>(null);
   const controller = useRef<AbortController | null>(null);
 
@@ -40,6 +52,29 @@ export function useChatStream(onConversation: (id: string) => void) {
       setLive({ userMessage: message, text: "", agent: null, steps: [], error: null });
 
       const apply = (event: AgentStreamEvent) => {
+        if (event.type === "tool_call") {
+          const sid = sessionIdFromBrowserTool(event.name, event.args);
+          if (sid) openBrowserPanel(sid);
+        }
+        if (event.type === "tool_result") {
+          const sid = sessionIdFromBrowserTool("browser.x", undefined, event.result);
+          // 从对应 tool_call 名判断：结果里常有 id/sessionId
+          const fromResult =
+            event.result &&
+            typeof event.result === "object" &&
+            ("id" in (event.result as object) ||
+              "sessionId" in (event.result as object) ||
+              "shotUrl" in (event.result as object));
+          if (fromResult) {
+            const r = event.result as Record<string, unknown>;
+            const id =
+              (typeof r.sessionId === "string" && r.sessionId) ||
+              (typeof r.id === "string" && r.id) ||
+              sid;
+            if (id && (r.shotUrl || r.url || r.open !== undefined)) openBrowserPanel(String(id));
+          }
+        }
+
         setLive((prev) => {
           if (!prev) return prev;
           switch (event.type) {
@@ -127,7 +162,7 @@ export function useChatStream(onConversation: (id: string) => void) {
         }
       }
     },
-    [onConversation, queryClient],
+    [onConversation, queryClient, openBrowserPanel],
   );
 
   const stop = useCallback(() => controller.current?.abort(), []);

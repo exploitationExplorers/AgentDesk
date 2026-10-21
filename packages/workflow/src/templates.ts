@@ -168,4 +168,98 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
       edges: [{ id: "e1", source: "start", target: "end" }],
     }),
   },
+  {
+    key: "qumall-zentao-uat",
+    name: "禅道 Bug → 修完合 UAT（qumall-ui）",
+    description: "输入禅道链接：zentao-bugfix 修复后按 feature-to-uat 提交并推送 uat_230609",
+    build: () => ({
+      name: "qumall-ui 禅道 Bug → 修完合 UAT",
+      description:
+        "输入禅道 bug 链接：按 qumall-zentao-bugfix 修复，再按 qumall-feature-to-uat 提交并推送到 uat_230609",
+      trigger: { type: "manual" },
+      inputs: [
+        {
+          name: "bugUrl",
+          label: "禅道 Bug 链接",
+          default: "http://121.40.16.93:8090/bug-view-.html",
+        },
+        {
+          name: "projectPath",
+          label: "本地仓库路径",
+          default: "D:\\qushiyun\\new\\qumall-ui",
+        },
+      ],
+      nodes: [
+        {
+          id: "start",
+          type: "start",
+          position: { x: 0, y: 160 },
+          data: { label: "开始", config: {} },
+        },
+        {
+          id: "approve",
+          type: "approval",
+          position: { x: 260, y: 160 },
+          data: {
+            label: "确认开始",
+            config: {
+              title: "确认处理禅道 Bug",
+              detail:
+                "将打开 qumall-ui（{{inputs.projectPath}}），按 skill 修复：{{inputs.bugUrl}}，完成后提交并合并推送 uat_230609。",
+            },
+          },
+        },
+        {
+          id: "fix",
+          type: "agent",
+          position: { x: 560, y: 160 },
+          data: {
+            label: "修 Bug + 合 UAT",
+            config: {
+              agent: "code",
+              task: `你正在执行工作流「qumall-ui 禅道 Bug → 修完合 UAT」。
+
+输入：
+- 禅道 Bug 链接：{{inputs.bugUrl}}
+- 仓库路径：{{inputs.projectPath}}（项目名 qumall-ui）
+
+必须按顺序做（不要只打开 Cursor，不要只 grep 空转）：
+
+1) skills.load qumall-zentao-bugfix。
+2) browser.open sessionId=zentao，url={{inputs.bugUrl}}；按 skill 登录并 snapshot 读 bug（标题、复现、备注）；验证码用 browser.reveal。
+3) 立刻调用 claude.run：
+   - project={{inputs.projectPath}}（或 qumall-ui）
+   - prompt 必须包含：bug 标题与复现步骤、仓库路径、要求「最小改动修复」「不要 force push」「改完用中文列出改动文件」
+   - requireChanges 默认 true（Claude 未改文件会失败，这是预期）
+4) skills.load qumall-feature-to-uat，shell.run 提交功能分支并合并推送 uat_230609。
+5) 中文回报（非空）：结论、改动文件、commit、uat、当前分支。
+
+注意：PowerShell 用分号；不要 force push；不要合并进 dev_220506。`,
+            },
+          },
+        },
+        {
+          id: "notify",
+          type: "notify",
+          position: { x: 860, y: 160 },
+          data: {
+            label: "完成通知",
+            config: { title: "禅道 Bug 流程结束", body: "{{nodes.fix.output}}" },
+          },
+        },
+        {
+          id: "end",
+          type: "end",
+          position: { x: 1120, y: 160 },
+          data: { label: "结束", config: { output: "{{nodes.fix.output}}" } },
+        },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "approve" },
+        { id: "e2", source: "approve", target: "fix" },
+        { id: "e3", source: "fix", target: "notify" },
+        { id: "e4", source: "notify", target: "end" },
+      ],
+    }),
+  },
 ];
