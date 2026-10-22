@@ -19,6 +19,7 @@ export function projectRoutes({ projects }: Container) {
       .parse(c.req.query("platform") || "gitee");
     return c.json(await projects.listRemoteRepos(platform));
   });
+  app.get("/projects/starred", async (c) => c.json(await projects.listStarredRepos()));
   app.post("/projects/import-remote", async (c) => {
     const body = z
       .object({

@@ -17,6 +17,7 @@ import {
   listClaudeSessions,
   normalizeCommitMessage,
   remoteIdentity,
+  type ListedRemoteRepo,
 } from "@agentdesk/integrations";
 import {
   AiCommitInput,
@@ -31,6 +32,7 @@ import {
   type Project,
   type RemoteActivity,
   type RemoteRepo,
+  type StarredRepo,
 } from "@agentdesk/shared";
 import type { Db } from "../db/client";
 import { Collection } from "../db/collection";
@@ -233,7 +235,40 @@ export class ProjectService {
         `拉取 ${platform} 仓库列表失败：${errorMessage(error)}`,
       );
     }
+    return this.annotateRemotes(platform, listed);
+  }
 
+  /** GitHub 上当前账号 Star 过的仓库，按最近更新取前 100 个。 */
+  async listStarredRepos(): Promise<StarredRepo[]> {
+    const { adapter, token } = this.requireAdapter("github");
+    if (!adapter.listStarred) {
+      throw new AppError(ErrorCode.BadRequest, "当前平台不支持读取 Star 列表");
+    }
+    if (!token) {
+      throw new AppError(ErrorCode.BadRequest, "请先在 设置 > Git 平台 中配置 GitHub Token");
+    }
+    let listed;
+    try {
+      listed = await adapter.listStarred();
+    } catch (error) {
+      throw new AppError(
+        ErrorCode.IntegrationFailed,
+        `拉取 GitHub Star 列表失败：${errorMessage(error)}`,
+      );
+    }
+    const annotated = await this.annotateRemotes("github", listed);
+    const extra = new Map(listed.map((repo) => [repo.id, repo]));
+    return annotated.map((repo) => ({
+      ...repo,
+      stars: extra.get(repo.id)?.stars ?? null,
+      language: extra.get(repo.id)?.language ?? null,
+    }));
+  }
+
+  private async annotateRemotes(
+    platform: "github" | "gitee" | "gitlab",
+    listed: ListedRemoteRepo[],
+  ): Promise<RemoteRepo[]> {
     const hosts = this.gitlabHosts();
     const localByIdentity = await this.mapLocalRemoteIdentities(hosts);
     const imported = new Set(

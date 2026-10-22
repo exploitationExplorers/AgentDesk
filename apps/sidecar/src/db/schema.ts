@@ -54,6 +54,26 @@ export const feedItems = sqliteTable(
   (t) => [index("feed_date_idx").on(t.date, t.source)],
 );
 
+/**
+ * 长期记忆。tokens 是空格分隔的检索词（英文词 + 中文双字），
+ * 供 FTS5 做 BM25；unicode61 会把一整句中文当成一个词，所以不直接索引正文。
+ */
+export const memories = sqliteTable(
+  "memories",
+  {
+    id: text("id").primaryKey(),
+    namespace: text("namespace").notNull(),
+    kind: text("kind").notNull(),
+    text: text("text").notNull(),
+    tokens: text("tokens").notNull(),
+    source: text("source").notNull(),
+    conversationId: text("conversation_id"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [index("memories_namespace_idx").on(t.namespace, t.updatedAt)],
+);
+
 export const traces = sqliteTable(
   "traces",
   {
@@ -112,4 +132,32 @@ CREATE TABLE IF NOT EXISTS traces (
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS traces_scope_idx ON traces(scope);
+CREATE TABLE IF NOT EXISTS memories (
+  id TEXT PRIMARY KEY,
+  namespace TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  text TEXT NOT NULL,
+  tokens TEXT NOT NULL,
+  source TEXT NOT NULL,
+  conversation_id TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS memories_namespace_idx ON memories(namespace, updated_at);
+CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
+  tokens,
+  content='memories',
+  content_rowid='rowid',
+  tokenize='unicode61'
+);
+CREATE TRIGGER IF NOT EXISTS memories_ai AFTER INSERT ON memories BEGIN
+  INSERT INTO memories_fts(rowid, tokens) VALUES (new.rowid, new.tokens);
+END;
+CREATE TRIGGER IF NOT EXISTS memories_ad AFTER DELETE ON memories BEGIN
+  INSERT INTO memories_fts(memories_fts, rowid, tokens) VALUES ('delete', old.rowid, old.tokens);
+END;
+CREATE TRIGGER IF NOT EXISTS memories_au AFTER UPDATE ON memories BEGIN
+  INSERT INTO memories_fts(memories_fts, rowid, tokens) VALUES ('delete', old.rowid, old.tokens);
+  INSERT INTO memories_fts(rowid, tokens) VALUES (new.rowid, new.tokens);
+END;
 `;

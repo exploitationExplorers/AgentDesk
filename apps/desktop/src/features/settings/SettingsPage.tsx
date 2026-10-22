@@ -7,6 +7,7 @@ import { settingsRoute } from "../../router";
 import { BindingsTab } from "./BindingsTab";
 import { GeneralTab } from "./GeneralTab";
 import { GitAccountsTab } from "./GitAccountsTab";
+import { MemoryTab } from "./MemoryTab";
 import { ProvidersTab } from "./ProvidersTab";
 
 function SkillsTab() {
@@ -52,7 +53,7 @@ export function SettingsPage() {
         <PageHeader
           icon={<Settings className="h-5 w-5" />}
           title="设置"
-          description="模型、Git 平台、项目扫描与外观"
+          description="模型、Git 平台、项目扫描、记忆与外观"
         />
         <Tabs
           value={tab}
@@ -64,6 +65,7 @@ export function SettingsPage() {
             <TabsTrigger value="git">Git 平台</TabsTrigger>
             <TabsTrigger value="general">通用</TabsTrigger>
             <TabsTrigger value="skills">技能</TabsTrigger>
+            <TabsTrigger value="memory">记忆</TabsTrigger>
           </TabsList>
           <TabsContent value="providers">
             <ProvidersTab />
@@ -79,6 +81,9 @@ export function SettingsPage() {
           </TabsContent>
           <TabsContent value="skills">
             <SkillsTab />
+          </TabsContent>
+          <TabsContent value="memory">
+            <MemoryTab />
           </TabsContent>
         </Tabs>
       </div>

@@ -5,7 +5,9 @@ const SHARED = `
 原则：
 - 用中文回答，简洁、结论先行；需要事实时先调用工具，不要编造项目、服务器或热榜数据。
 - 涉及部署、拉代码、执行命令等有副作用的操作，工具会自动发起人工审批；被拒绝时尊重用户决定，不要换个方式重试。
-- 工具返回错误时，说明原因并给出下一步建议。`.trim();
+- 工具返回错误时，说明原因并给出下一步建议。
+- 长期记忆会写在系统提示里。用户说「记住」时调用 memory.store；说「忘掉」时先 memory.recall 找到 id，再调用 memory.forget。与当前问题无关的记忆不要复述。
+- 用户说磁盘空间不够、清理缓存或还剩多少空间时，用 disk.status / disk.scan。清理只能调用 disk.clean，并且只提交用户点名同意的 id。不要用 shell 删除缓存、回收站或用户文件。`.trim();
 
 export const AGENT_DEFINITIONS: AgentDefinition[] = [
   {
@@ -29,6 +31,8 @@ export const AGENT_DEFINITIONS: AgentDefinition[] = [
       "workflow.run",
       "browser.*",
       "fs.*",
+      "memory.*",
+      "disk.*",
     ],
     maxTurns: 12,
   },
@@ -39,7 +43,7 @@ export const AGENT_DEFINITIONS: AgentDefinition[] = [
     systemPrompt: `${SHARED}
 
 你是项目助手。先用 projects.list 找到项目，再用 projects.status / projects.activity 获取细节。汇报时给出分支、未提交改动、落后/领先提交数和待处理 PR/MR。`,
-    tools: ["projects.*", "claude.sessions"],
+    tools: ["projects.*", "claude.sessions", "memory.*"],
   },
   {
     name: "deploy",
@@ -49,7 +53,7 @@ export const AGENT_DEFINITIONS: AgentDefinition[] = [
 
 你是部署助手。部署前用 deploy.list 确认配方和目标服务器，向用户说明将执行的步骤；用 deploy.run 执行（会自动请求审批）。
 部署失败时读取失败步骤日志，判断是代码、构建、进程管理还是网络问题，并建议用户在部署中心“从失败步骤重试”。`,
-    tools: ["deploy.*", "projects.list", "projects.status"],
+    tools: ["deploy.*", "projects.list", "projects.status", "memory.*"],
     maxTurns: 6,
   },
   {
@@ -60,7 +64,7 @@ export const AGENT_DEFINITIONS: AgentDefinition[] = [
 
 你是技术研究助手，覆盖 AI、前端、后端与基础设施。回答热榜问题先调用 feed.today 或 feed.search；讲解某个项目时用 web.fetch 阅读其 README 或主页，
 按“是什么 → 解决什么问题 → 核心原理 → 和同类方案对比 → 适合用户哪些项目”的结构讲清楚。`,
-    tools: ["feed.*", "web.fetch"],
+    tools: ["feed.*", "web.fetch", "memory.*"],
   },
   {
     name: "code",
@@ -83,6 +87,8 @@ export const AGENT_DEFINITIONS: AgentDefinition[] = [
       "shell.run",
       "browser.*",
       "fs.*",
+      "memory.*",
+      "disk.*",
     ],
     maxTurns: 24,
   },

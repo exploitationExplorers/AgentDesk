@@ -11,6 +11,9 @@ import type {
   CommitInfo,
   Conversation,
   DailyDigest,
+  DiskCleanResult,
+  DiskScan,
+  DiskStatus,
   DeployRecipe,
   DeployRecipeInput,
   DeployRun,
@@ -18,6 +21,7 @@ import type {
   GitAccount,
   HealthInfo,
   LaunchTarget,
+  Memory,
   Project,
   Provider,
   ProviderCandidate,
@@ -28,6 +32,7 @@ import type {
   BrowserSessionState,
   Server,
   ServerInput,
+  StarredRepo,
 } from "@agentdesk/shared";
 import type { Workflow, WorkflowInput, WorkflowRun } from "@agentdesk/workflow/dsl";
 import { http, postStream } from "./http";
@@ -70,6 +75,17 @@ export const api = {
     http.post<Approval>(`/approvals/${id}`, { approved }),
   skills: () => http.get<SkillInfo[]>("/skills"),
   tools: () => http.get<ToolInfo[]>("/tools"),
+  memories: () => http.get<Memory[]>("/memories"),
+  deleteMemory: (id: string) =>
+    http.delete<{ id: string; deleted: true }>(`/memories/${encodeURIComponent(id)}`),
+  diskStatus: () => http.get<DiskStatus>("/disk/status"),
+  diskScan: () => http.get<DiskScan | null>("/disk/scan"),
+  scanDisk: () => http.post<DiskScan>("/disk/scan"),
+  reviewDisk: (scanId: string) => http.post<DiskScan>("/disk/review", { scanId }),
+  cleanDisk: (scanId: string, ids: string[]) =>
+    http.post<DiskCleanResult>("/disk/clean", { scanId, ids }),
+  revealDisk: (scanId: string, id: string) =>
+    http.post<{ ok: true }>("/disk/reveal", { scanId, id }),
 
   providers: () => http.get<Provider[]>("/providers"),
   createProvider: (input: ProviderInput) => http.post<Provider>("/providers", input),
@@ -96,6 +112,7 @@ export const api = {
   addProject: (path: string) => http.post<Project>("/projects", { path }),
   listRemoteRepos: (platform: "github" | "gitee" | "gitlab") =>
     http.get<RemoteRepo[]>("/projects/remote", { platform }),
+  starredRepos: () => http.get<StarredRepo[]>("/projects/starred"),
   importRemoteRepo: (input: {
     platform: "github" | "gitee" | "gitlab";
     cloneUrl: string;

@@ -20,7 +20,13 @@ import {
   Upload,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import type { AiCommitPreview, GitPlatform, LaunchTarget, Project } from "@agentdesk/shared";
+import type {
+  AiCommitPreview,
+  GitPlatform,
+  LaunchTarget,
+  Project,
+  StarredRepo,
+} from "@agentdesk/shared";
 import {
   Badge,
   Button,
@@ -780,6 +786,139 @@ function AddProjectDialog({
   );
 }
 
+function StarredSection() {
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const { setChatPrefill } = useUi();
+  const [q, setQ] = useState("");
+  const starred = useQuery({ queryKey: ["starred-repos"], queryFn: api.starredRepos });
+  const clone = useMutation({
+    mutationFn: (repo: StarredRepo) =>
+      api.importRemoteRepo({
+        platform: "github",
+        cloneUrl: repo.cloneUrl,
+        fullName: repo.fullName,
+      }),
+    onSuccess: (_project, repo) => {
+      void queryClient.invalidateQueries({ queryKey: ["starred-repos"] });
+      void queryClient.invalidateQueries({ queryKey: ["projects"] });
+      toast(repo.localPath ? "已关联本地仓库" : "已克隆到扫描目录", {
+        description: repo.fullName,
+        tone: "success",
+      });
+    },
+  });
+
+  const visible = useMemo(() => {
+    const list = starred.data ?? [];
+    const query = q.trim().toLowerCase();
+    if (!query) return list;
+    return list.filter(
+      (repo) =>
+        repo.fullName.toLowerCase().includes(query) ||
+        (repo.description ?? "").toLowerCase().includes(query) ||
+        (repo.language ?? "").toLowerCase().includes(query),
+    );
+  }, [starred.data, q]);
+
+  const explain = (repo: StarredRepo) => {
+    const about = repo.description ? `简介：${repo.description}。` : "";
+    setChatPrefill({
+      agent: "research",
+      message: `我想学习这个我 Star 过的项目：${repo.fullName}（${repo.htmlUrl}）。${about}它解决什么问题、代码该从哪里读起、有哪些值得借鉴的设计？`,
+    });
+    void navigate({ to: "/", search: {} });
+  };
+
+  return (
+    <div>
+      <p className="mb-4 text-[13px] text-muted">
+        GitHub 上你已经 Star 的仓库，按最近更新排列，最多 100 个。想对着代码学，可以克隆到扫描目录。
+      </p>
+      <div className="mb-5 flex justify-end">
+        <div className="relative w-64">
+          <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-subtle" />
+          <Input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="搜索 Star 的项目"
+            className="pl-8"
+          />
+        </div>
+      </div>
+      {starred.isLoading ? (
+        <Spinner />
+      ) : starred.error ? (
+        <EmptyState
+          icon={<Star className="h-6 w-6" />}
+          title="还读不到 Star 列表"
+          description={starred.error.message}
+          action={
+            <Button
+              variant="secondary"
+              onClick={() => void navigate({ to: "/settings", search: { tab: "git" } })}
+            >
+              去配置 GitHub Token
+            </Button>
+          }
+        />
+      ) : visible.length ? (
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {visible.map((repo) => (
+            <Card key={repo.id} className="flex flex-col p-4">
+              <div className="flex items-center gap-2">
+                <PlatformTag platform="github" />
+                <p className="truncate text-[14px] font-semibold">{repo.name}</p>
+                {repo.private ? <Badge>私有</Badge> : null}
+              </div>
+              <p className="mt-1 truncate font-mono text-[11px] text-subtle">{repo.fullName}</p>
+              <p className="mt-2 line-clamp-2 min-h-10 text-[12.5px] text-muted">
+                {repo.description || "没有简介"}
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                {repo.language ? <Badge tone="brand">{repo.language}</Badge> : null}
+                {repo.stars != null ? (
+                  <span className="inline-flex items-center gap-0.5 text-[11.5px] text-muted">
+                    <Star className="h-3 w-3" />
+                    {compactNumber(repo.stars)}
+                  </span>
+                ) : null}
+                {repo.imported ? <Badge tone="success">已在本地</Badge> : null}
+                {repo.updatedAt ? (
+                  <span className="ml-auto text-[11px] text-subtle">{timeAgo(repo.updatedAt)}</span>
+                ) : null}
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                <Button variant="secondary" onClick={() => explain(repo)}>
+                  <Bot className="h-3.5 w-3.5" />让 Bot 讲解
+                </Button>
+                <Button variant="ghost" onClick={() => window.open(repo.htmlUrl, "_blank")}>
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  打开
+                </Button>
+                <Button
+                  variant="ghost"
+                  loading={clone.isPending && clone.variables?.id === repo.id}
+                  disabled={repo.imported || !repo.cloneUrl}
+                  onClick={() => clone.mutate(repo)}
+                >
+                  {repo.imported ? "已添加" : repo.localPath ? "关联本地" : "克隆学习"}
+                </Button>
+              </div>
+            </Card>
+          ))}
+        </div>
+      ) : (
+        <EmptyState
+          icon={<Star className="h-6 w-6" />}
+          title={starred.data?.length ? "没有匹配的仓库" : "还没有 Star 的仓库"}
+          description="在 GitHub 上 Star 的公开仓库会出现在这里。"
+        />
+      )}
+    </div>
+  );
+}
+
 export function ProjectsPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -789,6 +928,7 @@ export function ProjectsPage() {
     queryFn: () => api.claudeSessions(),
   });
   const [filter, setFilter] = useState<"all" | GitPlatform | "attention">("all");
+  const [view, setView] = useState<"local" | "starred">("local");
   const [q, setQ] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
@@ -879,28 +1019,42 @@ export function ProjectsPage() {
 
         <div className="mb-5 flex flex-wrap items-center gap-3">
           <Segmented
-            value={filter}
-            onChange={setFilter}
+            value={view}
+            onChange={setView}
             options={[
-              { value: "all", label: `全部 ${counts.all}` },
-              { value: "attention", label: `需关注 ${counts.attention}` },
-              { value: "github", label: `GitHub ${counts.github ?? 0}` },
-              { value: "gitee", label: `Gitee ${counts.gitee ?? 0}` },
-              { value: "gitlab", label: `GitLab ${counts.gitlab ?? 0}` },
+              { value: "local", label: "本地" },
+              { value: "starred", label: "已 Star" },
             ]}
           />
-          <div className="relative ml-auto w-64">
-            <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-subtle" />
-            <Input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="搜索项目"
-              className="pl-8"
+          {view === "local" ? (
+            <Segmented
+              value={filter}
+              onChange={setFilter}
+              options={[
+                { value: "all", label: `全部 ${counts.all}` },
+                { value: "attention", label: `需关注 ${counts.attention}` },
+                { value: "github", label: `GitHub ${counts.github ?? 0}` },
+                { value: "gitee", label: `Gitee ${counts.gitee ?? 0}` },
+                { value: "gitlab", label: `GitLab ${counts.gitlab ?? 0}` },
+              ]}
             />
-          </div>
+          ) : null}
+          {view === "local" ? (
+            <div className="relative ml-auto w-64">
+              <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-subtle" />
+              <Input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="搜索项目"
+                className="pl-8"
+              />
+            </div>
+          ) : null}
         </div>
 
-        {isLoading ? (
+        {view === "starred" ? (
+          <StarredSection />
+        ) : isLoading ? (
           <Spinner />
         ) : visible.length ? (
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -921,7 +1075,7 @@ export function ProjectsPage() {
           />
         )}
 
-        {sessions.data?.length ? (
+        {view === "local" && sessions.data?.length ? (
           <section className="mt-10">
             <h2 className="mb-3 flex items-center gap-2 text-[14px] font-semibold">
               <Bot className="h-4 w-4 text-muted" />

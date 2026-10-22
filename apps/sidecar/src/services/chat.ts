@@ -14,6 +14,7 @@ import { Collection } from "../db/collection";
 import { messages, traces } from "../db/schema";
 import { errorMessage, newId, nowIso, toJsonSafe } from "../util";
 import type { ApprovalService } from "./approvals";
+import type { MemoryService } from "./memory";
 
 const HISTORY_LIMIT = 20;
 
@@ -52,6 +53,7 @@ export class ChatService {
     private readonly db: Db,
     private readonly orchestrator: Orchestrator,
     private readonly approvals: ApprovalService,
+    private readonly memory: MemoryService,
   ) {
     this.conversations = new Collection<Conversation>(db, "conversations");
   }
@@ -144,11 +146,18 @@ export class ChatService {
     emit({ type: "conversation", conversationId });
     const assistantId = newId();
     let text = "";
+    let context: string | undefined;
+    try {
+      context = this.memory.formatForPrompt(this.memory.recall(req.message)) || undefined;
+    } catch (error) {
+      console.error("[memory] recall failed", error);
+    }
     try {
       const result = await this.orchestrator.run({
         history: toPiMessages(history),
         userMessage: req.message,
         agent: req.agent,
+        context,
         signal,
         emit: traced,
         requestApproval: (request) =>
@@ -171,6 +180,16 @@ export class ChatService {
         toolCalls: result.toolCalls,
         createdAt: nowIso(),
       });
+      try {
+        await this.memory.captureFromTurn({
+          userText: req.message,
+          assistantText: text,
+          conversationId,
+          signal,
+        });
+      } catch (error) {
+        console.error("[memory] capture failed", error);
+      }
     } catch (error) {
       const message = errorMessage(error);
       traced({ type: "error", message });

@@ -8,6 +8,7 @@ import { z } from "zod";
 import { AppShell } from "./components/AppShell";
 import { ChatPage } from "./features/chat/ChatPage";
 import { DeployPage } from "./features/deploy/DeployPage";
+import { DiskPage } from "./features/disk/DiskPage";
 import { FeedPage } from "./features/feed/FeedPage";
 import { ProjectsPage } from "./features/projects/ProjectsPage";
 import { SettingsPage } from "./features/settings/SettingsPage";
@@ -31,6 +32,11 @@ const deployRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/deploy",
   component: DeployPage,
+});
+const diskRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/disk",
+  component: DiskPage,
 });
 const feedRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -58,6 +64,7 @@ const routeTree = rootRoute.addChildren([
   chatRoute,
   projectsRoute,
   deployRoute,
+  diskRoute,
   feedRoute,
   workflowsRoute,
   workflowEditorRoute,

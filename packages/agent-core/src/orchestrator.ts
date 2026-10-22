@@ -20,6 +20,8 @@ export interface OrchestratorRunOptions {
   emit: (event: AgentStreamEvent) => void;
   requestApproval: (request: ApprovalRequest) => Promise<boolean>;
   signal?: AbortSignal;
+  /** 额外系统上下文，例如召回的长期记忆。总控和被委派的 Agent 都会看到。 */
+  context?: string;
 }
 
 export interface OrchestratorResult {
@@ -73,7 +75,7 @@ export class Orchestrator {
     name: AgentName,
     messages: Message[],
     userText: string,
-    opts: Pick<OrchestratorRunOptions, "emit" | "requestApproval" | "signal">,
+    opts: Pick<OrchestratorRunOptions, "emit" | "requestApproval" | "signal" | "context">,
   ) {
     const def = this.definition(name);
     const models = await this.deps.resolver.resolve(name);
@@ -82,7 +84,9 @@ export class Orchestrator {
       tools: this.toolsFor(def),
       models,
       messages,
-      systemPromptSuffix: this.deps.skills?.promptFor(name, userText),
+      systemPromptSuffix: [opts.context, this.deps.skills?.promptFor(name, userText)]
+        .filter(Boolean)
+        .join("\n\n"),
       emit: opts.emit,
       requestApproval: opts.requestApproval,
       signal: opts.signal,
@@ -133,6 +137,7 @@ export class Orchestrator {
       models,
       messages,
       systemPromptSuffix: [
+        opts.context,
         hint ? `关键词路由提示：这个请求可能与 ${hint} Agent 相关。` : "",
         this.deps.skills?.promptFor("orchestrator", opts.userMessage) ?? "",
       ]

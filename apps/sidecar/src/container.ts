@@ -11,7 +11,9 @@ import { ApprovalService } from "./services/approvals";
 import { BrowserService } from "./services/browser";
 import { ChatService } from "./services/chat";
 import { DeployService } from "./services/deploy";
+import { DiskService } from "./services/disk";
 import { FeedService } from "./services/feed";
+import { MemoryService } from "./services/memory";
 import { ProjectService } from "./services/projects";
 import { ProviderService } from "./services/providers";
 import { Scheduler } from "./services/scheduler";
@@ -28,6 +30,8 @@ export interface Container {
   providers: ProviderService;
   projects: ProjectService;
   feed: FeedService;
+  memory: MemoryService;
+  disk: DiskService;
   deploy: DeployService;
   browser: BrowserService;
   skills: SkillRegistry;
@@ -52,6 +56,8 @@ export async function createContainer(
   const providers = new ProviderService(db, secrets, settings);
   const projects = new ProjectService(db, secrets, settings, providers, config.dataDir, hub);
   const feed = new FeedService(db, settings, providers, hub);
+  const memory = new MemoryService(dbHandle.raw, providers);
+  const disk = new DiskService(settings, providers, { extraProtected: [config.dataDir] });
   const browserManager = new BrowserSessionManager(
     join(config.dataDir, "browser-profiles"),
     () => settings.get().browserChannel,
@@ -76,6 +82,8 @@ export async function createContainer(
   const registry = buildToolRegistry({
     projects,
     feed,
+    memory,
+    disk,
     deploy,
     browser,
     settings,
@@ -102,7 +110,7 @@ export async function createContainer(
     deploy,
   });
   lazy.workflows = workflows;
-  const chat = new ChatService(db, orchestrator, approvals);
+  const chat = new ChatService(db, orchestrator, approvals, memory);
   const scheduler = new Scheduler(db, settings, feed, workflows);
 
   return {
@@ -115,6 +123,8 @@ export async function createContainer(
     providers,
     projects,
     feed,
+    memory,
+    disk,
     deploy,
     browser,
     skills,

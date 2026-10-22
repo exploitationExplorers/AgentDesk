@@ -1,7 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import {
   FolderGit2,
+  HardDrive,
   MessageSquare,
   Moon,
   Newspaper,
@@ -15,11 +16,15 @@ import {
   Workflow,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Kbd, StatusDot, Tooltip, TooltipProvider, cn } from "@agentdesk/ui";
 import { useGlobalEvents } from "../hooks/useGlobalEvents";
 import { api } from "../lib/api";
+import { saveAvatar } from "../lib/avatar";
+import { toast } from "../lib/toast";
 import { applyTheme, useUi } from "../stores/ui";
+import { AppMark, useAppAvatar } from "./AppMark";
+import { LowDiskDialog } from "../features/disk/LowDiskDialog";
 import { ApprovalToasts } from "./ApprovalToasts";
 import { CommandPalette } from "./CommandPalette";
 import { Toasts } from "./Toasts";
@@ -30,6 +35,7 @@ const NAV: Array<{ to: string; label: string; icon: LucideIcon }> = [
   { to: "/deploy", label: "部署", icon: Rocket },
   { to: "/feed", label: "热榜", icon: Newspaper },
   { to: "/workflows", label: "工作流", icon: Workflow },
+  { to: "/disk", label: "磁盘", icon: HardDrive },
 ];
 
 function NavItem({
@@ -38,12 +44,14 @@ function NavItem({
   icon: Icon,
   collapsed,
   badge,
+  alert,
 }: {
   to: string;
   label: string;
   icon: LucideIcon;
   collapsed: boolean;
   badge?: number;
+  alert?: boolean;
 }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const active = to === "/" ? pathname === "/" : pathname.startsWith(to);
@@ -67,6 +75,13 @@ function NavItem({
         >
           {badge}
         </span>
+      ) : alert ? (
+        <span
+          className={cn(
+            "h-2 w-2 shrink-0 rounded-full bg-warning",
+            collapsed ? "absolute right-1 top-1" : "ml-auto",
+          )}
+        />
       ) : null}
     </Link>
   );
@@ -86,6 +101,23 @@ export function AppShell() {
     queryKey: ["approvals", "pending"],
     queryFn: () => api.approvals("pending"),
   });
+  const disk = useQuery({
+    queryKey: ["disk-status"],
+    queryFn: api.diskStatus,
+    refetchInterval: 60_000,
+    retry: false,
+  });
+  const avatar = useAppAvatar();
+  const queryClient = useQueryClient();
+  const avatarInput = useRef<HTMLInputElement>(null);
+  const uploadAvatar = useMutation({
+    mutationFn: saveAvatar,
+    onSuccess: (next) => {
+      queryClient.setQueryData(["settings"], next);
+      toast("头像已更新", { tone: "success" });
+    },
+    onError: (error: Error) => toast(error.message || "头像更新失败", { tone: "danger" }),
+  });
 
   useEffect(() => applyTheme(theme), [theme]);
 
@@ -104,7 +136,27 @@ export function AppShell() {
               collapsed && "justify-center px-0",
             )}
           >
-            <img src="/logo.svg" alt="" className="h-7 w-7 rounded-lg" />
+            <Tooltip content="更换头像">
+              <button
+                type="button"
+                className="grid h-7 w-7 place-items-center overflow-hidden rounded-lg"
+                aria-label="更换头像"
+                onClick={() => avatarInput.current?.click()}
+              >
+                <AppMark src={avatar} className="h-7 w-7" />
+              </button>
+            </Tooltip>
+            <input
+              ref={avatarInput}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = "";
+                if (file) uploadAvatar.mutate(file);
+              }}
+            />
             {collapsed ? null : (
               <div className="leading-tight">
                 <p className="text-[14px] font-semibold tracking-tight">AgentDesk</p>
@@ -132,7 +184,12 @@ export function AppShell() {
 
           <nav className="flex flex-col gap-0.5">
             {NAV.map((n) => (
-              <NavItem key={n.to} {...n} collapsed={collapsed} />
+              <NavItem
+                key={n.to}
+                {...n}
+                collapsed={collapsed}
+                alert={n.to === "/disk" && disk.data?.low === true}
+              />
             ))}
           </nav>
 
@@ -192,6 +249,7 @@ export function AppShell() {
           <Outlet />
         </main>
       </div>
+      <LowDiskDialog status={disk.data} />
       <CommandPalette />
       <Toasts />
       <ApprovalToasts />

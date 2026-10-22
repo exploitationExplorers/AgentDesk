@@ -1,8 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { AppSettings } from "@agentdesk/shared";
 import { Button, Card, Field, Input, Segmented, Select, Textarea } from "@agentdesk/ui";
+import { AppMark } from "../../components/AppMark";
 import { api } from "../../lib/api";
+import { saveAvatar } from "../../lib/avatar";
+import { toast } from "../../lib/toast";
 import { checkForUpdates, isTauri } from "../../lib/tauri";
 import { useUi } from "../../stores/ui";
 
@@ -29,6 +32,16 @@ export function GeneralTab() {
     },
   });
   const update = useMutation({ mutationFn: checkForUpdates });
+  const avatarInput = useRef<HTMLInputElement>(null);
+  const avatar = useMutation({
+    mutationFn: saveAvatar,
+    onSuccess: (next) => {
+      queryClient.setQueryData(["settings"], next);
+      setForm(next);
+      toast(next.avatar ? "头像已更新" : "已恢复默认图标", { tone: "success" });
+    },
+    onError: (error: Error) => toast(error.message || "头像更新失败", { tone: "danger" }),
+  });
 
   if (!form) return null;
 
@@ -42,6 +55,38 @@ export function GeneralTab() {
 
   return (
     <div className="grid max-w-3xl gap-5">
+      <Card className="flex items-center gap-4 p-5">
+        <AppMark src={form.avatar} className="h-14 w-14 rounded-2xl" />
+        <div className="min-w-0 flex-1">
+          <h3 className="text-[14px] font-semibold">头像</h3>
+          <p className="mt-1 text-[12.5px] text-subtle">
+            显示在侧栏和首页。也可以直接点侧栏左上角的图标更换。
+          </p>
+        </div>
+        <input
+          ref={avatarInput}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            event.target.value = "";
+            if (file) avatar.mutate(file);
+          }}
+        />
+        <Button
+          variant="secondary"
+          loading={avatar.isPending && avatar.variables !== null}
+          onClick={() => avatarInput.current?.click()}
+        >
+          导入头像
+        </Button>
+        {form.avatar ? (
+          <Button variant="ghost" disabled={avatar.isPending} onClick={() => avatar.mutate(null)}>
+            恢复默认
+          </Button>
+        ) : null}
+      </Card>
       <Card className="grid gap-4 p-5">
         <h3 className="text-[14px] font-semibold">项目</h3>
         <Field
