@@ -4,6 +4,7 @@ import { Command } from "cmdk";
 import {
   Code2,
   FolderGit2,
+  HardDrive,
   MessageSquarePlus,
   Newspaper,
   Play,
@@ -112,6 +113,12 @@ export function CommandPalette() {
             onSelect={() => go(() => navigate({ to: "/workflows" }))}
           >
             工作流
+          </Item>
+          <Item
+            icon={<HardDrive className="h-4 w-4" />}
+            onSelect={() => go(() => navigate({ to: "/disk" }))}
+          >
+            磁盘清理
           </Item>
           <Item
             icon={<Settings className="h-4 w-4" />}

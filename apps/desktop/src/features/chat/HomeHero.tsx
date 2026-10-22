@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { Badge } from "@agentdesk/ui";
+import { AppMark, useAppAvatar } from "../../components/AppMark";
 import { api } from "../../lib/api";
 import { compactNumber, greeting, todayLocal } from "../../lib/format";
 
@@ -58,6 +59,7 @@ export function HomeHero({
     queryFn: () => api.feed({ date: todayLocal(), source: "github" }),
   });
   const projects = useQuery({ queryKey: ["projects"], queryFn: api.projects });
+  const avatar = useAppAvatar();
   const needAttention = (projects.data ?? []).filter(
     (p) => p.dirtyFiles > 0 || p.ahead > 0 || p.behind > 0,
   );
@@ -66,9 +68,8 @@ export function HomeHero({
     <div className="ad-glow h-full overflow-y-auto">
       <div className="mx-auto flex max-w-3xl flex-col px-6 pt-[12vh] pb-16">
         <div className="mb-8 text-center">
-          <img
-            src="/logo.svg"
-            alt=""
+          <AppMark
+            src={avatar}
             className="mx-auto mb-5 h-12 w-12 rounded-2xl shadow-[0_0_60px_-10px_var(--ad-brand)]"
           />
           <h1 className="text-[28px] font-semibold tracking-tight">{greeting()}，今天想做什么？</h1>

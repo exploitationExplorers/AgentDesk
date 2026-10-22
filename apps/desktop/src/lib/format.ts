@@ -11,6 +11,28 @@ export function timeAgo(iso: string | null | undefined): string {
   return new Date(iso).toLocaleDateString("zh-CN");
 }
 
+/** 磁盘页用的 GB 读数，和审查页上的 8.4 GB 同一精度。 */
+export function formatGB(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 GB";
+  const gb = bytes / 1024 ** 3;
+  if (gb < 0.1) return formatBytes(bytes);
+  if (gb >= 100) return `${gb.toFixed(0)} GB`;
+  return `${gb.toFixed(1)} GB`;
+}
+
+export function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let index = 0;
+  while (value >= 1024 && index < units.length - 1) {
+    value /= 1024;
+    index += 1;
+  }
+  const digits = index === 0 || value >= 100 ? 0 : value >= 10 ? 1 : 2;
+  return `${value.toFixed(digits)} ${units[index]}`;
+}
+
 export function compactNumber(n: number | null | undefined): string {
   if (n === null || n === undefined) return "-";
   if (n >= 10_000) return `${(n / 1000).toFixed(n >= 100_000 ? 0 : 1)}k`;

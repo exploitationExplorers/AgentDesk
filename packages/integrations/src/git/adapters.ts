@@ -12,10 +12,17 @@ export interface ListedRemoteRepo {
   updatedAt: string | null;
 }
 
+export interface ListedStarredRepo extends ListedRemoteRepo {
+  stars: number | null;
+  language: string | null;
+}
+
 export interface RemoteAdapter {
   listActivity(owner: string, repo: string): Promise<RemoteActivity[]>;
   /** 列出当前 Token 可见的仓库（用于导入选择） */
   listRepos?(): Promise<ListedRemoteRepo[]>;
+  /** 当前用户 Star 过的仓库，供学习时挑选 */
+  listStarred?(): Promise<ListedStarredRepo[]>;
   /** 仓库星标数；失败返回 null */
   getStars?(owner: string, repo: string): Promise<number | null>;
 }
@@ -70,6 +77,26 @@ export class GitHubAdapter implements RemoteAdapter {
       htmlUrl: r.html_url,
       private: r.private,
       updatedAt: r.updated_at,
+    }));
+  }
+
+  async listStarred(): Promise<ListedStarredRepo[]> {
+    const { data } = await this.client.activity.listReposStarredByAuthenticatedUser({
+      per_page: 100,
+      sort: "updated",
+      direction: "desc",
+    });
+    return data.map((repo) => ({
+      id: String(repo.id),
+      name: repo.name,
+      fullName: repo.full_name,
+      description: repo.description,
+      cloneUrl: repo.clone_url ?? "",
+      htmlUrl: repo.html_url,
+      private: repo.private,
+      updatedAt: repo.updated_at ?? null,
+      stars: typeof repo.stargazers_count === "number" ? repo.stargazers_count : null,
+      language: repo.language,
     }));
   }
 

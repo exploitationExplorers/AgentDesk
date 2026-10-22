@@ -84,6 +84,13 @@ export const RemoteRepo = z.object({
 });
 export type RemoteRepo = z.infer<typeof RemoteRepo>;
 
+/** GitHub 上当前用户 Star 过的仓库 */
+export const StarredRepo = RemoteRepo.extend({
+  stars: z.number().int().nullable(),
+  language: z.string().nullable(),
+});
+export type StarredRepo = z.infer<typeof StarredRepo>;
+
 /** AI 提交推送预览：状态摘要 + 建议的 commit message */
 export const AiCommitPreview = z.object({
   projectId: z.string(),

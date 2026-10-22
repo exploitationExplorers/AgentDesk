@@ -7,3 +7,5 @@ export * from "./contracts/chat";
 export * from "./contracts/approval";
 export * from "./contracts/settings";
 export * from "./contracts/browser";
+export * from "./contracts/memory";
+export * from "./contracts/disk";

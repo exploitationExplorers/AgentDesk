@@ -15,6 +15,8 @@ import { GLOBAL_CHANNEL, type EventHub, type GlobalEvent } from "../events";
 import type { BrowserService } from "../services/browser";
 import type { DeployService } from "../services/deploy";
 import type { FeedService } from "../services/feed";
+import type { DiskService } from "../services/disk";
+import type { MemoryService } from "../services/memory";
 import type { ProjectService } from "../services/projects";
 import type { SettingsService } from "../services/settings";
 import type { WorkflowService } from "../services/workflows";
@@ -23,6 +25,8 @@ import { localDate } from "../util";
 export interface ToolDeps {
   projects: ProjectService;
   feed: FeedService;
+  memory: MemoryService;
+  disk: DiskService;
   deploy: DeployService;
   browser: BrowserService;
   settings: SettingsService;
@@ -54,7 +58,7 @@ function htmlToText(html: string): string {
 }
 
 export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
-  const { projects, feed, deploy, browser, settings, hub } = deps;
+  const { projects, feed, memory, disk, deploy, browser, settings, hub } = deps;
   const registry = new ToolRegistry();
 
   const projectRoot = (ref: string) => projects.find(ref).path;
@@ -599,6 +603,102 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
       execute: async ({ project, query, glob }) => ({
         hits: await fsSearch(projectRoot(project), query, glob),
       }),
+    }),
+  );
+
+  registry.register(
+    defineTool({
+      name: "memory.store",
+      description: "把用户明确要求记住的偏好、事实或决定写入长期记忆。用户说「记住」时调用。",
+      parameters: Type.Object({
+        text: Type.String({ description: "要记住的一句话" }),
+        kind: Type.Union([
+          Type.Literal("preference"),
+          Type.Literal("fact"),
+          Type.Literal("decision"),
+        ]),
+      }),
+      risk: "safe",
+      execute: async ({ text, kind }) => memory.store({ text, kind, source: "tool" }),
+    }),
+    defineTool({
+      name: "memory.recall",
+      description: "按问题检索长期记忆，返回相关的偏好、事实和决定",
+      parameters: Type.Object({
+        query: Type.String({ description: "用来召回的问题或关键词" }),
+        limit: Type.Optional(Type.Number({ description: "最多返回条数，默认 5" })),
+      }),
+      risk: "safe",
+      execute: async ({ query, limit }) => ({
+        memories: memory.recall(query, { limit: limit ?? 5 }),
+      }),
+    }),
+    defineTool({
+      name: "memory.forget",
+      description: "删除一条长期记忆。用户说「忘掉」时，先 memory.recall 找到 id，再调用本工具。",
+      parameters: Type.Object({
+        id: Type.String({ description: "记忆 id" }),
+      }),
+      risk: "confirm",
+      describeApproval: ({ id }) => ({
+        title: "删除长期记忆",
+        detail: memory.get(id)?.text ?? id,
+      }),
+      execute: async ({ id }) => memory.forget(id),
+    }),
+  );
+
+  registry.register(
+    defineTool({
+      name: "disk.status",
+      description:
+        "查看本机用户目录所在磁盘的总容量、剩余空间，以及是否低于清理提醒阈值。只读，不扫描文件。",
+      parameters: Type.Object({}),
+      risk: "safe",
+      execute: async () => disk.status(),
+    }),
+    defineTool({
+      name: "disk.scan",
+      description:
+        "扫描可重建缓存、开发工具缓存和下载/桌面/文稿里的大文件。不会删除任何文件。返回档位 primary（可清理）、optional（需用户决定）、keep（不清理）。",
+      parameters: Type.Object({}),
+      risk: "safe",
+      execute: async () => {
+        const scan = await disk.scan();
+        return {
+          id: scan.id,
+          summary: scan.summary,
+          freeBytes: scan.status.freeBytes,
+          low: scan.status.low,
+          primaryBytes: scan.primaryBytes,
+          optionalBytes: scan.optionalBytes,
+          items: scan.items.slice(0, 40).map((item) => ({
+            id: item.id,
+            title: item.title,
+            tier: item.tier,
+            bytes: item.bytes,
+            path: item.path,
+            reason: item.reason,
+            selectable: item.selectable,
+          })),
+        };
+      },
+    }),
+    defineTool({
+      name: "disk.clean",
+      description:
+        "清理本次扫描中用户同意的项目。只能传 disk.scan 返回的 id，keep 会被跳过。不要用 shell 删除缓存或用户文件。",
+      parameters: Type.Object({
+        ids: Type.Array(Type.String({ description: "disk.scan 返回的 id" }), {
+          description: "要清理的项目 id",
+        }),
+      }),
+      risk: "confirm",
+      describeApproval: ({ ids }) => ({
+        title: "清理磁盘",
+        detail: disk.describeClean(ids),
+      }),
+      execute: async ({ ids }) => disk.cleanLatest(ids),
     }),
   );
   return registry;

@@ -142,6 +142,7 @@ describe("chat", () => {
         stopReason: "toolUse",
       }),
       fauxAssistantMessage(fauxText("你还没有添加项目。")),
+      fauxAssistantMessage(fauxText('{"memories":[]}')),
     ]);
     const res = await call("/chat", {
       method: "POST",
@@ -163,5 +164,37 @@ describe("chat", () => {
     );
     expect(messages.map((m) => m.role)).toEqual(["user", "assistant"]);
     expect(messages[1]!.content).toBe("你还没有添加项目。");
+  });
+
+  it("抽取失败不影响本轮对话", async () => {
+    const originalResolve = container.providers.resolve.bind(container.providers);
+    container.providers.resolve = async () => [
+      { providerId: "faux", providerName: "faux", model: faux.getModel(), apiKey: "x" },
+    ];
+    const originalCapture = container.memory.captureFromTurn.bind(container.memory);
+    container.memory.captureFromTurn = async () => {
+      throw new Error("抽取失败");
+    };
+    faux.setResponses([fauxAssistantMessage(fauxText("好的"))]);
+    try {
+      const res = await call("/chat", {
+        method: "POST",
+        body: JSON.stringify({ message: "你好" }),
+      });
+      const body = await res.text();
+      const events = body
+        .split("\n")
+        .filter((line) => line.startsWith("data:"))
+        .map((line) => JSON.parse(line.slice(5)) as { type: string; conversationId?: string });
+      expect(events.at(-1)?.type).toBe("done");
+      const messages = await json<Array<{ role: string; content: string }>>(
+        `/conversations/${events[0]?.conversationId}/messages`,
+      );
+      expect(messages.map((message) => message.role)).toEqual(["user", "assistant"]);
+      expect(messages[1]?.content).toBe("好的");
+    } finally {
+      container.providers.resolve = originalResolve;
+      container.memory.captureFromTurn = originalCapture;
+    }
   });
 });

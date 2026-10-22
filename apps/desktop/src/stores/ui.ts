@@ -19,6 +19,9 @@ interface UiState {
   openBrowserPanel: (sessionId: string) => void;
   closeBrowserPanel: () => void;
   setBrowserPanelOpen: (open: boolean) => void;
+  /** 低空间弹窗点「帮我看看」后，磁盘页接着开始扫描 */
+  pendingDiskScan: boolean;
+  setPendingDiskScan: (pending: boolean) => void;
 }
 
 export const useUi = create<UiState>()(
@@ -38,6 +41,8 @@ export const useUi = create<UiState>()(
         set({ browserPanelOpen: true, activeBrowserSessionId: sessionId }),
       closeBrowserPanel: () => set({ browserPanelOpen: false }),
       setBrowserPanelOpen: (browserPanelOpen) => set({ browserPanelOpen }),
+      pendingDiskScan: false,
+      setPendingDiskScan: (pendingDiskScan) => set({ pendingDiskScan }),
     }),
     {
       name: "agentdesk-ui",
