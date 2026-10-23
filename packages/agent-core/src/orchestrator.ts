@@ -36,7 +36,21 @@ const KEYWORD_ROUTES: Array<{ agent: AgentName; words: string[] }> = [
     agent: "research",
     words: ["热榜", "trending", "资讯", "论文", "最新", "学习", "新闻", "讲解"],
   },
-  { agent: "code", words: ["cursor", "claude", "打开项目", "写代码", "终端"] },
+  {
+    agent: "code",
+    words: [
+      "cursor",
+      "claude",
+      "打开项目",
+      "写代码",
+      "终端",
+      "微信",
+      "群聊日报",
+      "微信日报",
+      "群日报",
+      "话痨",
+    ],
+  },
   {
     agent: "project",
     words: ["项目", "仓库", "分支", "提交", "pr", "mr", "issue", "gitee", "gitlab", "github"],

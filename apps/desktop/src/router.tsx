@@ -12,6 +12,7 @@ import { DiskPage } from "./features/disk/DiskPage";
 import { FeedPage } from "./features/feed/FeedPage";
 import { ProjectsPage } from "./features/projects/ProjectsPage";
 import { SettingsPage } from "./features/settings/SettingsPage";
+import { SkillsPage } from "./features/skills/SkillsPage";
 import { WorkflowEditorPage } from "./features/workflows/WorkflowEditorPage";
 import { WorkflowsPage } from "./features/workflows/WorkflowsPage";
 
@@ -53,6 +54,11 @@ const workflowEditorRoute = createRoute({
   path: "/workflows/$id",
   component: WorkflowEditorPage,
 });
+const skillsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/skills",
+  component: SkillsPage,
+});
 const settingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/settings",
@@ -68,6 +74,7 @@ const routeTree = rootRoute.addChildren([
   feedRoute,
   workflowsRoute,
   workflowEditorRoute,
+  skillsRoute,
   settingsRoute,
 ]);
 

@@ -9,7 +9,7 @@ export const AGENT_META: Record<
   project: { label: "项目", icon: FolderGit2, description: "仓库状态、PR/MR、Claude 会话" },
   deploy: { label: "部署", icon: Rocket, description: "宝塔一键部署与排障" },
   research: { label: "研究", icon: Telescope, description: "热榜与前沿技术讲解" },
-  code: { label: "编码", icon: Code2, description: "浏览器 / 改文件 / Cursor / 终端" },
+  code: { label: "编码", icon: Code2, description: "浏览器 / 改文件 / Cursor / 终端 / 微信日报" },
 };
 
 export const TOOL_LABELS: Record<string, string> = {

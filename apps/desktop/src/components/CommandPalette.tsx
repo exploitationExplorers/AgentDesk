@@ -10,6 +10,7 @@ import {
   Play,
   Rocket,
   Settings,
+  Sparkles,
   Terminal,
   Workflow,
 } from "lucide-react";
@@ -113,6 +114,12 @@ export function CommandPalette() {
             onSelect={() => go(() => navigate({ to: "/workflows" }))}
           >
             工作流
+          </Item>
+          <Item
+            icon={<Sparkles className="h-4 w-4" />}
+            onSelect={() => go(() => navigate({ to: "/skills" }))}
+          >
+            技能
           </Item>
           <Item
             icon={<HardDrive className="h-4 w-4" />}

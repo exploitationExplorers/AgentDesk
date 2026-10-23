@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ meta.member_name }}的群个人日报 - {{ meta.date }}</title>
+    <style>
+        /* --- 核心变量：微信风格（与群日报模板一致） --- */
+        :root {
+            --wx-green: #07C160;
+            --wx-blue: #576B95;
+            --wx-orange: #FA9D3B;
+            --wx-yellow: #FFC300;
+            --wx-red: #FA5151;
+            --wx-bubble-green: #95EC69;
+            --wx-bg: #EDEDED;
+            --wx-card-bg: #FFFFFF;
+            --wx-text-main: #111111;
+            --wx-text-body: #333333;
+            --wx-text-meta: #B2B2B2;
+            --wx-link: #576B95;
+            --wx-border: #E5E5E5;
+            --tag-bg-blue: rgba(87, 107, 149, 0.1);
+            --tag-bg-green: rgba(7, 193, 96, 0.1);
+            --tag-bg-orange: rgba(250, 157, 59, 0.1);
+            --container-width: 800px;
+            --card-radius: 10px;
+            --spacing-section: 30px;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--wx-bg);
+            color: var(--wx-text-main);
+            line-height: 1.6;
+            font-size: 15px;
+        }
+
+        .container { max-width: var(--container-width); margin: 0 auto; padding: 40px 20px; }
+
+        .crumb { text-align: center; color: #888; font-size: 13px; margin-bottom: 6px; }
+        .date { text-align: center; color: #888; font-size: 14px; margin-bottom: 20px; }
+        h1 { text-align: center; font-size: 26px; font-weight: 700; margin-bottom: 20px; }
+
+        .avatar {
+            position: relative; display: inline-flex; align-items: center; justify-content: center;
+            flex-shrink: 0; overflow: hidden; background-color: #DDD; color: #FFF;
+            font-weight: bold; text-transform: uppercase; border-radius: 50%;
+        }
+        .avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .avatar-fallback { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+
+        /* --- 成员头卡 --- */
+        .member-hero {
+            background: linear-gradient(135deg, #0BC15C, #07A24F);
+            border-radius: var(--card-radius); padding: 26px 20px; text-align: center;
+            color: #fff; margin-bottom: 15px; box-shadow: 0 4px 14px rgba(7, 193, 96, 0.25);
+        }
+        .member-hero .avatar {
+            width: 84px; height: 84px; border: 3px solid rgba(255,255,255,0.6);
+            margin-bottom: 12px; font-size: 34px;
+        }
+        .member-name { font-size: 22px; font-weight: 700; }
+        .member-wxid { font-size: 11px; opacity: 0.7; margin-top: 2px; }
+        .member-headline {
+            display: inline-block; margin-top: 10px; background: rgba(255,255,255,0.18);
+            padding: 6px 16px; border-radius: 999px; font-size: 14px; font-weight: 600;
+        }
+
+        /* --- 数据 dashboard --- */
+        .meta-dashboard {
+            display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+            background: var(--wx-card-bg); padding: 15px; border-radius: var(--card-radius);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 15px;
+        }
+        .meta-item { display: flex; flex-direction: column; align-items: center; }
+        .meta-val {
+            font-size: 17px; font-weight: 700; color: var(--wx-green);
+            min-height: 26px; display: flex; align-items: center;
+        }
+        .meta-label { font-size: 11px; color: #888; margin-top: 2px; }
+
+        section { margin-bottom: var(--spacing-section); }
+
+        .section-title {
+            font-size: 18px; font-weight: 600; margin-bottom: 15px;
+            display: flex; align-items: center;
+        }
+        .section-title::before {
+            content: ''; display: inline-block; width: 4px; height: 18px;
+            background: var(--wx-green); margin-right: 10px; border-radius: 2px;
+        }
+
+        .card {
+            background: var(--wx-card-bg); border-radius: var(--card-radius);
+            padding: 20px; margin-bottom: 15px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        }
+
+        /* --- 时段柱状图 --- */
+        .hour-chart { display: flex; align-items: flex-end; gap: 3px; height: 140px; padding-top: 10px; }
+        .hour-col { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; height: 100%; }
+        .hour-bar {
+            width: 100%; min-height: 2px; background: var(--wx-green);
+            border-radius: 3px 3px 0 0; opacity: 0.85;
+        }
+        .hour-bar.is-peak { background: var(--wx-orange); opacity: 1; }
+        .hour-labels { display: flex; gap: 3px; margin-top: 6px; }
+        .hour-labels span { flex: 1; text-align: center; font-size: 9px; color: #B2B2B2; }
+        .chart-note { margin-top: 10px; font-size: 12px; color: #888; display: flex; justify-content: space-between; }
+        .chart-note b { color: var(--wx-orange); }
+
+        /* --- 类型分布 --- */
+        .type-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+        .type-row:last-child { margin-bottom: 0; }
+        .type-name { width: 76px; font-size: 13px; color: var(--wx-text-body); text-align: right; flex-shrink: 0; }
+        .type-bar { flex: 1; height: 14px; background: #F0F0F0; border-radius: 999px; overflow: hidden; }
+        .type-bar-fill { height: 100%; border-radius: 999px; }
+        .type-count { width: 74px; font-size: 12px; color: #888; flex-shrink: 0; }
+
+        /* --- 高频词 --- */
+        .tags-wrapper { display: flex; flex-wrap: wrap; gap: 8px; }
+        .kw-tag {
+            background: var(--tag-bg-green); color: var(--wx-green);
+            font-size: 13px; padding: 4px 12px; border-radius: 999px;
+        }
+        .kw-tag i { font-style: normal; opacity: 0.6; font-size: 11px; }
+
+        /* --- AI 画像 --- */
+        .profile-card { border-left: 4px solid var(--wx-green); }
+        .style-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+        .style-tags span {
+            background: var(--tag-bg-blue); color: var(--wx-link);
+            font-size: 12px; padding: 3px 10px; border-radius: 999px;
+        }
+        .profile-text { font-size: 14px; color: var(--wx-text-body); }
+
+        /* --- 发言精华（微信气泡） --- */
+        .chat-card { padding: 16px 20px; }
+        .chat-time { text-align: center; font-size: 11px; color: #B2B2B2; margin-bottom: 10px; }
+        .wx-msg-row { display: flex; gap: 10px; margin-bottom: 12px; }
+        .wx-avatar { width: 38px; height: 38px; font-size: 16px; }
+        .wx-msg-content { flex: 1; }
+        .wx-name { font-size: 11px; color: #B2B2B2; margin-bottom: 4px; }
+        .wx-bubble {
+            display: inline-block; background: var(--wx-bubble-green);
+            padding: 9px 13px; border-radius: 0 8px 8px 8px;
+            font-size: 14px; color: #111; max-width: 92%; word-break: break-word;
+        }
+        .chat-comment {
+            margin-top: 10px; background: var(--tag-bg-orange);
+            border-left: 3px solid var(--wx-orange); padding: 8px 12px;
+            border-radius: 6px; font-size: 13px; color: #8a5a1e;
+        }
+
+        /* --- 参与话题 --- */
+        .topic-row {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 10px 0; border-bottom: 1px solid var(--wx-border);
+        }
+        .topic-row:last-child { border-bottom: none; }
+        .topic-name { font-size: 14px; font-weight: 500; }
+        .role-badge {
+            font-size: 11px; padding: 2px 10px; border-radius: 999px;
+            background: var(--tag-bg-green); color: var(--wx-green);
+        }
+        .role-badge.r-lead { background: rgba(250, 81, 81, 0.1); color: var(--wx-red); }
+
+        /* --- 互动瞬间 --- */
+        .moment-row { display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px dashed var(--wx-border); }
+        .moment-row:last-child { border-bottom: none; }
+        .moment-time { font-size: 12px; color: #B2B2B2; width: 44px; flex-shrink: 0; padding-top: 2px; }
+        .moment-body { flex: 1; }
+        .moment-who { font-size: 13px; font-weight: 600; color: var(--wx-link); }
+        .moment-what { font-size: 13px; color: var(--wx-text-body); margin-top: 2px; }
+        .interact-summary { margin-top: 12px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+        .interact-box { background: #F7F8FA; border-radius: 8px; text-align: center; padding: 10px 4px; }
+        .interact-val { font-size: 16px; font-weight: 700; color: var(--wx-blue); }
+        .interact-label { font-size: 10px; color: #888; margin-top: 2px; }
+
+        /* --- 金句 --- */
+        .quote-card {
+            background: linear-gradient(135deg, #FFF8E1, #FFFFFF);
+            border: 1px solid #FFE0A3; border-radius: var(--card-radius);
+            padding: 26px 24px; text-align: center;
+        }
+        .quote-mark { font-size: 34px; color: var(--wx-yellow); line-height: 1; }
+        .quote-text { font-size: 16px; font-weight: 600; color: var(--wx-text-main); margin: 8px 0 4px; }
+
+        /* --- 结尾 --- */
+        .closing-card {
+            background: var(--wx-card-bg); border-radius: var(--card-radius);
+            padding: 18px 20px; font-size: 14px; color: var(--wx-text-body);
+            border-left: 4px solid var(--wx-orange);
+        }
+
+        footer { text-align: center; color: #B2B2B2; font-size: 11px; margin-top: 30px; line-height: 1.8; }
+    </style>
+</head>
+
+<body>
+    {% macro render_avatar(avatar_url, name, class_name, fallback_bg='#DDD') -%}
+    {% set fallback_char = name[0] if name else '?' %}
+    <div class="avatar {{ class_name }}" style="background-color: {{ fallback_bg }};">
+        {% if avatar_url %}
+        <img src="{{ avatar_url }}" alt="{{ name }}头像" referrerpolicy="no-referrer" loading="eager"
+            onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+        <span class="avatar-fallback" style="display:none;">{{ fallback_char }}</span>
+        {% else %}
+        <span class="avatar-fallback">{{ fallback_char }}</span>
+        {% endif %}
+    </div>
+    {%- endmacro %}
+
+    <div class="container">
+
+        <div class="crumb">{{ meta.chatroom_name }} · 成员个人日报</div>
+        <div class="date">{{ meta.date }}</div>
+        <h1>{{ meta.member_name }} 的一天</h1>
+
+        <!-- 成员头卡 -->
+        <div class="member-hero">
+            {{ render_avatar(meta.avatar, meta.member_name, '', 'rgba(255,255,255,0.25)') }}
+            <div class="member-name">{{ meta.member_name }}</div>
+            <div class="member-wxid">{{ meta.member_wxid }}</div>
+            {% if ai.get('headline') %}
+            <div class="member-headline">{{ ai['headline'] }}</div>
+            {% endif %}
+        </div>
+
+        <!-- 数据 dashboard -->
+        <div class="meta-dashboard">
+            <div class="meta-item">
+                <span class="meta-val">{{ meta.total_count }}</span>
+                <span class="meta-label">今日发言</span>
+            </div>
+            <div class="meta-item">
+                <span class="meta-val">{{ meta.total_chars }}</span>
+                <span class="meta-label">累计字数</span>
+            </div>
+            <div class="meta-item">
+                <span class="meta-val">{% if meta.group_rank %}No.{{ meta.group_rank }}{% else %}-{% endif %}</span>
+                <span class="meta-label">全群排名 / {{ meta.group_speaker_count }} 人</span>
+            </div>
+            <div class="meta-item">
+                <span class="meta-val" style="font-size: 13px; white-space: nowrap;">{{ meta.first_msg_time }} ~ {{ meta.last_msg_time }}</span>
+                <span class="meta-label">活跃时段</span>
+            </div>
+        </div>
+
+        <!-- 发言时段分布 -->
+        <section>
+            <div class="section-title">发言时段分布</div>
+            <div class="card">
+                <div class="hour-chart">
+                    {% for h in hourly_activity %}
+                    <div class="hour-col">
+                        <div class="hour-bar {% if peak_hour is not none and h.hour == peak_hour %}is-peak{% endif %}"
+                            style="height: {% if max_hour_count > 0 %}{{ (h.count / max_hour_count * 100)|round|int }}{% else %}0{% endif %}%;"
+                            title="{{ h.hour }} 时 {{ h.count }} 条"></div>
+                    </div>
+                    {% endfor %}
+                </div>
+                <div class="hour-labels">
+                    {% for h in hourly_activity %}<span>{{ h.hour }}</span>{% endfor %}
+                </div>
+                <div class="chart-note">
+                    <span>最活跃时段：<b>{% if peak_hour is not none %}{{ '%02d' % peak_hour }}:00 前后{% else %}-{% endif %}</b></span>
+                    <span>深夜发言（23:00~06:00）：<b>{{ meta.night_messages }}</b> 条</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- 消息类型分布 -->
+        {% if type_distribution %}
+        <section>
+            <div class="section-title">消息类型分布</div>
+            <div class="card">
+                {% for t in type_distribution %}
+                <div class="type-row">
+                    <span class="type-name">{{ t.name }}</span>
+                    <div class="type-bar">
+                        <div class="type-bar-fill" style="width: {{ t.percent }}%; background: {{ t.color }};"></div>
+                    </div>
+                    <span class="type-count">{{ t.count }} 条 ({{ t.percent }}%)</span>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
+
+        <!-- 高频词 -->
+        {% if keywords %}
+        <section>
+            <div class="section-title">今日高频词</div>
+            <div class="card">
+                <div class="tags-wrapper">
+                    {% for k in keywords %}
+                    <span class="kw-tag">{{ k.word }} <i>×{{ k.count }}</i></span>
+                    {% endfor %}
+                </div>
+            </div>
+        </section>
+        {% endif %}
+        <!-- AI 今日画像 -->
+        {% if ai.get('profile') %}
+        <section>
+            <div class="section-title">AI 今日画像</div>
+            <div class="card profile-card">
+                {% if ai.get('style_tags') %}
+                <div class="style-tags">
+                    {% for t in ai['style_tags'] %}<span>{{ t }}</span>{% endfor %}
+                </div>
+                {% endif %}
+                <div class="profile-text">{{ ai['profile'] }}</div>
+            </div>
+        </section>
+        {% endif %}
+
+        <!-- 今日发言精华 -->
+        {% if ai.get('highlights') %}
+        <section>
+            <div class="section-title">今日发言精华</div>
+            {% for h in ai['highlights'] %}
+            <div class="card chat-card">
+                <div class="chat-time">{{ h.time }}</div>
+                <div class="wx-msg-row">
+                    {{ render_avatar(meta.avatar, meta.member_name, 'wx-avatar', '#07C160') }}
+                    <div class="wx-msg-content">
+                        <div class="wx-name">{{ meta.member_name }}</div>
+                        <div class="wx-bubble">{{ h.content }}</div>
+                    </div>
+                </div>
+                {% if h.comment %}
+                <div class="chat-comment">AI 点评：{{ h.comment }}</div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </section>
+        {% endif %}
+
+        <!-- 参与话题 -->
+        {% if ai.get('topics') %}
+        <section>
+            <div class="section-title">参与话题</div>
+            <div class="card">
+                {% for t in ai['topics'] %}
+                <div class="topic-row">
+                    <span class="topic-name">{{ t.name }}</span>
+                    <span class="role-badge {% if t.role in ['发起', '带节奏', '主力输出'] %}r-lead{% endif %}">{{ t.role }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
+
+        <!-- 互动瞬间 -->
+        {% if interactions.reply_received or interactions.mention_received %}
+        <section>
+            <div class="section-title">互动瞬间</div>
+            <div class="card">
+                {% for it in interactions.reply_received[:4] %}
+                <div class="moment-row">
+                    <span class="moment-time">{{ it.time }}</span>
+                    <div class="moment-body">
+                        <span class="moment-who">{{ it.who }} 回复了你</span>
+                        <div class="moment-what">{{ it.content }}</div>
+                    </div>
+                </div>
+                {% endfor %}
+                {% for it in interactions.mention_received[:4] %}
+                <div class="moment-row">
+                    <span class="moment-time">{{ it.time }}</span>
+                    <div class="moment-body">
+                        <span class="moment-who">{{ it.who }} @了你</span>
+                        <div class="moment-what">{{ it.content }}</div>
+                    </div>
+                </div>
+                {% endfor %}
+                <div class="interact-summary">
+                    <div class="interact-box">
+                        <div class="interact-val">{{ interactions.reply_received|length }}</div>
+                        <div class="interact-label">被回复</div>
+                    </div>
+                    <div class="interact-box">
+                        <div class="interact-val">{{ interactions.mention_received|length }}</div>
+                        <div class="interact-label">被 @</div>
+                    </div>
+                    <div class="interact-box">
+                        <div class="interact-val">{{ interactions.reply_sent_count }}</div>
+                        <div class="interact-label">回复他人</div>
+                    </div>
+                    <div class="interact-box">
+                        <div class="interact-val">{{ interactions.mention_sent_count }}</div>
+                        <div class="interact-label">@ 他人</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+        {% endif %}
+
+        <!-- 今日金句 -->
+        {% if ai.get('quote') %}
+        <section>
+            <div class="section-title">今日金句</div>
+            <div class="quote-card">
+                <div class="quote-mark">"</div>
+                <div class="quote-text">{{ ai['quote'] }}</div>
+            </div>
+        </section>
+        {% endif %}
+
+        <!-- 结尾 -->
+        {% if ai.get('closing') %}
+        <section>
+            <div class="card closing-card">{{ ai['closing'] }}</div>
+        </section>
+        {% endif %}
+
+        <footer>
+            基于本地解密数据库生成 · 仅统计 {{ meta.member_name }} 在 {{ meta.date }} 的发言<br>
+            全群当日消息 {{ meta.group_total_messages }} 条 · 生成于 {{ generated_at }}
+        </footer>
+
+    </div>
+</body>
+
+</html>

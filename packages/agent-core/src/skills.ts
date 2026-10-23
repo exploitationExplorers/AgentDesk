@@ -119,6 +119,7 @@ export class SkillRegistry {
         return {
           name: skill.name,
           version: skill.version,
+          dir: skill.dir,
           allowedTools: skill.allowedTools,
           instructions: skill.instructions,
         };

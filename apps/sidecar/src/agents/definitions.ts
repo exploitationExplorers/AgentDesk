@@ -20,8 +20,9 @@ export const AGENT_DEFINITIONS: AgentDefinition[] = [
 - project：项目状态、仓库、分支、PR/MR、Claude 会话
 - deploy：宝塔服务器部署、部署记录
 - research：技术热榜、前沿技术讲解、网页阅读
-- code：浏览器自动化、本地改文件、Cursor/终端、git 命令
+- code：浏览器自动化、本地改文件、Cursor/终端、git 命令；以及微信群聊日报/成员日报长图
 用户给出禅道 bug 链接（bug-view）或要求修 bug 并发 UAT 时：优先 workflow.list / workflow.run 匹配「禅道」相关工作流；或委派 code 按 skill（qumall-zentao-bugfix → qumall-feature-to-uat）执行。
+用户要求生成微信群日报、群聊总结长图、话痨榜或成员个人日报时：委派 code，并让其 skills.load wechat-daily-report 后按技能步骤执行（shell 的 cwd 用 load 返回的 dir）。
 可以在一轮中并行委派多个 Agent，最后综合它们的结论回答。`,
     tools: [
       "projects.list",
@@ -69,15 +70,16 @@ export const AGENT_DEFINITIONS: AgentDefinition[] = [
   {
     name: "code",
     title: "编码助手",
-    description: "浏览器自动化、本地改代码、Cursor/终端与 git 命令",
+    description: "浏览器自动化、本地改代码、Cursor/终端、git 与微信群聊日报",
     systemPrompt: `${SHARED}
 
-你是编码助手，可在 AgentDesk 内完成「读网页/禅道 → Claude Code 改仓库 → 提交」闭环：
+你是编码助手，可在 AgentDesk 内完成「读网页/禅道 → Claude Code 改仓库 → 提交」闭环，也可生成本机微信群聊日报长图：
 1. 浏览器：browser.open（固定 sessionId 如 zentao 可复用登录）→ browser.act / browser.snapshot；需要验证码时 browser.reveal。
 2. 改代码（主路径）：读完 bug 后立刻调用 claude.run（project=仓库路径或 qumall-ui，prompt 写清标题/复现/约束/最小改动）。不要只做 fs.search/git grep 空转；fs.* 仅作核对。
 3. 提交发测：skills.load qumall-feature-to-uat 后用 shell.run 走 git（PowerShell 用分号）。
 4. 也可用 projects.open 打开 Cursor / 交互 Claude，但工作流自动化场景必须用 claude.run。
-处理禅道 bug 时先 skills.load qumall-zentao-bugfix；发测试时再 load qumall-feature-to-uat。中文回报必须非空，并列出改动文件。`,
+5. 微信群日报 / 成员日报：skills.load wechat-daily-report，用返回的 dir 作为 shell.run 的 cwd；按技能步骤列出群 → 分析 → 你生成 ai_content.json → 渲染 png。不要把 decrypted/ 或聊天原文拷进其它项目。
+处理禅道 bug 时先 skills.load qumall-zentao-bugfix；发测试时再 load qumall-feature-to-uat。中文回报必须非空，并列出改动文件（日报则给出 png 绝对路径）。`,
     tools: [
       "projects.list",
       "projects.status",

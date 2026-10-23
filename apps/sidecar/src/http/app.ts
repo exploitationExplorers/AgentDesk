@@ -12,6 +12,7 @@ import { memoryRoutes } from "./routes/memory";
 import { projectRoutes } from "./routes/projects";
 import { providerRoutes } from "./routes/providers";
 import { systemRoutes } from "./routes/system";
+import { wechatRoutes } from "./routes/wechat";
 import { workflowRoutes } from "./routes/workflows";
 
 export function createApp(container: Container): Hono {
@@ -57,6 +58,7 @@ export function createApp(container: Container): Hono {
   app.route("/api", browserRoutes(container));
   app.route("/api", chatRoutes(container));
   app.route("/api", workflowRoutes(container));
+  app.route("/api", wechatRoutes(container));
 
   app.notFound((c) =>
     c.json(new AppError(ErrorCode.NotFound, `接口不存在：${c.req.path}`).toBody(), 404),

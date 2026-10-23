@@ -1,0 +1,53 @@
+# ===== 本机隐私数据（禁止提交，任何人可自行解密生成）=====
+# 解密后的微信数据库（含全部聊天记录、联系人，极度敏感）
+decrypted/
+# 数据库解密密钥（可解密整个微信数据库，极度敏感）
+**/all_keys.json
+# 头像本地缓存（含成员头像/昵称）
+avatars/
+avatars_map.json
+
+# ===== 运行时产物（每次生成都会重新产生）=====
+stats.json
+ai_content*.json
+simplified_chat*.txt
+report.png
+report.html
+report_temp.html
+*.png
+
+# ===== Python 缓存 =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# ===== 环境 =====
+.env
+.venv
+env/
+venv/
+
+# ===== 本地分析产物（含真实成员信息，禁止提交）=====
+_speakers.txt
+# 运行产物（勿忽略 assets/*_template.html）
+/member_report.html
+/member_report.png
+/member_report_*.html
+/member_report_*.png
+member_stats.json
+member_ai_content.json
+member_chat.txt
+reports/
+chat_*.txt
+
+# ===== 对外分发的打包产物 =====
+share/
+
+# ===== IDE =====
+.idea/
+.vscode/
