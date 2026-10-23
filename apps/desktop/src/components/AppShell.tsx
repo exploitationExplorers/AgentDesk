@@ -12,6 +12,7 @@ import {
   Search,
   Settings,
   ShieldAlert,
+  Sparkles,
   Sun,
   Workflow,
   type LucideIcon,
@@ -35,6 +36,7 @@ const NAV: Array<{ to: string; label: string; icon: LucideIcon }> = [
   { to: "/deploy", label: "部署", icon: Rocket },
   { to: "/feed", label: "热榜", icon: Newspaper },
   { to: "/workflows", label: "工作流", icon: Workflow },
+  { to: "/skills", label: "技能", icon: Sparkles },
   { to: "/disk", label: "磁盘", icon: HardDrive },
 ];
 

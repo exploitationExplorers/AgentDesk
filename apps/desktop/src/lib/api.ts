@@ -46,6 +46,35 @@ export interface SkillInfo {
   dir: string;
 }
 
+export interface WechatGroup {
+  username: string;
+  displayName: string;
+  nickName: string;
+  remark: string;
+  messageCount: number;
+}
+
+export interface WechatSkillStatus {
+  skillDir: string;
+  decryptedReady: boolean;
+  decryptedDir: string;
+  pythonOk: boolean;
+  python?: string;
+  message: string;
+}
+
+export interface WechatReportJob {
+  id: string;
+  chatroom: string;
+  date: string;
+  status: "queued" | "analyzing" | "writing" | "rendering" | "succeeded" | "failed";
+  logs: string[];
+  error?: string;
+  reportFile?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ToolInfo {
   name: string;
   description: string;
@@ -74,6 +103,13 @@ export const api = {
   resolveApproval: (id: string, approved: boolean) =>
     http.post<Approval>(`/approvals/${id}`, { approved }),
   skills: () => http.get<SkillInfo[]>("/skills"),
+  wechatStatus: () => http.get<WechatSkillStatus>("/skills/wechat/status"),
+  wechatDecrypt: () => http.post<{ ok: true; message: string }>("/skills/wechat/decrypt"),
+  wechatGroups: () => http.get<WechatGroup[]>("/skills/wechat/groups"),
+  wechatReports: () => http.get<WechatReportJob[]>("/skills/wechat/reports"),
+  wechatReport: (id: string) => http.get<WechatReportJob>(`/skills/wechat/reports/${id}`),
+  startWechatReport: (body: { chatroom: string; date?: string }) =>
+    http.post<WechatReportJob>("/skills/wechat/reports", body),
   tools: () => http.get<ToolInfo[]>("/tools"),
   memories: () => http.get<Memory[]>("/memories"),
   deleteMemory: (id: string) =>

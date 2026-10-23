@@ -98,4 +98,4 @@ pnpm --filter @agentdesk/desktop app:bundle
 
 ## 扩展 Skills
 
-在 `%APPDATA%\AgentDesk\skills\<name>\SKILL.md` 放置技能文件（frontmatter 包含 `name`、`description`、`agents`、`triggers`），重启后 Agent 会按需加载。内置示例见 `apps/sidecar/skills/`。
+在 `%APPDATA%\AgentDesk\skills\<name>\SKILL.md` 放置技能文件（frontmatter 包含 `name`、`description`、`agents`、`triggers`），重启后 Agent 会按需加载。内置示例见 `apps/sidecar/skills/`（含 `wechat-daily-report` 微信群聊日报）。

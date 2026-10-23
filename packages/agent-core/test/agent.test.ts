@@ -140,6 +140,7 @@ describe("routing & skills", () => {
   it("关键词路由", () => {
     expect(routeByKeywords("帮我部署 IM 项目")).toBe("deploy");
     expect(routeByKeywords("今天 GitHub 热榜有什么")).toBe("research");
+    expect(routeByKeywords("生成微信群聊日报")).toBe("code");
     expect(routeByKeywords("你好")).toBeNull();
   });
 

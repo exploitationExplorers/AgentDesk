@@ -18,6 +18,7 @@ import { ProjectService } from "./services/projects";
 import { ProviderService } from "./services/providers";
 import { Scheduler } from "./services/scheduler";
 import { SettingsService } from "./services/settings";
+import { WechatReportService } from "./services/wechat-report";
 import { WorkflowService } from "./services/workflows";
 
 export interface Container {
@@ -35,6 +36,7 @@ export interface Container {
   deploy: DeployService;
   browser: BrowserService;
   skills: SkillRegistry;
+  wechat: WechatReportService;
   orchestrator: Orchestrator;
   chat: ChatService;
   workflows: WorkflowService;
@@ -76,6 +78,7 @@ export async function createContainer(
 
   const skills = new SkillRegistry();
   await skills.loadFrom(config.skillDirs);
+  const wechat = new WechatReportService(skills, providers, config.dataDir);
 
   // 工具注册表与工作流服务互相引用：工作流可调用工具，工具也可触发工作流
   const lazy: { workflows?: WorkflowService } = {};
@@ -128,6 +131,7 @@ export async function createContainer(
     deploy,
     browser,
     skills,
+    wechat,
     orchestrator,
     chat,
     workflows,
