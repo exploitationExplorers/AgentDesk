@@ -10,6 +10,7 @@ import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
+import { copyPublicSkills } from "./public-skills";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const dist = join(root, "dist");
@@ -84,7 +85,7 @@ await build({
 const resolved = new Map<string, string>();
 for (const [name, parent] of RUNTIME_PACKAGES)
   resolved.set(name, copyPackage(name, parent ? resolved.get(parent) : undefined));
-cpSync(join(root, "skills"), join(dist, "skills"), { recursive: true });
+copyPublicSkills(join(root, "skills"), join(dist, "skills"));
 cpSync(process.execPath, join(dist, process.platform === "win32" ? "node.exe" : "node"));
 
 const size = (p: string) => `${(statSync(p).size / 1024 / 1024).toFixed(1)} MB`;

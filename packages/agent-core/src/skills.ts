@@ -47,7 +47,8 @@ export function parseSkill(source: string, dir: string): Skill {
 export class SkillRegistry {
   private skills = new Map<string, Skill>();
 
-  async loadFrom(roots: string[]): Promise<void> {
+  async loadFrom(roots: string[], options: { exclude?: string[] } = {}): Promise<void> {
+    const excluded = new Set(options.exclude);
     for (const root of roots) {
       let entries: string[] = [];
       try {
@@ -56,11 +57,12 @@ export class SkillRegistry {
         continue;
       }
       for (const entry of entries) {
+        if (excluded.has(entry)) continue;
         const dir = join(root, entry);
         try {
           const source = await readFile(join(dir, "SKILL.md"), "utf8");
           const skill = parseSkill(source, dir);
-          this.skills.set(skill.name, skill);
+          if (!excluded.has(skill.name)) this.skills.set(skill.name, skill);
         } catch {
           // 非技能目录或格式错误，跳过
         }

@@ -21,6 +21,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "turbo run test",
+    "security:check": "node scripts/check-public-files.mjs",
+    "security:test": "node --test scripts/check-public-files.test.mjs",
     "e2e": "pnpm --filter @agentdesk/desktop e2e",
     "changeset": "changeset",
     "prepare": "husky"

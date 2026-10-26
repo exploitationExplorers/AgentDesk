@@ -49,23 +49,23 @@ class FlowErrorBoundary extends Component<
   { children: ReactNode; resetKey: string },
   { error: Error | null; generation: number }
 > {
-  state = { error: null as Error | null, generation: 0 };
+  override state = { error: null as Error | null, generation: 0 };
 
   static getDerivedStateFromError(error: Error) {
     return { error };
   }
 
-  componentDidCatch(error: Error, info: ErrorInfo) {
+  override componentDidCatch(error: Error, info: ErrorInfo) {
     console.warn("[workflow-flow]", error.message, info.componentStack);
   }
 
-  componentDidUpdate(prev: { resetKey: string }) {
+  override componentDidUpdate(prev: { resetKey: string }) {
     if (prev.resetKey !== this.props.resetKey && this.state.error) {
       this.setState({ error: null, generation: this.state.generation + 1 });
     }
   }
 
-  render() {
+  override render() {
     if (this.state.error) {
       return (
         <div className="grid h-full place-items-center gap-3 p-6 text-center">

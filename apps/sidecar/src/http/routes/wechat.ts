@@ -5,6 +5,7 @@ import type { Container } from "../../container";
 
 export function wechatRoutes({ wechat }: Container) {
   const app = new Hono();
+  if (!wechat) return app;
 
   app.get("/skills/wechat/status", async (c) => c.json(await wechat.status()));
   app.post("/skills/wechat/decrypt", async (c) => c.json(await wechat.decrypt()));

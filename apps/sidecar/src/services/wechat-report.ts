@@ -59,7 +59,7 @@ export class WechatReportService {
     if (!skill)
       throw new AppError(
         ErrorCode.NotFound,
-        "未找到技能 wechat-daily-report，请确认内置 skills 已加载",
+        "未找到私有技能 wechat-daily-report，请将技能安装到数据目录的 skills 文件夹或 AGENTDESK_SKILLS_DIR 后重启",
       );
     return skill.dir;
   }

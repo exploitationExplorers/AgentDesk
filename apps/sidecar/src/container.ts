@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { Orchestrator, SkillRegistry } from "@agentdesk/agent-core";
 import { BrowserSessionManager } from "@agentdesk/integrations";
-import { AGENT_DEFINITIONS } from "./agents/definitions";
+import { createAgentDefinitions } from "./agents/definitions";
 import { buildToolRegistry } from "./agents/tools";
 import type { SidecarConfig } from "./config";
 import { openDatabase, type DbHandle } from "./db/client";
@@ -36,7 +36,7 @@ export interface Container {
   deploy: DeployService;
   browser: BrowserService;
   skills: SkillRegistry;
-  wechat: WechatReportService;
+  wechat: WechatReportService | null;
   orchestrator: Orchestrator;
   chat: ChatService;
   workflows: WorkflowService;
@@ -77,8 +77,12 @@ export async function createContainer(
   const browser = new BrowserService(browserManager, hub, config.dataDir);
 
   const skills = new SkillRegistry();
-  await skills.loadFrom(config.skillDirs);
-  const wechat = new WechatReportService(skills, providers, config.dataDir);
+  await skills.loadFrom(config.skillDirs, {
+    exclude: config.wechatReportEnabled ? [] : ["wechat-daily-report"],
+  });
+  const wechat = config.wechatReportEnabled
+    ? new WechatReportService(skills, providers, config.dataDir)
+    : null;
 
   // 工具注册表与工作流服务互相引用：工作流可调用工具，工具也可触发工作流
   const lazy: { workflows?: WorkflowService } = {};
@@ -97,7 +101,7 @@ export async function createContainer(
     },
   });
   const orchestrator = new Orchestrator({
-    agents: AGENT_DEFINITIONS,
+    agents: createAgentDefinitions(config.wechatReportEnabled),
     registry,
     resolver: providers,
     skills,

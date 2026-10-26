@@ -1,5 +1,5 @@
 import { serve } from "@hono/node-server";
-import { loadConfig } from "./config";
+import { loadConfig, loadEnvFiles } from "./config";
 import { createContainer } from "./container";
 import { createApp } from "./http/app";
 import { applyProxy, resolveProxy } from "./proxy";
@@ -9,6 +9,7 @@ process.on("unhandledRejection", (reason) => {
 });
 
 async function main() {
+  loadEnvFiles();
   const config = loadConfig();
   const container = await createContainer(config);
   const proxy = resolveProxy(container.settings.get().proxy);

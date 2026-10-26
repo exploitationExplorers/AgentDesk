@@ -90,7 +90,7 @@ pnpm --filter @agentdesk/desktop app:bundle
 
 ## 首次使用
 
-1. **设置 → 模型**：从 CC Switch 或 `.env`（如 `D:\AI agent\langsmith\.env`）导入，点“测试”确认可用；中转站可点“获取可用模型”选择分组支持的模型。
+1. **设置 → 模型**：从自己的 CC Switch 或 `.env` 导入，点“测试”确认可用；中转站可点“获取可用模型”选择分组支持的模型。
 2. **设置 → 通用**：添加项目扫描目录（如 `D:\agent`），回到项目页点击“扫描项目”。
 3. **设置 → Git 平台**：填 GitHub / Gitee / GitLab Token（GitLab 填公司域名），即可看到 PR/MR。
 4. **部署**：添加宝塔服务器（面板地址包含安全入口），用 IM 模板生成配方，点“部署”。首次遇到验证码时会弹出浏览器窗口让你手动登录，之后复用登录态。
@@ -98,4 +98,24 @@ pnpm --filter @agentdesk/desktop app:bundle
 
 ## 扩展 Skills
 
-在 `%APPDATA%\AgentDesk\skills\<name>\SKILL.md` 放置技能文件（frontmatter 包含 `name`、`description`、`agents`、`triggers`），重启后 Agent 会按需加载。内置示例见 `apps/sidecar/skills/`（含 `wechat-daily-report` 微信群聊日报）。
+在 `%APPDATA%\AgentDesk\skills\<name>\SKILL.md` 放置技能文件（frontmatter 包含 `name`、`description`、`agents`、`triggers`），重启后 Agent 会按需加载。公开内置示例见 `apps/sidecar/skills/`。安装包只包含构建脚本中明确允许公开的技能。
+
+### 可选的微信群聊日报
+
+微信群聊日报默认关闭，关闭时不注册相关 API、不显示技能入口，Agent 也不加载该技能。微信 skill 包属于私有扩展，不随开源仓库或公开安装包分发。
+
+开发时将仓库根目录的 `.env.example` 复制为 `.env`，需要使用时设置并重启：
+
+```dotenv
+AGENTDESK_WECHAT_REPORT_ENABLED=true
+```
+
+同时在自己的数据目录 `skills/wechat-daily-report/` 下安装私有 skill（Windows 默认为 `%APPDATA%\AgentDesk\skills\wechat-daily-report\`），或通过 `AGENTDESK_SKILLS_DIR` 指定本机技能目录。仅开启开关不会安装 skill。安装版可在数据目录的 `.env` 中配置开关；不要修改安装目录或将私有包复制进公开构建产物。
+
+配置优先级：系统环境变量 → 数据目录 `.env` → `apps/sidecar/.env` → 仓库根目录 `.env`。`.env` 只在运行时读取，不会在构建时写入程序。
+
+### 开源时的私有配置
+
+每位使用者在应用设置中配置自己的 AI API Key 和 GitHub / Gitee / GitLab Token；这些凭据通过本机主密钥加密保存在数据目录，不是项目源码的一部分。不要把密钥放进 `VITE_*` 变量，前端构建会公开这些值。
+
+`.env*`（示例除外）、数据库、私钥、浏览器登录态、微信解密数据、日报及私有技能目录均已加入 Git 忽略规则。不要提交或分发整个应用数据目录，即使其中的凭据已加密。提交前运行 `pnpm security:check`，公开仓库前运行 `pnpm security:check --history` 检查所有本地分支和标签的历史；检查不会输出密钥原文，提交钩子也会检查暂存内容。这些检查基于路径和常见密钥格式，不能保证发现所有秘密。忽略规则无法移除历史提交中的内容；已经提交的私有包需要清理 Git 历史，已经公开过的真实密钥还需要到对应平台撤销并重新生成。
