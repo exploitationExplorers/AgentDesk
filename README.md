@@ -1,6 +1,8 @@
 # AgentDesk · 个人 Agent 工作台
 
-一个运行在本机的 Agent Bot 桌面应用：统一管理 GitHub / Gitee / 公司 GitLab 项目，一键在 Cursor 或 Claude Code 打开，浏览器自动化完成宝塔面板部署，每天推送 GitHub 热榜与 AI 前沿速览，并提供类扣子的可视化工作流。
+一个运行在本机的 Agent 桌面应用：统一管理 GitHub / Gitee / GitLab 项目，通过 AI 辅助提交代码、操作浏览器和执行部署，定时汇总技术热榜，并用可视化工作流串联日常开发任务。支持长期记忆、GitHub 已 Star 项目浏览、磁盘清理和自定义 Skills。
+
+当前桌面打包流程面向 Windows。AI 模型、Git 平台账号和服务器由使用者自行配置。
 
 ## 界面预览
 
@@ -16,106 +18,211 @@
 | :--------------------------------------------: | :--------------------------------------: |
 | ![工作流编辑器](docs/screenshots/workflow.png) | ![自动部署](docs/screenshots/deploy.png) |
 
+截图展示主要页面，近期新增功能以以下说明为准。
+
 ## 功能
 
-| 模块   | 能力                                                                                                                                |
-| ------ | ----------------------------------------------------------------------------------------------------------------------------------- |
-| Bot    | 多 Agent（总控 + 项目 / 部署 / 研究 / 编码），工具调用、危险操作审批、Skills 渐进加载，Grok 风格对话界面                            |
-| 项目   | 扫描本地仓库，识别 GitHub / Gitee / GitLab，展示分支、未提交、未推送、PR/MR，一键 Cursor / Claude Code / 终端，Claude Code 会话列表 |
-| 部署   | 宝塔服务器档案（密码加密），IM 等部署配方模板，Playwright 驱动系统 Edge 自动登录与执行，逐步日志截图、失败步骤重试、验证码人工接管  |
-| 热榜   | GitHub Trending（多语言）、HuggingFace、Hacker News，LLM 中文摘要与领域分类，每日速览，定时抓取                                     |
-| 工作流 | React Flow 画布，14 类节点（大模型、Agent、工具、条件、循环、审批、HTTP、Shell、Git、宝塔部署、通知…），定时触发，Bot 可调用        |
-| 设置   | 从 CC Switch / `.env` 一键导入 Key（只显示脱敏值），中转站模型列表拉取，各 Agent 模型绑定与备用模型，Git Token，代理                |
+| 模块           | 能力                                                                                                                       |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Bot            | 总控 + 项目 / 部署 / 研究 / 编码 Agent，流式回答、工具调用、操作审批、相关长期记忆召回                                     |
+| 项目中心       | 扫描本地仓库，查看分支、未提交、未推送、PR/MR、提交记录和 Star 数；打开 Cursor / Claude Code / 终端，查看 Claude Code 会话 |
+| AI 提交        | 根据仓库改动生成 Conventional Commits 提交说明，支持编辑说明、暂存全部改动、仅提交或提交并推送；后台任务展示执行结果       |
+| 仓库导入与收藏 | 从 GitHub / Gitee 选择远程仓库并关联本地克隆或克隆到扫描目录；浏览 GitHub 已 Star 项目、搜索、克隆并交给研究 Agent 讲解    |
+| 浏览器与部署   | 浏览器实况面板、登录态复用和人工接管；宝塔服务器档案、部署配方、逐步日志与截图、失败步骤重试                               |
+| 技术热榜       | GitHub Trending、Hugging Face、Hacker News，LLM 中文摘要、领域分类、每日速览和定时刷新                                     |
+| 工作流         | React Flow 画布，14 类节点，支持模型、Agent、工具、条件、循环、HTTP、Shell、Git、部署、审批和通知，手动或定时运行          |
+| 技能           | 独立技能目录页与 `SKILL.md` 渐进加载；公开内置技能可在 Bot 中使用，具体扩展可提供独立运行界面                              |
+| 长期记忆       | 显式记住或忘记信息，自动提取稳定偏好、事实和决定，后续对话按相关性召回；在设置中查看和删除                                 |
+| 磁盘           | 空间概览、低空间提醒、扫描与分级建议；确认后清理勾选项，保护代码仓库、应用数据等路径                                       |
+| 设置           | 导入 CC Switch / `.env` 中的模型配置、拉取模型列表、Agent 模型绑定与备用模型、Git Token、代理、扫描目录、头像和主题        |
 
-## 架构
+### 常用操作
 
-```
-apps/
-  desktop/        Tauri 2 + React 19 + Vite + Tailwind v4 + TanStack Router/Query + Zustand
-    src-tauri/    Rust 外壳：系统钥匙串主密钥、拉起并守护 sidecar、托盘、通知、自动更新
-  sidecar/        Node + Hono 本地服务（127.0.0.1 + 会话令牌），SQLite（better-sqlite3 + drizzle）
-packages/
-  agent-core/     基于 pi-ai 的 Agent 循环、Orchestrator、工具注册与审批、Skills、结构化输出
-  workflow/       工作流 DSL（zod）、DAG 执行器、模板
-  integrations/   Git 平台适配器、本地 Git、启动 Cursor/Claude、热榜抓取、宝塔浏览器自动化、Key 导入
-  shared/         前后端共享的 zod 契约与错误码
-  ui/             设计系统组件与主题
-```
+**管理与提交项目**
 
-- UI 只通过 HTTP/SSE 与 sidecar 通信；sidecar 只监听回环地址，并校验 Tauri 每次启动生成的随机令牌。
-- 密钥采用信封加密：主密钥保存在 Windows 凭据管理器，数据库中只有 AES-256-GCM 密文；接口永远不返回明文。
-- 有副作用的工具按风险分级（safe / confirm / dangerous），非 safe 操作生成审批卡片，用户确认后才执行。
-- 模型调用对中转站的瞬时错误（过载、限流、5xx）自动退避重试，再按绑定顺序切换备用模型。
+在「设置 → 通用」添加扫描目录并保存，到「项目」点击「扫描项目」。可按 Git 平台或「需关注」筛选仓库，也可点击「添加」从 GitHub / Gitee 导入远程仓库。
 
-## 开发
+点击项目的「AI 提交推送」后，先查看改动摘要和 AI 生成的提交说明，再编辑并确认。已有暂存改动时按暂存内容提交；暂存区为空时，界面会提示暂存全部改动。可以关闭推送只保留本地提交，也可以在工作区干净时推送已有的本地提交。执行过程通过后台任务查询结果。
 
-需要 Node 22+、pnpm 10、Rust（MSVC 工具链）、系统 Edge 或 Chrome。
+AI 生成提交说明需要可用模型。实际的 `git commit` / `git push` 还依赖本机 Git 配置、仓库提交钩子以及 SSH 或 Git 凭据；应用中的平台 Token 用于平台 API，Git 推送认证需在本机配置。
 
-```bash
+**浏览已 Star 项目**
+
+配置 GitHub Token 后，在「项目 → 已 Star」查看最近更新的最多 100 个仓库，按名称、描述或语言搜索。可以克隆到扫描目录，也可以让研究 Agent 讲解用途和代码阅读入口。
+
+**使用长期记忆**
+
+在 Bot 中说「记住：我偏好使用 TypeScript」或「忘掉这条偏好」。助手也会从成功对话中提取适合长期保留的信息，并在后续对话中召回相关内容。在「设置 → 记忆」查看来源、类型和时间，或直接删除条目。模型不可用或提取失败时，不影响已完成的对话。
+
+**清理磁盘**
+
+进入「磁盘」查看空间并扫描，检查「首要清理」「需要你决定」和保留项，再确认清理选中的内容。扫描本身不删除文件，AI 建议受本地规则和保护路径限制。首要清理项会直接删除；需要自行决定的项目默认移入回收站，也可在设置中改为直接删除。
+
+低空间提醒的默认阈值为 15 GB，可在「设置 → 通用」调整。关闭提醒后，6 小时内不会再次弹窗。
+
+**通过 Bot 操作浏览器与工作流**
+
+可让编码 Agent 阅读网页、操作浏览器或调用 Claude Code 修改本地项目。浏览器实况面板展示当前页面，需要登录或验证码时点击「接管」。工作流支持通过界面运行，也可以让 Bot 查询并运行已有流程。自定义业务流程所需的项目路径、账号与技能由使用者自行准备。
+
+## 快速开始
+
+### 开发环境
+
+- Node.js 22+、pnpm 10 和 Git。项目指定的 pnpm 版本见 `package.json`。
+- 完整桌面开发还需要 Rust、Windows MSVC 工具链及 Tauri 所需系统依赖；只调试浏览器 UI 时不需要构建 Rust 外壳。
+- 浏览器自动化需要系统 Edge 或 Chrome，默认使用 Edge，可在设置中选择。
+- 使用 Cursor / Claude Code 功能时，需自行安装对应工具，并在「设置 → 通用」配置可用的命令。
+
+```powershell
 pnpm install
 
-# 方式一：完整桌面应用（Rust 会自动拉起 sidecar）
+# 本地配置模板：默认关闭微信日报，不含真实密钥
+Copy-Item .env.example .env
+
+# 方式一：完整桌面应用，Rust 外壳自动启动 sidecar
 pnpm --filter @agentdesk/desktop app:dev
-
-# 方式二：浏览器调试 UI（两个终端）
-pnpm --filter @agentdesk/sidecar dev      # http://127.0.0.1:17890
-pnpm --filter @agentdesk/desktop dev      # http://localhost:1420
 ```
 
-国内网络下 sidecar 会依次使用：设置中的代理 → `HTTPS_PROXY` 环境变量 → Windows 系统代理。
+浏览器调试时，在两个终端分别启动：
 
-### 常用脚本
+```powershell
+# 终端一：http://127.0.0.1:17890
+pnpm dev:sidecar
 
-```bash
-pnpm typecheck   # 全量类型检查
-pnpm lint        # ESLint
-pnpm test        # 单元 / 集成测试（vitest）
-pnpm --filter @agentdesk/desktop e2e     # Playwright E2E（真实 sidecar + UI，使用系统 Edge）
+# 终端二：http://localhost:1420
+pnpm dev:web
 ```
 
-提交信息遵循 Conventional Commits（commitlint），提交前自动 lint-staged。
+如果切换 Node 版本后出现 `NODE_MODULE_VERSION` 不匹配，需要在当前 Node 版本下重新安装或重建 `better-sqlite3`，并重新构建 sidecar。
 
-## 打包 Windows 安装包
+### 首次配置
 
-```bash
-# 1. 生成更新签名密钥（只需一次，私钥妥善保管，不要提交）
-pnpm --filter @agentdesk/desktop tauri signer generate -w %USERPROFILE%\.tauri\agentdesk.key
+1. **设置 → 模型 Provider**：手动添加模型，或从自己的 CC Switch / `.env` 导入。点击「测试」确认可用，中转站可通过「获取可用模型」选择支持的模型。
+2. **设置 → Agent 模型**：为总控与专用 Agent 绑定模型，按需配置备用 Provider。
+3. **设置 → Git 平台**：配置自己的 GitHub / Gitee / GitLab Token，GitLab 需填写对应域名。
+4. **设置 → 通用**：添加项目扫描目录，确认 Cursor / Claude Code 命令、代理、浏览器、热榜刷新时间和磁盘设置。
+5. **项目**：扫描本地仓库，或从远程导入；尝试查看仓库状态、AI 提交和 GitHub 已 Star 项目。
+6. **部署 / 工作流**：按需添加自己的服务器与配方、配置工作流输入，再确认运行。
 
-# 2. 构建（sidecar 打包为 index.mjs + node.exe + 原生模块，随安装包分发）
-set TAURI_SIGNING_PRIVATE_KEY=<私钥内容>
-pnpm --filter @agentdesk/desktop app:bundle
-```
+可以在 Bot 中尝试：「哪些项目还没提交」「今天热榜有什么值得看的」「记住我偏好深色界面」「看看磁盘还有多少空间」。
 
-产物在 `apps/desktop/src-tauri/target/release/bundle/nsis/`。自动更新地址在 `src-tauri/tauri.conf.json` 的 `plugins.updater.endpoints`，发布时把 `latest.json` 和安装包上传到对应位置即可。
+网络代理依次使用：设置中的代理 → `HTTPS_PROXY` 环境变量 → Windows 系统代理。热榜到达配置时间后自动刷新；错过时间时会在下次启动后补跑，调度需要 sidecar 运行。
 
-## 首次使用
+## 本地配置与数据
 
-1. **设置 → 模型**：从自己的 CC Switch 或 `.env` 导入，点“测试”确认可用；中转站可点“获取可用模型”选择分组支持的模型。
-2. **设置 → 通用**：添加项目扫描目录（如 `D:\agent`），回到项目页点击“扫描项目”。
-3. **设置 → Git 平台**：填 GitHub / Gitee / GitLab Token（GitLab 填公司域名），即可看到 PR/MR。
-4. **部署**：添加宝塔服务器（面板地址包含安全入口），用 IM 模板生成配方，点“部署”。首次遇到验证码时会弹出浏览器窗口让你手动登录，之后复用登录态。
-5. 在 Bot 里直接说“部署 IM 项目”“今天热榜有什么值得看的”“哪些项目还没提交”。
+### 环境变量
+
+将根目录的 [`.env.example`](.env.example) 复制为 `.env` 后按需修改，重启应用生效。AI API Key 与 Git 平台 Token 在应用设置中管理。
+
+| 变量                              | 默认值 / 行为             | 用途                                                              |
+| --------------------------------- | ------------------------- | ----------------------------------------------------------------- |
+| `AGENTDESK_WECHAT_REPORT_ENABLED` | `false`，只有 `true` 开启 | 启用可选的私有微信日报扩展                                        |
+| `AGENTDESK_DATA_DIR`              | 平台默认数据目录          | 指定数据库、任务、技能和浏览器登录态等本地数据的位置              |
+| `AGENTDESK_SKILLS_DIR`            | 内置技能目录              | 替换源码运行时的内置技能扫描目录，数据目录中的 `skills/` 仍会加载 |
+| `AGENTDESK_PORT`                  | 独立运行时为 `17890`      | sidecar 端口，桌面模式由 Tauri 选择并注入                         |
+| `AGENTDESK_TOKEN`                 | 独立调试时为空            | 本地 API 会话令牌，桌面模式由 Tauri 每次启动生成并注入            |
+| `AGENTDESK_ALLOWED_ORIGINS`       | 在默认允许来源之外追加    | 额外允许的 UI 来源，多个地址用逗号分隔                            |
+
+配置优先级：系统环境变量 → 数据目录 `.env` → `apps/sidecar/.env` → 仓库根目录 `.env`。桌面外壳注入的变量也优先于 `.env`。
+
+sidecar 的这些配置在运行时读取，构建脚本不复制 `.env`。`VITE_*` 属于前端构建变量，会被编译进前端，请勿用它们保存 AI Key、平台 Token 或私钥。
+
+### 数据存储与密钥
+
+Windows 默认数据目录为 `%APPDATA%\AgentDesk\`，可在「设置 → 通用」查看实际路径，或通过 `AGENTDESK_DATA_DIR` 修改。这里保存数据库、对话、记忆、任务、浏览器登录态及自定义技能，公开发布时不要打包整个数据目录。
+
+桌面模式使用系统钥匙串保存主密钥，AI Key、Git 平台 Token 和服务器密码等凭据以 AES-256-GCM 密文保存在数据库中，相关列表接口只返回是否配置或脱敏信息。单独运行 sidecar 或系统钥匙串不可用时，使用数据目录中的 `dev-master.key` 作为本地密钥文件，也需妥善保管。
+
+对话、记忆和报告等业务数据不属于密钥加密范围。调用 AI 时，会向选用的模型服务发送所需对话或分析内容；备份和分享前请检查其中的个人或项目资料。
 
 ## 扩展 Skills
 
-在 `%APPDATA%\AgentDesk\skills\<name>\SKILL.md` 放置技能文件（frontmatter 包含 `name`、`description`、`agents`、`triggers`），重启后 Agent 会按需加载。公开内置示例见 `apps/sidecar/skills/`。安装包只包含构建脚本中明确允许公开的技能。
+将技能放入数据目录的 `skills/<name>/SKILL.md`，Windows 默认为 `%APPDATA%\AgentDesk\skills\<name>\SKILL.md`，重启后加载。Frontmatter 支持 `name`、`description`、`version`、`agents`、`triggers` 和 `allowed_tools`。
+
+在「技能」页面浏览已加载的技能，也可在「设置 → 技能」查看描述与触发词。系统提示先加载名称和描述，命中触发词或调用 `skills.load` 时再加载完整指令。公开内置技能主要通过 Bot 使用，独立运行界面由具体扩展提供。
+
+公开内置示例位于 [`apps/sidecar/skills/`](apps/sidecar/skills/)：
+
+| 技能             | 用途           |
+| ---------------- | -------------- |
+| `project-triage` | 项目状态梳理   |
+| `bt-deploy`      | 宝塔部署辅助   |
+| `tech-explain`   | 技术与项目讲解 |
+
+公开安装包仅包含 [`public-skills.ts`](apps/sidecar/scripts/public-skills.ts) 中明确允许分发的技能。自定义技能放到用户数据目录；新增公开内置技能时，需要同时更新该列表。
 
 ### 可选的微信群聊日报
 
-微信群聊日报默认关闭，关闭时不注册相关 API、不显示技能入口，Agent 也不加载该技能。微信 skill 包属于私有扩展，不随开源仓库或公开安装包分发。
+微信群聊日报默认关闭。关闭时不注册相关 API、不显示该技能入口，Agent 也不加载该技能。微信 skill 包属于私有扩展，开源仓库和公开安装包不包含该包。
 
-开发时将仓库根目录的 `.env.example` 复制为 `.env`，需要使用时设置并重启：
+拥有私有 skill 的使用者可以在自己的 `.env` 中开启：
 
 ```dotenv
 AGENTDESK_WECHAT_REPORT_ENABLED=true
 ```
 
-同时在自己的数据目录 `skills/wechat-daily-report/` 下安装私有 skill（Windows 默认为 `%APPDATA%\AgentDesk\skills\wechat-daily-report\`），或通过 `AGENTDESK_SKILLS_DIR` 指定本机技能目录。仅开启开关不会安装 skill。安装版可在数据目录的 `.env` 中配置开关；不要修改安装目录或将私有包复制进公开构建产物。
+将私有包安装到数据目录的 `skills/wechat-daily-report/`，并按该包的要求准备运行环境后重启。仅开启开关不会自动安装技能或准备微信数据。源码运行时也可用 `AGENTDESK_SKILLS_DIR` 指定本机技能目录；安装版推荐使用数据目录中的 `.env` 与 `skills/`。
 
-配置优先级：系统环境变量 → 数据目录 `.env` → `apps/sidecar/.env` → 仓库根目录 `.env`。`.env` 只在运行时读取，不会在构建时写入程序。
+私有技能就绪后，可从「技能 → 微信群聊日报」进入操作界面。私有包、微信解密数据、聊天原文和生成报告均应保留在本机。
 
-### 开源时的私有配置
+## 架构
 
-每位使用者在应用设置中配置自己的 AI API Key 和 GitHub / Gitee / GitLab Token；这些凭据通过本机主密钥加密保存在数据目录，不是项目源码的一部分。不要把密钥放进 `VITE_*` 变量，前端构建会公开这些值。
+```text
+apps/
+  desktop/        Tauri 2 + React 19 + Vite + Tailwind v4
+    src/          TanStack Router/Query、Zustand、React Flow 与功能界面
+    src-tauri/    系统钥匙串、sidecar 生命周期、托盘、通知、自动更新
+  sidecar/        Node + Hono 本地服务、SQLite、项目与部署服务、记忆、磁盘、调度
+packages/
+  agent-core/     pi-ai Agent 循环、Orchestrator、工具注册与审批、Skills、模型故障切换
+  workflow/       工作流 DSL（zod）、执行器与模板
+  integrations/   Git、平台 API、Claude Code、浏览器自动化、文件操作、热榜与配置导入
+  shared/         前后端共享的 zod 契约与错误码
+  ui/             设计系统组件与主题
+```
 
-`.env*`（示例除外）、数据库、私钥、浏览器登录态、微信解密数据、日报及私有技能目录均已加入 Git 忽略规则。不要提交或分发整个应用数据目录，即使其中的凭据已加密。提交前运行 `pnpm security:check`，公开仓库前运行 `pnpm security:check --history` 检查所有本地分支和标签的历史；检查不会输出密钥原文，提交钩子也会检查暂存内容。这些检查基于路径和常见密钥格式，不能保证发现所有秘密。忽略规则无法移除历史提交中的内容；已经提交的私有包需要清理 Git 历史，已经公开过的真实密钥还需要到对应平台撤销并重新生成。
+- UI 通过 HTTP/SSE 与 sidecar 通信，sidecar 仅监听 `127.0.0.1`。完整桌面模式校验每次启动生成的会话令牌；独立调试时可通过 `AGENTDESK_TOKEN` 配置。
+- Agent 工具按 `safe` / `confirm` / `dangerous` 分级，需要确认的工具操作会生成审批卡片。
+- 长期记忆保存在本地 SQLite，通过全文检索召回相关内容，再提供给总控与被委派的 Agent。
+- 模型调用对过载、限流、5xx 等瞬时错误退避重试，再按绑定顺序切换备用模型。
+
+## 开发与检查
+
+```powershell
+pnpm typecheck         # 全量 TypeScript 类型检查
+pnpm lint              # ESLint
+pnpm test              # Vitest 单元 / 集成测试
+pnpm security:test     # 公开检查器的回归测试
+pnpm security:check    # 检查当前源码中的私有文件和常见格式密钥
+pnpm security:check --history  # 同时检查所有本地分支和标签的历史
+
+pnpm --filter @agentdesk/desktop e2e  # Playwright E2E，默认使用系统 Edge
+pnpm build             # 构建项目
+```
+
+提交信息遵循 Conventional Commits，例如 `docs: 更新项目功能与配置说明`。提交钩子先检查暂存内容中的私有文件与常见格式密钥，再运行 lint-staged，提交说明由 commitlint 校验。公开检查只输出问题位置，不输出密钥原文。
+
+## 打包 Windows 安装包
+
+```powershell
+# 生成自己的更新签名密钥，只需一次，私钥不要提交
+pnpm --filter @agentdesk/desktop tauri signer generate -w C:\private\agentdesk.key
+
+# 构建 sidecar 并生成桌面安装包
+$env:TAURI_SIGNING_PRIVATE_KEY = Get-Content -Raw 'C:\private\agentdesk.key'
+pnpm --filter @agentdesk/desktop app:bundle
+```
+
+构建前，将 [`tauri.conf.json`](apps/desktop/src-tauri/tauri.conf.json) 中的 `plugins.updater.pubkey` 和 `plugins.updater.endpoints` 改为自己的公钥与发布地址；使用加密私钥时还需配置相应的签名密码。
+
+sidecar 构建目录为 `apps/sidecar/dist/`，包含 bundle、构建时使用的 Node 运行时、运行依赖和公开技能。安装包生成在 `apps/desktop/src-tauri/target/release/bundle/nsis/`。自动更新需要将安装包、签名及相应的 `latest.json` 发布到配置的更新地址。
+
+目前 AI 提交的后台任务还依赖源码侧的 `apps/sidecar/scripts/ai-commit-worker.mjs`。现有 sidecar 打包脚本未分发该 worker，发布安装包前需补齐其分发与运行路径，并验证该功能。
+
+## 开源与私有内容
+
+每位使用者自行配置 AI API Key、GitHub / Gitee / GitLab Token、服务器和私有技能。仓库中的 `.env.example` 只提供配置模板。
+
+`.env` 及其变体（示例除外）、数据库、私钥、浏览器登录态、微信解密数据、报告、私有技能和构建产物均已加入 Git 忽略规则。新增私有技能可放到用户数据目录，或源码运行时使用已忽略的 `apps/sidecar/skills-private/` 并配置扫描路径。
+
+提交前运行 `pnpm security:check`，公开仓库前运行 `pnpm security:check --history`。检查基于路径和常见密钥格式，需要结合人工审查；忽略规则无法移除历史提交中的内容。已经公开过的真实密钥需要在对应平台撤销并重新生成，旧发布附件、他人克隆及平台缓存也需要分别处理。
