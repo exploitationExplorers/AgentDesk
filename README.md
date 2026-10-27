@@ -66,6 +66,21 @@ AI 生成提交说明需要可用模型。实际的 `git commit` / `git push` �
 
 ## 快速开始
 
+### 独立 CLI（本地预览）
+
+独立 CLI 已开始开发，可构建本地 npm 包，提供后台服务、模型初始化、流式聊天、工具审批和诊断。当前尚未公开发布，完整开发范围与进度见 [开发任务](开发任务.md)。
+
+```powershell
+pnpm build:cli
+pnpm cli --help
+pnpm cli start
+pnpm cli init
+pnpm cli chat "我有哪些项目"
+pnpm cli stop
+```
+
+CLI 默认使用 `~/.agentdesk`，与桌面端的数据和端口分开。使用与项目原生数据库依赖匹配的 Node 版本；新环境安装依赖时由目标平台准备原生模块。独立安装、前台运行、自动化配置与发行验证见 [CLI 说明](apps/cli/README.md)。
+
 ### 开发环境
 
 - Node.js 22+、pnpm 10 和 Git。项目指定的 pnpm 版本见 `package.json`。

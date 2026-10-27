@@ -1,7 +1,6 @@
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join, resolve } from "node:path";
 import { completeText, type ModelResolver } from "@agentdesk/agent-core";
 import {
   createAdapter,
@@ -39,9 +38,10 @@ import { Collection } from "../db/collection";
 import { GLOBAL_CHANNEL, type EventHub, type GlobalEvent } from "../events";
 import type { SecretStore } from "../secrets";
 import { errorMessage, newId, nowIso, shortHash } from "../util";
+import { aiCommitWorkerPath } from "../worker-path";
 import type { SettingsService } from "./settings";
 
-const WORKER = join(dirname(fileURLToPath(import.meta.url)), "../../scripts/ai-commit-worker.mjs");
+const WORKER = aiCommitWorkerPath();
 
 type GitAccountDoc = Omit<GitAccount, "hasToken"> & { id: string };
 

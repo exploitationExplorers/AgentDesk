@@ -15,6 +15,10 @@
     "dev:web": "pnpm --filter @agentdesk/desktop dev",
     "tauri": "pnpm --filter @agentdesk/desktop tauri",
     "build": "turbo run build",
+    "build:cli": "node apps/cli/scripts/build.mjs",
+    "cli": "node apps/cli/dist/index.mjs",
+    "cli:preview": "node apps/cli/scripts/preview.mjs",
+    "test:cli": "node --import ./apps/cli/scripts/register-jsx-loader.mjs --test apps/cli/test/*.test.mjs",
     "typecheck": "turbo run typecheck",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -44,7 +48,7 @@
     "typescript-eslint": "^8.46.1"
   },
   "lint-staged": {
-    "*.{ts,tsx,js,mjs}": [
+    "*.{ts,tsx,js,mjs,jsx}": [
       "eslint --fix",
       "prettier --write"
     ],

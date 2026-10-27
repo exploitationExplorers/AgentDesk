@@ -1,0 +1,44 @@
+{
+  "name": "@agentdesk/cli",
+  "version": "0.1.0",
+  "description": "AgentDesk CLI: local agent runtime, service management and terminal chat",
+  "type": "module",
+  "license": "UNLICENSED",
+  "bin": {
+    "agentdesk": "dist/index.mjs"
+  },
+  "files": [
+    "dist",
+    "TERMINAL.md",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "prepack": "node scripts/build.mjs",
+    "test": "node --import ./scripts/register-jsx-loader.mjs --test test/*.test.mjs",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.4.1",
+    "ink": "^8.0.0",
+    "ink-text-input": "^6.0.0",
+    "marked": "^15.0.12",
+    "marked-terminal": "^7.3.0",
+    "playwright-core": "^1.56.0",
+    "react": "19.3.1"
+  },
+  "devDependencies": {
+    "@agentdesk/sidecar": "workspace:*",
+    "@types/node": "^22.18.10",
+    "@voidzero-dev/vite-plus-prompts": "1.4.0",
+    "esbuild": "^0.25.11",
+    "ink-testing-library": "^4.0.0",
+    "typescript": "^5.9.3"
+  }
+}

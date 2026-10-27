@@ -1,0 +1,127 @@
+# AgentDesk CLI
+
+复用 AgentDesk 引擎的独立本地 CLI。支持后台服务、模型配置、流式聊天、工具审批与诊断。
+
+当前包名为 `@agentdesk/cli`，尚未公开发布。正式发布前需确定拥有发布权限的 npm scope、许可证和仓库元数据。远程机器接入、团队账号、持久化任务和 Web 工作台按根目录 `开发任务.md` 后续推进。
+
+## 本地构建与安装
+
+需要 Node.js 22.12+、Git；源码构建还需要项目的 pnpm 开发环境。
+
+```powershell
+pnpm install
+pnpm build:cli
+
+# 生成 tarball，随后在仓库外安装它；无需全局安装即可试运行。
+pnpm --filter @agentdesk/cli pack --pack-destination ../../release
+npm install --prefix <安装目录> <tarball路径>
+<安装目录>/node_modules/.bin/agentdesk --help
+```
+
+运行包不包含构建机的 Node 二进制、预编译数据库模块、开发环境配置或私有技能。`better-sqlite3` 与 `playwright-core` 作为正式依赖在目标环境安装。原生依赖没有匹配预编译文件时需要对应平台的构建工具。`playwright-core` 不下载浏览器，浏览器工具需要机器上可用的 Chrome 或 Edge。
+
+## 使用
+
+```powershell
+agentdesk start
+agentdesk init
+agentdesk chat                               # 打开持久化交互式会话
+agentdesk chat "我有哪些项目"                 # 一次性流式对话并退出
+agentdesk chat "帮我分析这个问题" --agent code
+agentdesk status
+agentdesk logs --follow
+agentdesk doctor
+agentdesk stop
+```
+
+`init` 在服务启动后交互配置模型地址、名称和 API Key，密钥输入不回显，并由现有 sidecar 密钥存储加密保存。CLI 独立运行使用本地密钥文件，和桌面端的系统钥匙串方式不同。`init` 保存配置但不自动调用模型；使用自己的有效模型完成聊天后才算连通验证。
+
+交互终端采用 Vite+ 官方 `@voidzero-dev/vite-plus-prompts` 组件，提供带连接线的配置向导、方向键协议选择、输入占位提示、就地校验及密钥掩码。选项确认后收起菜单，只保留结果。已有模型时，重新执行 `init` 可以选择保留或重新配置。
+
+新增欢迎标语、渐变标题、Emoji 场景图标和步骤流动反馈。源码仓库中执行 `pnpm cli:preview` 可以独立预览，无需服务或真实密钥，不会保存配置。`--no-motion` 关闭动效，`--no-emoji` 关闭表情。字体与字号由终端软件设置，详见 [终端外观与动效](./TERMINAL.md)。
+
+方向键选择后按 Enter 确认，Esc 或 Ctrl+C 取消。全局 `--plain` 关闭颜色、动画和方向键菜单，改用编号输入；`--no-color` 或 `NO_COLOR` 环境变量只禁用颜色。管道输出与 `TERM=dumb` 自动禁用颜色和光标动画。`status`、`doctor`、`approvals` 的 `--json` 输出保持纯 JSON，聊天的 `--json` 保持 NDJSON。终端组件在构建时打入 CLI bundle，上游许可随发行包保留。
+
+### 放在 D 盘，避免占用系统盘
+
+`npm install -g` 表示全局安装，具体位置由 `npm prefix -g` 决定。CLI 无需全局安装；下面将安装目录、npm 缓存、临时文件与运行数据全部指定到 D 盘。请把 tarball 路径替换为自己的实际文件。
+
+```powershell
+New-Item -ItemType Directory -Force D:/AgentDesk/tmp | Out-Null
+$env:TEMP = 'D:/AgentDesk/tmp'
+$env:TMP = $env:TEMP
+$env:AGENTDESK_CLI_HOME = 'D:/AgentDesk/data'
+npm install --prefix D:/AgentDesk/install D:/agent/AgentDesk/release/agentdesk-cli-0.1.0.tgz --cache D:/AgentDesk/npm-cache
+
+& D:/AgentDesk/install/node_modules/.bin/agentdesk.cmd start
+& D:/AgentDesk/install/node_modules/.bin/agentdesk.cmd init
+```
+
+这些环境变量仅作用于当前 PowerShell 会话。新终端需要重新设置数据目录，或为每条命令指定相同的 `--data-dir D:/AgentDesk/data`。界面中的 `agentdesk ...` 示例要求该命令已在 PATH 中；本地安装时使用上面的 `.cmd` 完整路径替换 `agentdesk`。
+
+服务器自动化初始化可以从环境变量读取密钥，避免把密钥放到命令行参数中：
+
+```powershell
+# 先在当前进程环境中配置自己的 AGENTDESK_MODEL_KEY。
+agentdesk init --base-url https://api.example.com/v1 --model <模型名称> --api-key-env AGENTDESK_MODEL_KEY
+```
+
+支持 `openai-completions` 和 `anthropic-messages`，可通过 `--api` 选择。重新初始化会更新名为 `AgentDesk CLI` 的同协议 Provider，并将内置 Agent 绑定到它。已有其他 Provider 时，无参数的 `init` 仅提示已有配置。
+
+## 服务与数据
+
+- CLI 默认数据根目录为 `~/.agentdesk`，通过全局参数 `--data-dir <目录>` 或 `AGENTDESK_CLI_HOME` 修改。对同一实例执行命令时使用同一数据目录。
+- 根目录保存实例状态和后台日志，`data/` 保存数据库、加密凭据、用户技能和浏览器资料。
+- 默认监听 `127.0.0.1:17891`；`start --port 0` 自动选空闲端口，或 `--port <端口>` 指定。
+- CLI 与桌面默认使用不同数据目录、数据库和端口，当前不自动同步两者的数据。
+- 每次服务启动生成随机认证令牌。CLI 从本地实例状态读取，正常命令不会打印令牌。
+- `start` 默认脱离终端后台运行，`start --foreground` 在当前终端运行，适合交给 systemd、pm2 或容器管理。首版不包含开机自启或崩溃自动拉起；可由外部进程管理器提供。
+- `stop` 通过带认证且身份匹配的服务接口关闭实例，不对无法确认身份的 PID 强制结束。
+- `restart` 保留当前端口，已停止实例默认回到 17891；指定端口可覆盖。
+- 后台日志超过 10 MB 时在下次启动轮转，保留一份 `.1`。前台日志由当前终端或外部进程管理器收集。
+- CLI 仅读取数据根目录及 `data/` 下的 `.env`，不自动导入源码仓库的 `.env`。
+
+## 聊天与审批
+
+聊天支持 `--conversation <ID>` 接续对话，`--json` 输出 NDJSON 事件。交互终端中的工具审批需要明确回答；非交互模式或 JSON 模式遇到工具审批默认拒绝，绝不默认授权。
+
+### 交互式会话
+
+真实交互终端（TTY）下不带消息、不带 `--json` 执行 `agentdesk chat` 会打开持久化会话：会话保持常驻，可连续多轮对话而不需要每次重新敲命令；只带消息参数、带 `--json`，或在非交互环境下仍走和今天完全一致的一次性流式路径并立即退出。
+
+```powershell
+agentdesk chat                               # 打开新会话
+agentdesk chat --agent code                  # 指定默认 Agent
+agentdesk chat --conversation <会话ID>        # 续接已有会话，先回放历史
+```
+
+会话内支持：
+
+- 已完成的轮次滚动保留在历史区，当前这一轮实时显示流式文本、路由与工具调用卡片。
+- 按 `o` 整体展开/折叠工具调用的参数与结果；不支持逐行键盘焦点导航。
+- 遇到需要审批的工具调用会弹出卡片，按 `y` 批准、按 `n` 或 `Esc` 拒绝；审批期间输入框暂停，连接保持不断开。
+- 空闲时 `Ctrl+C` 退出会话；流式或等待审批时 `Ctrl+C` 只中断当前这一轮，回到可继续输入的状态。
+- 顶部状态栏每 15 秒刷新跨会话的待处理审批数量（来自其他客户端或工作流产生的审批），处理这些审批仍使用 `agentdesk approvals`/`approve`/`reject`。
+- 一轮对话完成后最终回答按 Markdown 渲染；流式阶段显示原始文本，避免半截 markdown 渲染错乱。`--plain`/`--no-color`/`NO_COLOR` 下不做终端着色。
+
+```powershell
+agentdesk approvals
+agentdesk approve <审批ID>
+agentdesk reject <审批ID>
+```
+
+聊天仍使用现有实时对话 API，中断终端或断开聊天连接会取消当前对话执行。持久化 `run`、离线继续执行和远程任务属于后续里程碑，不在本版承诺范围内。
+
+`status` 在服务未运行时返回非零退出码，`doctor` 在必要条件未就绪时返回非零退出码；聊天收到错误或未收到完成事件时同样返回非零退出码。
+
+## 发行验证
+
+更新本地预览版时，先执行 `agentdesk stop`，在原安装目录重新安装新 tarball，再执行 `agentdesk start`。指定相同的 `--data-dir` 即继续使用已有配置和数据库；替换安装包不会自动删除用户数据。源码方式重新运行 `pnpm build:cli` 后重启服务。正式 npm 发布后的升级与版本兼容策略将在相应版本提供。
+
+```powershell
+pnpm --filter @agentdesk/cli test
+pnpm --filter @agentdesk/cli typecheck
+pnpm build:cli
+```
+
+先检查 tarball 文件列表，在仓库外安装并验证 help、start、认证、重复启动、init、chat、status、logs、restart 与 stop，再配置正式版本和公开发布。当前不提供已发布的 npm 安装命令。

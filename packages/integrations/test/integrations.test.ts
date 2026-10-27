@@ -59,13 +59,13 @@ UNKNOWN_API_KEY=zzzzzzzzzzzz
 });
 
 describe("normalizeCommitMessage", () => {
-  it("从 JSON / 代码块提取 subject", async () => {
+  it("从 JSON / 代码块提取 subject 并规整大小写", async () => {
     const { normalizeCommitMessage } = await import("../src/git/local");
     expect(
       normalizeCommitMessage(
         '{"subject": "feat(projects): add AI-generated commit message and push workflow"}',
       ),
-    ).toBe("feat(projects): add AI-generated commit message and push workflow");
+    ).toBe("feat(projects): add ai-generated commit message and push workflow");
     expect(normalizeCommitMessage("```\nfix: handle timeout\n```")).toBe("fix: handle timeout");
     expect(normalizeCommitMessage('"chore: tidy"')).toBe("chore: tidy");
   });

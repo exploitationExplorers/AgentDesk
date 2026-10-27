@@ -1,8 +1,5 @@
-import { serve } from "@hono/node-server";
 import { loadConfig, loadEnvFiles } from "./config";
-import { createContainer } from "./container";
-import { createApp } from "./http/app";
-import { applyProxy, resolveProxy } from "./proxy";
+import { startSidecar } from "./runtime";
 
 process.on("unhandledRejection", (reason) => {
   console.error("[sidecar] unhandled rejection", reason);
@@ -11,27 +8,24 @@ process.on("unhandledRejection", (reason) => {
 async function main() {
   loadEnvFiles();
   const config = loadConfig();
-  const container = await createContainer(config);
-  const proxy = resolveProxy(container.settings.get().proxy);
-  applyProxy(proxy);
-  const app = createApp(container);
-
-  const server = serve({ fetch: app.fetch, hostname: config.host, port: config.port }, (info) => {
-    // Tauri 通过这一行确认 sidecar 已就绪
-    console.info(`AGENTDESK_READY port=${info.port}`);
-    console.info(
-      `[sidecar] data dir: ${config.dataDir} (secrets: ${container.secrets.backend}, proxy: ${proxy ?? "none"})`,
-    );
-  });
-  container.scheduler.start();
+  const runtime = await startSidecar(config);
+  // 保持 Tauri 用于确认 sidecar 就绪的输出协议。
+  console.info(`AGENTDESK_READY port=${runtime.port}`);
+  console.info(
+    `[sidecar] data dir: ${config.dataDir} (secrets: ${runtime.container.secrets.backend})`,
+  );
 
   let stopping = false;
   const shutdown = async () => {
     if (stopping) return;
     stopping = true;
-    server.close();
-    await container.dispose().catch(() => {});
-    process.exit(0);
+    try {
+      await runtime.close();
+      process.exit(0);
+    } catch (error) {
+      console.error("[sidecar] failed to stop", error);
+      process.exit(1);
+    }
   };
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
