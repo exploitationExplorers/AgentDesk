@@ -1,8 +1,8 @@
 # AgentDesk CLI
 
-复用 AgentDesk 引擎的独立本地 CLI。支持后台服务、模型配置、流式聊天、工具审批与诊断。
+复用 AgentDesk 引擎的独立本地 CLI。支持后台服务、模型配置、流式聊天、持久化任务、工具审批与诊断。
 
-当前包名为 `@agentdesk/cli`，尚未公开发布。正式发布前需确定拥有发布权限的 npm scope、许可证和仓库元数据。远程机器接入、团队账号、持久化任务和 Web 工作台按根目录 `开发任务.md` 后续推进。
+当前包名为 `@agentdesk/cli`，尚未公开发布。正式发布前需确定拥有发布权限的 npm scope、许可证和仓库元数据。远程机器、团队账号和 Web 工作台按根目录 `开发任务.md` 后续推进。
 
 ## 本地构建与安装
 
@@ -28,6 +28,8 @@ agentdesk init
 agentdesk chat                               # 打开持久化交互式会话
 agentdesk chat "我有哪些项目"                 # 一次性流式对话并退出
 agentdesk chat "帮我分析这个问题" --agent code
+agentdesk run "梳理还没提交的项目"
+agentdesk tasks
 agentdesk status
 agentdesk logs --follow
 agentdesk doctor
@@ -117,7 +119,34 @@ agentdesk approve <审批ID>
 agentdesk reject <审批ID>
 ```
 
-聊天仍使用现有实时对话 API，中断终端或断开聊天连接会取消当前对话执行。持久化 `run`、离线继续执行和远程任务属于后续里程碑，不在本版承诺范围内。
+`chat` 仍使用实时对话。中断终端或断开连接会取消当前这一轮。持久化任务使用下面的 `run`，不走这条会随连接取消的路径。远程机器接入仍不在本版范围内。
+
+## 持久化任务
+
+任务保存在本地服务里。一次任务可以有多次运行，历史都会留下。关闭终端、Ctrl+C 或断开 `inspect --follow` 只停止本地查看，任务继续执行。停止任务必须使用 `cancel`。
+
+```powershell
+agentdesk run "修复登录页报错"
+agentdesk run "补充边界测试" --conversation <任务ID>
+agentdesk run "先给出改动方案" --plan
+agentdesk tasks
+agentdesk tasks --status failed
+agentdesk inspect <任务ID>
+agentdesk inspect <任务ID> --follow
+agentdesk cancel <任务ID>
+agentdesk resume <任务ID>
+agentdesk resume <任务ID> --message "从失败的测试继续"
+```
+
+- `run` 必须带任务目标。`--agent` 指定 Agent。`--plan` 先只产出方案；方案未批准时，不能用 `resume` 开始执行。
+- `run --conversation` 里的 ID 是任务 ID，用来给已有任务再开一轮，不是 `chat --conversation` 的会话 ID。
+- 交互终端且不带 `--json` 时，`run`、`inspect --follow` 和 `resume` 打开任务界面，事件结束后退出。带 `--json` 或非交互环境逐行输出事件。`--json` 先输出一行 `{"taskId":"..."}`，再输出 `{"seq","event"}`。
+- 任务状态为 `pending`、`queued`、`planning`、`awaiting_plan_approval`、`running`、`awaiting_review`、`completed`、`failed`、`cancelled`、`closed`。`tasks --status` 按其中一种过滤。
+- 普通任务执行结束后停在 `awaiting_review` 或 `completed`，这时 `run` 以成功退出。`inspect` 显示概况、待处理审批和最近事件。方案目前只能看到版本号，不能查看方案正文。
+- 带 `--plan` 的任务在方案获批后进入 `running`，这一步不会自动再开执行轮。批准后用 `run "按已批准方案执行" --conversation <任务ID>` 继续。方案和验收审批都用 `approvals`、`approve`、`reject` 处理。
+- `resume` 用于失败或已取消的任务。不传 `--message` 时使用「继续执行」，并把上次失败原因和已完成的工具摘要带进新的一轮。
+- 服务重启后，中断时仍标记为运行中的任务会标为失败，可用 `resume` 继续。尚未开始、仍在排队的运行会重新调度。
+- CLI 还没有单独的验收放弃或归档关闭命令。桌面端也还没有任务看板。
 
 `status` 在服务未运行时返回非零退出码，`doctor` 在必要条件未就绪时返回非零退出码；聊天收到错误或未收到完成事件时同样返回非零退出码。
 

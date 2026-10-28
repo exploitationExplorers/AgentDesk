@@ -128,5 +128,5 @@ export const HELP = `AgentDesk — 本地 Agent 工作台命令行
 协议：openai-completions（默认）或 anthropic-messages。
 非交互初始化从指定环境变量读取密钥，不接受命令行明文密钥。
 
-CLI 与桌面默认使用独立实例和数据库；远程机器接入与持久化任务正在后续里程碑开发。
+CLI 与桌面默认使用独立实例和数据库。远程机器接入仍在后续里程碑开发。
 `;

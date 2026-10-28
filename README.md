@@ -25,6 +25,7 @@
 | 模块           | 能力                                                                                                                       |
 | -------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | Bot            | 总控 + 项目 / 部署 / 研究 / 编码 Agent，流式回答、工具调用、操作审批、相关长期记忆召回                                     |
+| 任务           | CLI 创建并跟随持久化任务，可查看、断线补看、显式取消和失败后续跑。关闭终端不会取消任务。桌面任务看板尚未提供               |
 | 项目中心       | 扫描本地仓库，查看分支、未提交、未推送、PR/MR、提交记录和 Star 数；打开 Cursor / Claude Code / 终端，查看 Claude Code 会话 |
 | AI 提交        | 根据仓库改动生成 Conventional Commits 提交说明，支持编辑说明、暂存全部改动、仅提交或提交并推送；后台任务展示执行结果       |
 | 仓库导入与收藏 | 从 GitHub / Gitee 选择远程仓库并关联本地克隆或克隆到扫描目录；浏览 GitHub 已 Star 项目、搜索、克隆并交给研究 Agent 讲解    |
@@ -66,20 +67,23 @@ AI 生成提交说明需要可用模型。实际的 `git commit` / `git push` �
 
 ## 快速开始
 
-### 独立 CLI（本地预览）
+### 独立 CLI
 
-独立 CLI 已开始开发，可构建本地 npm 包，提供后台服务、模型初始化、流式聊天、工具审批和诊断。当前尚未公开发布，完整开发范围与进度见 [开发任务](开发任务.md)。
+独立 CLI 可在本机构建运行，提供本地服务、模型配置、交互聊天和持久化任务。包名 `@agentdesk/cli` 尚未公开发布。范围与进度见 [开发任务](开发任务.md)，安装和命令见 [CLI 说明](apps/cli/README.md)。
 
 ```powershell
 pnpm build:cli
-pnpm cli --help
-pnpm cli start
-pnpm cli init
-pnpm cli chat "我有哪些项目"
+pnpm cli
+pnpm cli run "梳理还没提交的项目"
+pnpm cli tasks
 pnpm cli stop
 ```
 
-CLI 默认使用 `~/.agentdesk`，与桌面端的数据和端口分开。使用与项目原生数据库依赖匹配的 Node 版本；新环境安装依赖时由目标平台准备原生模块。独立安装、前台运行、自动化配置与发行验证见 [CLI 说明](apps/cli/README.md)。
+在真实交互终端里直接执行 `pnpm cli`：已经配置模型时进入聊天；还没有模型时先完成配置，再进入聊天。脚本和非交互环境仍打印帮助。
+
+`init`、`chat`、`run`、`tasks`、`inspect`、`cancel`、`resume` 以及审批命令在服务未运行时会自动在后台拉起服务。`start`、`stop`、`restart`、`status` 只管理服务本身。
+
+CLI 默认数据目录是 `~/.agentdesk`，端口是 `17891`，与桌面端的数据和端口分开。`chat` 断开连接会取消当前这一轮对话。`run` 创建的任务由本地服务继续执行，关闭终端不会取消；停止任务需要 `pnpm cli cancel <任务ID>`。使用与项目原生数据库依赖匹配的 Node 版本，新环境安装依赖时由目标平台准备原生模块。
 
 ### 开发环境
 
@@ -187,7 +191,7 @@ apps/
   desktop/        Tauri 2 + React 19 + Vite + Tailwind v4
     src/          TanStack Router/Query、Zustand、React Flow 与功能界面
     src-tauri/    系统钥匙串、sidecar 生命周期、托盘、通知、自动更新
-  sidecar/        Node + Hono 本地服务、SQLite、项目与部署服务、记忆、磁盘、调度
+  sidecar/        Node + Hono 本地服务、SQLite、任务与运行、项目与部署、记忆、磁盘、调度
 packages/
   agent-core/     pi-ai Agent 循环、Orchestrator、工具注册与审批、Skills、模型故障切换
   workflow/       工作流 DSL（zod）、执行器与模板
@@ -197,6 +201,7 @@ packages/
 ```
 
 - UI 通过 HTTP/SSE 与 sidecar 通信，sidecar 仅监听 `127.0.0.1`。完整桌面模式校验每次启动生成的会话令牌；独立调试时可通过 `AGENTDESK_TOKEN` 配置。
+- 持久化任务和实时聊天分开。任务运行不依赖页面或 SSE 连接，取消必须调用取消接口。桌面端任务看板尚未接入，当前从 CLI 使用。
 - Agent 工具按 `safe` / `confirm` / `dangerous` 分级，需要确认的工具操作会生成审批卡片。
 - 长期记忆保存在本地 SQLite，通过全文检索召回相关内容，再提供给总控与被委派的 Agent。
 - 模型调用对过载、限流、5xx 等瞬时错误退避重试，再按绑定顺序切换备用模型。
@@ -230,9 +235,7 @@ pnpm --filter @agentdesk/desktop app:bundle
 
 构建前，将 [`tauri.conf.json`](apps/desktop/src-tauri/tauri.conf.json) 中的 `plugins.updater.pubkey` 和 `plugins.updater.endpoints` 改为自己的公钥与发布地址；使用加密私钥时还需配置相应的签名密码。
 
-sidecar 构建目录为 `apps/sidecar/dist/`，包含 bundle、构建时使用的 Node 运行时、运行依赖和公开技能。安装包生成在 `apps/desktop/src-tauri/target/release/bundle/nsis/`。自动更新需要将安装包、签名及相应的 `latest.json` 发布到配置的更新地址。
-
-目前 AI 提交的后台任务还依赖源码侧的 `apps/sidecar/scripts/ai-commit-worker.mjs`。现有 sidecar 打包脚本未分发该 worker，发布安装包前需补齐其分发与运行路径，并验证该功能。
+sidecar 构建目录为 `apps/sidecar/dist/`，包含 bundle、构建时使用的 Node 运行时、运行依赖、公开技能和 AI 提交 worker。安装包生成在 `apps/desktop/src-tauri/target/release/bundle/nsis/`。自动更新需要将安装包、签名及相应的 `latest.json` 发布到配置的更新地址。
 
 ## 开源与私有内容
 
