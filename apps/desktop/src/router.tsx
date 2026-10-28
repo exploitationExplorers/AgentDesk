@@ -7,6 +7,7 @@ import {
 import { z } from "zod";
 import { AppShell } from "./components/AppShell";
 import { ChatPage } from "./features/chat/ChatPage";
+import { CodePage } from "./features/code/CodePage";
 import { DeployPage } from "./features/deploy/DeployPage";
 import { DiskPage } from "./features/disk/DiskPage";
 import { FeedPage } from "./features/feed/FeedPage";
@@ -28,6 +29,16 @@ const projectsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/projects",
   component: ProjectsPage,
+});
+const codeRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/code",
+  validateSearch: z.object({
+    task: z.string().optional(),
+    c: z.string().optional(),
+    source: z.enum(["workbench", "cli"]).optional(),
+  }),
+  component: CodePage,
 });
 const deployRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -69,6 +80,7 @@ const settingsRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   chatRoute,
   projectsRoute,
+  codeRoute,
   deployRoute,
   diskRoute,
   feedRoute,
@@ -91,4 +103,4 @@ declare module "@tanstack/react-router" {
   }
 }
 
-export { chatRoute, settingsRoute, workflowEditorRoute };
+export { chatRoute, codeRoute, settingsRoute, workflowEditorRoute };

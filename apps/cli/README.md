@@ -146,7 +146,7 @@ agentdesk resume <任务ID> --message "从失败的测试继续"
 - 带 `--plan` 的任务在方案获批后进入 `running`，这一步不会自动再开执行轮。批准后用 `run "按已批准方案执行" --conversation <任务ID>` 继续。方案和验收审批都用 `approvals`、`approve`、`reject` 处理。
 - `resume` 用于失败或已取消的任务。不传 `--message` 时使用「继续执行」，并把上次失败原因和已完成的工具摘要带进新的一轮。
 - 服务重启后，中断时仍标记为运行中的任务会标为失败，可用 `resume` 继续。尚未开始、仍在排队的运行会重新调度。
-- CLI 还没有单独的验收放弃或归档关闭命令。桌面端也还没有任务看板。
+- CLI 还没有单独的验收放弃或归档关闭命令。桌面端的「编码现场」可查看任务、执行事件与文件差异。
 
 `status` 在服务未运行时返回非零退出码，`doctor` 在必要条件未就绪时返回非零退出码；聊天收到错误或未收到完成事件时同样返回非零退出码。
 
@@ -158,6 +158,18 @@ agentdesk resume <任务ID> --message "从失败的测试继续"
 pnpm --filter @agentdesk/cli test
 pnpm --filter @agentdesk/cli typecheck
 pnpm build:cli
+pnpm --filter @agentdesk/cli test:dist
+pnpm --filter @agentdesk/cli test:package
 ```
 
 先检查 tarball 文件列表，在仓库外安装并验证 help、start、认证、重复启动、init、chat、status、logs、restart 与 stop，再配置正式版本和公开发布。当前不提供已发布的 npm 安装命令。
+
+## TypeScript 开发入口
+
+CLI 业务源码使用 `.ts` / `.tsx`，构建与预览脚本也使用 TypeScript，通过本地开发依赖 `tsx` 运行。`typecheck` 同时检查业务源码、构建脚本和 TypeScript 测试；测试 runner 使用 `node --import tsx`，源码内部的 `.js` 导入会解析到对应 `.ts` / `.tsx`。
+
+发行文件仍生成 `dist/index.mjs`、`dist/runtime.mjs` 和独立的 `dist/scripts/ai-commit-worker.mjs`，安装后的用户只需要 Node，不需要 TypeScript 编译器或 `tsx`。开发提交 worker 使用 `.ts`，由启动代码显式注入本地 `tsx`；桌面和 CLI 打包时会编译成独立 `.mjs`。
+
+`test/fixtures/fake-tty-probe.mjs` 保留原生 Node 入口，用于验证发行包不依赖 TS 加载器也能启动交互界面。`test/fixtures/service.mjs` 只是子进程引导壳，先注册 `tsx` 再加载带类型检查的 `service.ts`。旧 JSX loader 已移除。
+
+构建产物检查可通过上面的 `test:dist` / `test:package` 运行；验证仓库外安装包时，在仓库根目录执行 `pnpm exec tsx apps/cli/test/package-smoke.ts <已安装包目录>`。

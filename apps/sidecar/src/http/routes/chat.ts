@@ -1,9 +1,9 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
-import type { AgentStreamEvent } from "@agentdesk/shared";
+import { ChatRequest, type AgentStreamEvent } from "@agentdesk/shared";
 import type { Container } from "../../container";
 
-export function chatRoutes({ chat }: Container) {
+export function chatRoutes({ chat, projectInstructions }: Container) {
   const app = new Hono();
 
   app.get("/conversations", (c) => c.json(chat.listConversations()));
@@ -16,7 +16,9 @@ export function chatRoutes({ chat }: Container) {
 
   /** POST + SSE：一轮对话的全部 Agent 事件流式返回；客户端断开即取消。 */
   app.post("/chat", async (c) => {
-    const body = await c.req.json();
+    const body = ChatRequest.parse(await c.req.json());
+    // 在提交 SSE 响应头之前校验工作区，输入错误保持普通 HTTP 400 响应。
+    await projectInstructions.validateWorkspace(body.workspace);
     return streamSSE(c, async (stream) => {
       const controller = new AbortController();
       stream.onAbort(() => controller.abort());

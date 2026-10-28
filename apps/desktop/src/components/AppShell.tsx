@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import {
   FolderGit2,
+  Code2,
   HardDrive,
   MessageSquare,
   Moon,
@@ -32,6 +33,7 @@ import { Toasts } from "./Toasts";
 
 const NAV: Array<{ to: string; label: string; icon: LucideIcon }> = [
   { to: "/", label: "Bot", icon: MessageSquare },
+  { to: "/code", label: "编码现场", icon: Code2 },
   { to: "/projects", label: "项目", icon: FolderGit2 },
   { to: "/deploy", label: "部署", icon: Rocket },
   { to: "/feed", label: "热榜", icon: Newspaper },

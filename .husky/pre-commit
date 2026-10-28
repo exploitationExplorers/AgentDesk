@@ -1,2 +1,2 @@
-node scripts/check-public-files.mjs --staged
+node --import tsx scripts/check-public-files.ts --staged
 pnpm exec lint-staged

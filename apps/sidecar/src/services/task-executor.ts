@@ -3,6 +3,7 @@ import type { AgentName, ArtifactKind, TaskStreamEvent, ToolCallRecord } from "@
 import { errorMessage, newId, nowIso } from "../util";
 import type { ApprovalService } from "./approvals";
 import type { ConversationStore } from "./conversation-store";
+import type { ProjectInstructionService } from "./project-instructions";
 import type { RunExecutor, RunOutcome, TaskService } from "./tasks";
 
 /**
@@ -84,7 +85,7 @@ export function createDelegateHandler(deps: {
     });
     const emit = (event: TaskStreamEvent) =>
       tasks.appendEvent({ taskId, runId: childRun.id, parentRunId, event });
-    emit({ type: "run_started", runId: childRun.id, parentRunId, agent, trigger: "delegate" });
+    tasks.startRunDirect(childRun.id);
 
     const requestApproval = (request: ApprovalRequest) =>
       approvals.request({ kind: "tool", ...request }, signal, (approval) =>
@@ -122,6 +123,7 @@ export interface RealExecutorDeps {
   conversationStore: ConversationStore;
   /** 用于在方案关口场景下，把可用工具收紧到"只读工具 + tasks.submit_plan"。 */
   registry: ToolRegistry;
+  projectInstructions: ProjectInstructionService;
 }
 
 /** 阶段 D 的真实 RunExecutor：真正调用 orchestrator，把结果写回会话消息和 run_events。 */
@@ -244,13 +246,15 @@ export function createOrchestratorExecutor(deps: RealExecutorDeps): RunExecutor 
     }
 
     try {
+      const projectContext = await deps.projectInstructions.load(run.input.workspace, signal);
       const result = await orchestrator.run({
         history: conversationStore.toPiMessages(history),
         userMessage: run.input.userMessage,
         agent: task.agent ?? undefined,
         context:
-          [run.input.context, resumeContext, planGateHint].filter(Boolean).join("\n\n") ||
-          undefined,
+          [run.input.context, resumeContext, projectContext, planGateHint]
+            .filter(Boolean)
+            .join("\n\n") || undefined,
         signal,
         emit,
         requestApproval,

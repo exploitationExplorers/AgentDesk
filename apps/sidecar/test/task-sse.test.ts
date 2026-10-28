@@ -88,6 +88,27 @@ function createRootTask(goal: string) {
   return { task, run };
 }
 
+it("超过一页的历史事件仍完整回放并结束", async () => {
+  const { task, run } = createRootTask("长编码任务回放");
+  for (let i = 0; i < 610; i++)
+    container.tasks.appendEvent({
+      taskId: task.id,
+      runId: run.id,
+      event: { type: "text_delta", agent: "code", delta: String(i) },
+    });
+  container.tasks.appendEvent({
+    taskId: task.id,
+    runId: run.id,
+    event: { type: "run_ended", runId: run.id, status: "succeeded" },
+  });
+  const response = await call(`/tasks/${task.id}/stream`);
+  const text = await response.text();
+  const data = text.split("\n").filter((line) => line.startsWith("data:"));
+  expect(data).toHaveLength(611);
+  expect(text).toContain("id:");
+  expect(JSON.parse(data.at(-1)!.slice(5)).event.type).toBe("run_ended");
+});
+
 describe("task events 快照 API", () => {
   it("手工写入事件后能按顺序、递增 seq 拿到全部事件", async () => {
     const { task, run } = createRootTask("快照 API 测试");

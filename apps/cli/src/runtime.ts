@@ -1,10 +1,9 @@
-import { randomUUID } from "node:crypto";
-import { readFileSync, renameSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { loadConfig, loadEnvFiles } from "../../sidecar/src/config";
 import { startSidecar, type SidecarRuntime } from "../../sidecar/src/runtime";
-import { claimState, removeOwnedState } from "./state.mjs";
+import { claimState, publishState, removeOwnedState } from "./state.js";
 
 interface RuntimeOptions {
   home: string;
@@ -81,9 +80,7 @@ export async function runCliRuntime(options: RuntimeOptions): Promise<void> {
         });
       },
     });
-    const temp = join(home, `service-${randomUUID()}.tmp`);
-    writeFileSync(temp, JSON.stringify({ ...state, port: runtime.port }, null, 2), { mode: 0o600 });
-    renameSync(temp, join(home, "service.json"));
+    await publishState(home, { ...state, port: runtime.port });
     console.info(`[cli] ready http://127.0.0.1:${runtime.port} (${mode}, PID ${process.pid})`);
     const onSignal = () => {
       void stop().then(

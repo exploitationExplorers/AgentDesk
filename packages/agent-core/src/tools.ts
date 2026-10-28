@@ -22,6 +22,7 @@ export interface RecordedArtifact {
 
 export interface ToolContext {
   agent: AgentName;
+  toolCallId?: string;
   signal?: AbortSignal;
   emit: (event: AgentStreamEvent) => void;
   /** 返回 true 表示用户批准。 */
@@ -46,6 +47,8 @@ export interface AgentTool<TParams extends TSchema = TSchema> {
   risk: RiskLevel;
   /** 按参数动态判定风险，例如白名单内的只读命令可以免审批 */
   riskFor?: (args: Static<TParams>) => RiskLevel;
+  /** 仅明确互不干扰的只读工具设为 true；审批风险低不代表可并发。默认按调用顺序执行。 */
+  isConcurrencySafe?: boolean;
   execute: (args: Static<TParams>, ctx: ToolContext) => Promise<unknown>;
   describeApproval?: (args: Static<TParams>) => { title: string; detail: string };
 }

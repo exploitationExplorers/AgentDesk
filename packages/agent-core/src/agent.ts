@@ -126,6 +126,7 @@ async function callModel(
 }
 
 const TRANSIENT_RETRIES = 2;
+const MAX_CONCURRENT_TOOLS = 8;
 
 /** 中转站常见的瞬时错误：过载、限流、网关超时等，值得原样重试 */
 export function isTransient(message: string): boolean {
@@ -159,12 +160,15 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentRunResult
     .filter(Boolean)
     .join("\n\n");
   const maxTurns = definition.maxTurns ?? 12;
+  if (!Number.isSafeInteger(maxTurns) || maxTurns < 1)
+    throw new Error("Agent 的 maxTurns 必须是正整数");
   let finalText = "";
   let providerId: string | null = null;
 
   emit({ type: "agent_start", agent: definition.name });
 
   for (let turn = 0; turn < maxTurns; turn++) {
+    signal?.throwIfAborted();
     const { message, providerId: used } = await callModel(
       models,
       { systemPrompt, messages, tools: piTools.length > 0 ? piTools : undefined },
@@ -179,17 +183,50 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentRunResult
     const calls = message.content.filter((c): c is ToolCall => c.type === "toolCall");
     if (message.stopReason !== "toolUse" || calls.length === 0) break;
 
-    const results = await Promise.all(
-      calls.map((call) => executeToolCall(call, tools, piTools, options, definition.name)),
-    );
-    for (const { record, result } of results) {
-      toolCalls.push(record);
-      messages.push(result);
+    for (const batch of toolCallBatches(calls, tools)) {
+      signal?.throwIfAborted();
+      // 即使事件回调或其他外围逻辑抛错，也等本批已启动的工具全部收尾，避免悬空操作。
+      const settled = await Promise.allSettled(
+        batch.map((call) => executeToolCall(call, tools, piTools, options, definition.name)),
+      );
+      signal?.throwIfAborted();
+      for (const outcome of settled) {
+        if (outcome.status === "rejected") throw outcome.reason;
+        toolCalls.push(outcome.value.record);
+        messages.push(outcome.value.result);
+      }
+    }
+    if (turn === maxTurns - 1) {
+      throw new Error(
+        `Agent 已达到 ${maxTurns} 轮执行上限，仍需继续处理工具结果，任务尚未完成。已执行的操作记录已保留，可检查后继续运行。`,
+      );
     }
   }
 
   emit({ type: "agent_end", agent: definition.name });
   return { text: finalText, toolCalls, messages, providerId };
+}
+
+/** 连续只读调用可并发，写入及未知工具形成屏障，不允许后面的读取越过写入。 */
+function* toolCallBatches(calls: ToolCall[], tools: AnyAgentTool[]): Generator<ToolCall[]> {
+  let reads: ToolCall[] = [];
+  for (const call of calls) {
+    const tool = tools.find((candidate) => candidate.name === fromWireName(call.name));
+    if (tool?.isConcurrencySafe === true) {
+      reads.push(call);
+      if (reads.length === MAX_CONCURRENT_TOOLS) {
+        yield reads;
+        reads = [];
+      }
+      continue;
+    }
+    if (reads.length > 0) {
+      yield reads;
+      reads = [];
+    }
+    yield [call];
+  }
+  if (reads.length > 0) yield reads;
 }
 
 async function executeToolCall(
@@ -206,6 +243,7 @@ async function executeToolCall(
   let output: unknown;
   let isError = false;
   try {
+    options.signal?.throwIfAborted();
     if (!tool) throw new Error(`未知工具：${name}`);
     const piTool = piTools.find((t) => t.name === call.name);
     const args = piTool ? validateToolArguments(piTool, call) : call.arguments;
@@ -226,12 +264,14 @@ async function executeToolCall(
 
     const ctx: ToolContext = {
       agent,
+      toolCallId: call.id,
       signal: options.signal,
       emit: options.emit,
       requestApproval: options.requestApproval,
       requestAnswer: options.requestAnswer,
       recordArtifact: options.recordArtifact,
     };
+    options.signal?.throwIfAborted();
     output = await tool.execute(args, ctx);
   } catch (error) {
     isError = true;

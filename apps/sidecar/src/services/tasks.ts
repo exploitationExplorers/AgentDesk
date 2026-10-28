@@ -52,7 +52,7 @@ export interface CreateRunInput {
   agent: AgentName;
   trigger: RunTrigger;
   idempotencyKey?: string | null;
-  input: { userMessage: string; context?: string };
+  input: { userMessage: string; context?: string; workspace?: string };
 }
 
 export interface RecordArtifactInput {
@@ -196,6 +196,12 @@ export class TaskService {
         this.safeTransition(input.taskId, "planning");
       }
     }
+    const task = this.tasks.get(input.taskId);
+    const previousRunId = input.parentRunId ?? task?.currentRunId;
+    const inheritedWorkspace = previousRunId
+      ? this.getRun(previousRunId)?.input.workspace
+      : undefined;
+    const workspace = input.input.workspace ?? inheritedWorkspace;
     const row = {
       id: newId(),
       taskId: input.taskId,
@@ -205,7 +211,7 @@ export class TaskService {
       status: "queued" as RunStatus,
       trigger: input.trigger,
       idempotencyKey: input.idempotencyKey ?? null,
-      input: input.input,
+      input: { ...input.input, ...(workspace ? { workspace } : {}) },
       resultText: null,
       resultError: null,
       toolCalls: null,
@@ -216,7 +222,8 @@ export class TaskService {
       createdAt: nowIso(),
     };
     this.db.insert(runs).values(row).run();
-    this.tasks.update(input.taskId, (t) => ({ ...t, currentRunId: row.id, updatedAt: nowIso() }));
+    if (input.kind === "root")
+      this.tasks.update(input.taskId, (t) => ({ ...t, currentRunId: row.id, updatedAt: nowIso() }));
     return this.toRun(row);
   }
 
@@ -233,6 +240,32 @@ export class TaskService {
       .orderBy(asc(runs.createdAt))
       .all()
       .map((row) => this.toRun(row));
+  }
+
+  /** 对话和委派由调用方驱动，但仍记录真实运行状态并接入取消通道。 */
+  startRunDirect(runId: string, controller?: AbortController): void {
+    const run = this.getRun(runId);
+    if (!run) throw new AppError(ErrorCode.NotFound, "运行不存在");
+    this.updateRunRow(runId, { status: "running", startedAt: nowIso() });
+    if (controller) this.controllers.set(runId, controller);
+    if (!run.parentRunId) {
+      const task = this.get(run.taskId);
+      if (task && ["pending", "failed", "cancelled"].includes(task.status))
+        this.safeTransition(task.id, "queued");
+      this.safeTransition(run.taskId, "running");
+    }
+    this.appendEvent({
+      taskId: run.taskId,
+      runId,
+      parentRunId: run.parentRunId,
+      event: {
+        type: "run_started",
+        runId,
+        parentRunId: run.parentRunId,
+        agent: run.agent,
+        trigger: run.trigger,
+      },
+    });
   }
 
   requestCancel(runId: string): Run {
@@ -328,6 +361,7 @@ export class TaskService {
     if (!run) return;
     this.writeRunResult(run, outcome);
     if (run.parentRunId === null) this.safeTransition(run.taskId, this.taskStatusFor(outcome));
+    this.controllers.delete(runId);
   }
 
   private writeRunResult(run: Run, result: RunOutcome): Run {
@@ -404,6 +438,18 @@ export class TaskService {
 
   /** 写入一条 run_events 行并分别广播到 run 频道和 task 频道，返回的记录形状供快照 API 和 SSE 复用。 */
   appendEvent(input: AppendEventInput): RunEventRecord {
+    if (input.event.type === "file_change") {
+      const { change } = input.event;
+      this.recordArtifact({
+        taskId: input.taskId,
+        runId: input.runId,
+        kind: "change",
+        title: change.path,
+        filePath: change.path,
+        content: change.diff,
+        metadata: change,
+      });
+    }
     const createdAt = nowIso();
     const parentRunId = input.parentRunId ?? null;
     const result = this.db

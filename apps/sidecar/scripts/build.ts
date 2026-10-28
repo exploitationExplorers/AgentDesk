@@ -87,7 +87,15 @@ for (const [name, parent] of RUNTIME_PACKAGES)
   resolved.set(name, copyPackage(name, parent ? resolved.get(parent) : undefined));
 copyPublicSkills(join(root, "skills"), join(dist, "skills"));
 mkdirSync(join(dist, "scripts"), { recursive: true });
-cpSync(join(root, "scripts/ai-commit-worker.mjs"), join(dist, "scripts/ai-commit-worker.mjs"));
+await build({
+  entryPoints: [join(root, "scripts/ai-commit-worker.ts")],
+  outfile: join(dist, "scripts/ai-commit-worker.mjs"),
+  bundle: true,
+  platform: "node",
+  target: "node22",
+  format: "esm",
+  logLevel: "info",
+});
 cpSync(process.execPath, join(dist, process.platform === "win32" ? "node.exe" : "node"));
 
 const size = (p: string) => `${(statSync(p).size / 1024 / 1024).toFixed(1)} MB`;

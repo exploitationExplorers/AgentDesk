@@ -1,0 +1,3152 @@
+{
+  "method": "Heuristic relative-import resolution against supplied src, including emitted .js -> .ts/.tsx substitution; excludes package and alias imports. Unresolved means absent from supplied src, not proof of a source error.",
+  "relativeImports": 12718,
+  "unresolvedCount": 524,
+  "uniqueTargets": 157,
+  "unresolved": [
+    {
+      "file": "bridge/bridgeMessaging.ts",
+      "line": 18,
+      "specifier": "../entrypoints/sdk/controlTypes.js",
+      "resolvedTarget": "entrypoints\\sdk\\controlTypes.js"
+    },
+    {
+      "file": "bridge/bridgeMessaging.ts",
+      "line": 22,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "bridge/initReplBridge.ts",
+      "line": 20,
+      "specifier": "../entrypoints/sdk/controlTypes.js",
+      "resolvedTarget": "entrypoints\\sdk\\controlTypes.js"
+    },
+    {
+      "file": "bridge/initReplBridge.ts",
+      "line": 27,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "bridge/initReplBridge.ts",
+      "line": 480,
+      "specifier": "../assistant/index.js",
+      "resolvedTarget": "assistant\\index.js"
+    },
+    {
+      "file": "bridge/remoteBridgeCore.ts",
+      "line": 66,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "bridge/remoteBridgeCore.ts",
+      "line": 71,
+      "specifier": "../entrypoints/sdk/controlTypes.js",
+      "resolvedTarget": "entrypoints\\sdk\\controlTypes.js"
+    },
+    {
+      "file": "bridge/replBridge.ts",
+      "line": 48,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "bridge/replBridge.ts",
+      "line": 54,
+      "specifier": "../entrypoints/sdk/controlTypes.js",
+      "resolvedTarget": "entrypoints\\sdk\\controlTypes.js"
+    },
+    {
+      "file": "buddy/prompt.ts",
+      "line": 2,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "cli/handlers/auth.ts",
+      "line": 22,
+      "specifier": "../../services/oauth/types.js",
+      "resolvedTarget": "services\\oauth\\types.js"
+    },
+    {
+      "file": "cli/print.ts",
+      "line": 363,
+      "specifier": "../proactive/index.js",
+      "resolvedTarget": "proactive\\index.js"
+    },
+    {
+      "file": "cli/remoteIO.ts",
+      "line": 28,
+      "specifier": "./transports/Transport.js",
+      "resolvedTarget": "cli\\transports\\Transport.js"
+    },
+    {
+      "file": "cli/transports/SSETransport.ts",
+      "line": 10,
+      "specifier": "./Transport.js",
+      "resolvedTarget": "cli\\transports\\Transport.js"
+    },
+    {
+      "file": "cli/transports/transportUtils.ts",
+      "line": 5,
+      "specifier": "./Transport.js",
+      "resolvedTarget": "cli\\transports\\Transport.js"
+    },
+    {
+      "file": "cli/transports/WebSocketTransport.ts",
+      "line": 18,
+      "specifier": "./Transport.js",
+      "resolvedTarget": "cli\\transports\\Transport.js"
+    },
+    {
+      "file": "commands/bridge/bridge.tsx",
+      "line": 490,
+      "specifier": "../../assistant/index.js",
+      "resolvedTarget": "assistant\\index.js"
+    },
+    {
+      "file": "commands/btw/btw.tsx",
+      "line": 17,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "commands/clear/caches.ts",
+      "line": 96,
+      "specifier": "../../tools/TungstenTool/TungstenTool.js",
+      "resolvedTarget": "tools\\TungstenTool\\TungstenTool.js"
+    },
+    {
+      "file": "commands/clear/caches.ts",
+      "line": 106,
+      "specifier": "../../utils/attributionHooks.js",
+      "resolvedTarget": "utils\\attributionHooks.js"
+    },
+    {
+      "file": "commands/clear/conversation.ts",
+      "line": 25,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "commands/clear/index.ts",
+      "line": 5,
+      "specifier": "./clear/caches.js",
+      "resolvedTarget": "commands\\clear\\clear\\caches.js"
+    },
+    {
+      "file": "commands/clear/index.ts",
+      "line": 6,
+      "specifier": "./clear/conversation.js",
+      "resolvedTarget": "commands\\clear\\clear\\conversation.js"
+    },
+    {
+      "file": "commands/compact/compact.ts",
+      "line": 23,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "commands/compact/compact.ts",
+      "line": 36,
+      "specifier": "../../services/compact/reactiveCompact.js",
+      "resolvedTarget": "services\\compact\\reactiveCompact.js"
+    },
+    {
+      "file": "commands/context/context-noninteractive.ts",
+      "line": 6,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "commands/context/context-noninteractive.ts",
+      "line": 53,
+      "specifier": "../../services/contextCollapse/operations.js",
+      "resolvedTarget": "services\\contextCollapse\\operations.js"
+    },
+    {
+      "file": "commands/context/context-noninteractive.ts",
+      "line": 116,
+      "specifier": "../../services/contextCollapse/index.js",
+      "resolvedTarget": "services\\contextCollapse\\index.js"
+    },
+    {
+      "file": "commands/context/context.tsx",
+      "line": 7,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "commands/context/context.tsx",
+      "line": 24,
+      "specifier": "../../services/contextCollapse/operations.js",
+      "resolvedTarget": "services\\contextCollapse\\operations.js"
+    },
+    {
+      "file": "commands/copy/copy.tsx",
+      "line": 19,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "commands/export/export.tsx",
+      "line": 6,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "commands/feedback/feedback.tsx",
+      "line": 5,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "commands/install-github-app/CreatingStep.tsx",
+      "line": 4,
+      "specifier": "./types.js",
+      "resolvedTarget": "commands\\install-github-app\\types.js"
+    },
+    {
+      "file": "commands/install-github-app/install-github-app.tsx",
+      "line": 26,
+      "specifier": "./types.js",
+      "resolvedTarget": "commands\\install-github-app\\types.js"
+    },
+    {
+      "file": "commands/install-github-app/setupGitHubActions.ts",
+      "line": 15,
+      "specifier": "./types.js",
+      "resolvedTarget": "commands\\install-github-app\\types.js"
+    },
+    {
+      "file": "commands/install-github-app/WarningsStep.tsx",
+      "line": 7,
+      "specifier": "./types.js",
+      "resolvedTarget": "commands\\install-github-app\\types.js"
+    },
+    {
+      "file": "commands/plugin/AddMarketplace.tsx",
+      "line": 15,
+      "specifier": "./types.js",
+      "resolvedTarget": "commands\\plugin\\types.js"
+    },
+    {
+      "file": "commands/plugin/BrowseMarketplace.tsx",
+      "line": 26,
+      "specifier": "./types.js",
+      "resolvedTarget": "commands\\plugin\\types.js"
+    },
+    {
+      "file": "commands/plugin/DiscoverPlugins.tsx",
+      "line": 31,
+      "specifier": "./types.js",
+      "resolvedTarget": "commands\\plugin\\types.js"
+    },
+    {
+      "file": "commands/plugin/ManageMarketplaces.tsx",
+      "line": 24,
+      "specifier": "./types.js",
+      "resolvedTarget": "commands\\plugin\\types.js"
+    },
+    {
+      "file": "commands/plugin/ManagePlugins.tsx",
+      "line": 13,
+      "specifier": "../../components/mcp/types.js",
+      "resolvedTarget": "components\\mcp\\types.js"
+    },
+    {
+      "file": "commands/plugin/ManagePlugins.tsx",
+      "line": 50,
+      "specifier": "./types.js",
+      "resolvedTarget": "commands\\plugin\\types.js"
+    },
+    {
+      "file": "commands/plugin/ManagePlugins.tsx",
+      "line": 52,
+      "specifier": "./unifiedTypes.js",
+      "resolvedTarget": "commands\\plugin\\unifiedTypes.js"
+    },
+    {
+      "file": "commands/plugin/PluginSettings.tsx",
+      "line": 28,
+      "specifier": "./types.js",
+      "resolvedTarget": "commands\\plugin\\types.js"
+    },
+    {
+      "file": "commands/plugin/UnifiedInstalledCell.tsx",
+      "line": 6,
+      "specifier": "./unifiedTypes.js",
+      "resolvedTarget": "commands\\plugin\\unifiedTypes.js"
+    },
+    {
+      "file": "commands/rename/generateSessionName.ts",
+      "line": 2,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "commands.ts",
+      "line": 88,
+      "specifier": "./commands/workflows/index.js",
+      "resolvedTarget": "commands\\workflows\\index.js"
+    },
+    {
+      "file": "commands.ts",
+      "line": 98,
+      "specifier": "./services/skillSearch/localSearch.js",
+      "resolvedTarget": "services\\skillSearch\\localSearch.js"
+    },
+    {
+      "file": "commands.ts",
+      "line": 110,
+      "specifier": "./commands/peers/index.js",
+      "resolvedTarget": "commands\\peers\\index.js"
+    },
+    {
+      "file": "commands.ts",
+      "line": 115,
+      "specifier": "./commands/fork/index.js",
+      "resolvedTarget": "commands\\fork\\index.js"
+    },
+    {
+      "file": "commands.ts",
+      "line": 120,
+      "specifier": "./commands/buddy/index.js",
+      "resolvedTarget": "commands\\buddy\\index.js"
+    },
+    {
+      "file": "commands.ts",
+      "line": 403,
+      "specifier": "./tools/WorkflowTool/createWorkflowCommand.js",
+      "resolvedTarget": "tools\\WorkflowTool\\createWorkflowCommand.js"
+    },
+    {
+      "file": "components/agents/new-agent-creation/CreateAgentWizard.tsx",
+      "line": 7,
+      "specifier": "../../wizard/types.js",
+      "resolvedTarget": "components\\wizard\\types.js"
+    },
+    {
+      "file": "components/agents/new-agent-creation/CreateAgentWizard.tsx",
+      "line": 8,
+      "specifier": "./types.js",
+      "resolvedTarget": "components\\agents\\new-agent-creation\\types.js"
+    },
+    {
+      "file": "components/agents/new-agent-creation/wizard-steps/ColorStep.tsx",
+      "line": 12,
+      "specifier": "../types.js",
+      "resolvedTarget": "components\\agents\\new-agent-creation\\types.js"
+    },
+    {
+      "file": "components/agents/new-agent-creation/wizard-steps/ConfirmStep.tsx",
+      "line": 19,
+      "specifier": "../types.js",
+      "resolvedTarget": "components\\agents\\new-agent-creation\\types.js"
+    },
+    {
+      "file": "components/agents/new-agent-creation/wizard-steps/ConfirmStepWrapper.tsx",
+      "line": 11,
+      "specifier": "../types.js",
+      "resolvedTarget": "components\\agents\\new-agent-creation\\types.js"
+    },
+    {
+      "file": "components/agents/new-agent-creation/wizard-steps/DescriptionStep.tsx",
+      "line": 12,
+      "specifier": "../types.js",
+      "resolvedTarget": "components\\agents\\new-agent-creation\\types.js"
+    },
+    {
+      "file": "components/agents/new-agent-creation/wizard-steps/GenerateStep.tsx",
+      "line": 15,
+      "specifier": "../types.js",
+      "resolvedTarget": "components\\agents\\new-agent-creation\\types.js"
+    },
+    {
+      "file": "components/agents/new-agent-creation/wizard-steps/LocationStep.tsx",
+      "line": 11,
+      "specifier": "../types.js",
+      "resolvedTarget": "components\\agents\\new-agent-creation\\types.js"
+    },
+    {
+      "file": "components/agents/new-agent-creation/wizard-steps/MemoryStep.tsx",
+      "line": 13,
+      "specifier": "../types.js",
+      "resolvedTarget": "components\\agents\\new-agent-creation\\types.js"
+    },
+    {
+      "file": "components/agents/new-agent-creation/wizard-steps/MethodStep.tsx",
+      "line": 10,
+      "specifier": "../types.js",
+      "resolvedTarget": "components\\agents\\new-agent-creation\\types.js"
+    },
+    {
+      "file": "components/agents/new-agent-creation/wizard-steps/ModelStep.tsx",
+      "line": 9,
+      "specifier": "../types.js",
+      "resolvedTarget": "components\\agents\\new-agent-creation\\types.js"
+    },
+    {
+      "file": "components/agents/new-agent-creation/wizard-steps/PromptStep.tsx",
+      "line": 12,
+      "specifier": "../types.js",
+      "resolvedTarget": "components\\agents\\new-agent-creation\\types.js"
+    },
+    {
+      "file": "components/agents/new-agent-creation/wizard-steps/ToolsStep.tsx",
+      "line": 10,
+      "specifier": "../types.js",
+      "resolvedTarget": "components\\agents\\new-agent-creation\\types.js"
+    },
+    {
+      "file": "components/agents/new-agent-creation/wizard-steps/TypeStep.tsx",
+      "line": 13,
+      "specifier": "../types.js",
+      "resolvedTarget": "components\\agents\\new-agent-creation\\types.js"
+    },
+    {
+      "file": "components/BashModeProgress.tsx",
+      "line": 5,
+      "specifier": "../types/tools.js",
+      "resolvedTarget": "types\\tools.js"
+    },
+    {
+      "file": "components/CompactSummary.tsx",
+      "line": 6,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "components/ConfigurableShortcutHint.tsx",
+      "line": 3,
+      "specifier": "../keybindings/types.js",
+      "resolvedTarget": "keybindings\\types.js"
+    },
+    {
+      "file": "components/ContextVisualization.tsx",
+      "line": 32,
+      "specifier": "../services/contextCollapse/index.js",
+      "resolvedTarget": "services\\contextCollapse\\index.js"
+    },
+    {
+      "file": "components/design-system/ThemeProvider.tsx",
+      "line": 69,
+      "specifier": "../../utils/systemThemeWatcher.js",
+      "resolvedTarget": "utils\\systemThemeWatcher.js"
+    },
+    {
+      "file": "components/diff/DiffDialog.tsx",
+      "line": 11,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "components/Feedback.tsx",
+      "line": 15,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "components/FeedbackSurvey/FeedbackSurvey.tsx",
+      "line": 9,
+      "specifier": "./utils.js",
+      "resolvedTarget": "components\\FeedbackSurvey\\utils.js"
+    },
+    {
+      "file": "components/FeedbackSurvey/FeedbackSurveyView.tsx",
+      "line": 5,
+      "specifier": "./utils.js",
+      "resolvedTarget": "components\\FeedbackSurvey\\utils.js"
+    },
+    {
+      "file": "components/FeedbackSurvey/submitTranscriptShare.ts",
+      "line": 3,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "components/FeedbackSurvey/useFeedbackSurvey.tsx",
+      "line": 6,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "components/FeedbackSurvey/useFeedbackSurvey.tsx",
+      "line": 16,
+      "specifier": "./utils.js",
+      "resolvedTarget": "components\\FeedbackSurvey\\utils.js"
+    },
+    {
+      "file": "components/FeedbackSurvey/useMemorySurvey.tsx",
+      "line": 8,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "components/FeedbackSurvey/useMemorySurvey.tsx",
+      "line": 17,
+      "specifier": "./utils.js",
+      "resolvedTarget": "components\\FeedbackSurvey\\utils.js"
+    },
+    {
+      "file": "components/FeedbackSurvey/usePostCompactSurvey.tsx",
+      "line": 7,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "components/FeedbackSurvey/usePostCompactSurvey.tsx",
+      "line": 12,
+      "specifier": "./utils.js",
+      "resolvedTarget": "components\\FeedbackSurvey\\utils.js"
+    },
+    {
+      "file": "components/FeedbackSurvey/useSurveyState.tsx",
+      "line": 4,
+      "specifier": "./utils.js",
+      "resolvedTarget": "components\\FeedbackSurvey\\utils.js"
+    },
+    {
+      "file": "components/FullscreenLayout.tsx",
+      "line": 11,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "components/mcp/index.ts",
+      "line": 9,
+      "specifier": "./types.js",
+      "resolvedTarget": "components\\mcp\\types.js"
+    },
+    {
+      "file": "components/mcp/MCPAgentServerMenu.tsx",
+      "line": 14,
+      "specifier": "./types.js",
+      "resolvedTarget": "components\\mcp\\types.js"
+    },
+    {
+      "file": "components/mcp/MCPListPanel.tsx",
+      "line": 16,
+      "specifier": "./types.js",
+      "resolvedTarget": "components\\mcp\\types.js"
+    },
+    {
+      "file": "components/mcp/MCPRemoteServerMenu.tsx",
+      "line": 29,
+      "specifier": "./types.js",
+      "resolvedTarget": "components\\mcp\\types.js"
+    },
+    {
+      "file": "components/mcp/MCPSettings.tsx",
+      "line": 15,
+      "specifier": "./types.js",
+      "resolvedTarget": "components\\mcp\\types.js"
+    },
+    {
+      "file": "components/mcp/MCPStdioServerMenu.tsx",
+      "line": 18,
+      "specifier": "./types.js",
+      "resolvedTarget": "components\\mcp\\types.js"
+    },
+    {
+      "file": "components/mcp/MCPToolDetailView.tsx",
+      "line": 8,
+      "specifier": "./types.js",
+      "resolvedTarget": "components\\mcp\\types.js"
+    },
+    {
+      "file": "components/mcp/MCPToolListView.tsx",
+      "line": 14,
+      "specifier": "./types.js",
+      "resolvedTarget": "components\\mcp\\types.js"
+    },
+    {
+      "file": "components/Message.tsx",
+      "line": 10,
+      "specifier": "../types/connectorText.js",
+      "resolvedTarget": "types\\connectorText.js"
+    },
+    {
+      "file": "components/Message.tsx",
+      "line": 11,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "components/Message.tsx",
+      "line": 252,
+      "specifier": "../services/compact/snipProjection.js",
+      "resolvedTarget": "services\\compact\\snipProjection.js"
+    },
+    {
+      "file": "components/Message.tsx",
+      "line": 255,
+      "specifier": "../services/compact/snipCompact.js",
+      "resolvedTarget": "services\\compact\\snipCompact.js"
+    },
+    {
+      "file": "components/Message.tsx",
+      "line": 266,
+      "specifier": "./messages/SnipBoundaryMessage.js",
+      "resolvedTarget": "components\\messages\\SnipBoundaryMessage.js"
+    },
+    {
+      "file": "components/messageActions.tsx",
+      "line": 8,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "components/MessageModel.tsx",
+      "line": 5,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "components/MessageRow.tsx",
+      "line": 7,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "components/messages/AssistantToolUseMessage.tsx",
+      "line": 12,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "components/messages/CollapsedReadSearchContent.tsx",
+      "line": 9,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "components/messages/GroupedToolUseContent.tsx",
+      "line": 4,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "components/messages/nullRenderingAttachments.ts",
+      "line": 2,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "components/messages/SystemTextMessage.tsx",
+      "line": 19,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "components/messages/teamMemCollapsed.tsx",
+      "line": 4,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "components/messages/teamMemSaved.ts",
+      "line": 1,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "components/messages/UserTextMessage.tsx",
+      "line": 104,
+      "specifier": "./UserGitHubWebhookMessage.js",
+      "resolvedTarget": "components\\messages\\UserGitHubWebhookMessage.js"
+    },
+    {
+      "file": "components/messages/UserTextMessage.tsx",
+      "line": 201,
+      "specifier": "./UserForkBoilerplateMessage.js",
+      "resolvedTarget": "components\\messages\\UserForkBoilerplateMessage.js"
+    },
+    {
+      "file": "components/messages/UserTextMessage.tsx",
+      "line": 225,
+      "specifier": "./UserCrossSessionMessage.js",
+      "resolvedTarget": "components\\messages\\UserCrossSessionMessage.js"
+    },
+    {
+      "file": "components/messages/UserToolResultMessage/UserToolErrorMessage.tsx",
+      "line": 8,
+      "specifier": "../../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "components/messages/UserToolResultMessage/UserToolRejectMessage.tsx",
+      "line": 6,
+      "specifier": "../../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "components/messages/UserToolResultMessage/UserToolResultMessage.tsx",
+      "line": 5,
+      "specifier": "../../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "components/messages/UserToolResultMessage/UserToolSuccessMessage.tsx",
+      "line": 8,
+      "specifier": "../../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "components/Messages.tsx",
+      "line": 21,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "components/Messages.tsx",
+      "line": 82,
+      "specifier": "../tools/SendUserFileTool/prompt.js",
+      "resolvedTarget": "tools\\SendUserFileTool\\prompt.js"
+    },
+    {
+      "file": "components/MessageSelector.tsx",
+      "line": 14,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "components/MessageTimestamp.tsx",
+      "line": 5,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "components/Passes/Passes.tsx",
+      "line": 12,
+      "specifier": "../../services/oauth/types.js",
+      "resolvedTarget": "services\\oauth\\types.js"
+    },
+    {
+      "file": "components/permissions/NotebookEditPermissionRequest/NotebookEditToolDiff.tsx",
+      "line": 6,
+      "specifier": "../../../types/notebook.js",
+      "resolvedTarget": "types\\notebook.js"
+    },
+    {
+      "file": "components/permissions/PermissionExplanation.tsx",
+      "line": 6,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "components/permissions/PermissionPrompt.tsx",
+      "line": 4,
+      "specifier": "../../keybindings/types.js",
+      "resolvedTarget": "keybindings\\types.js"
+    },
+    {
+      "file": "components/permissions/PermissionRequest.tsx",
+      "line": 20,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "components/permissions/PermissionRequest.tsx",
+      "line": 36,
+      "specifier": "../../tools/ReviewArtifactTool/ReviewArtifactTool.js",
+      "resolvedTarget": "tools\\ReviewArtifactTool\\ReviewArtifactTool.js"
+    },
+    {
+      "file": "components/permissions/PermissionRequest.tsx",
+      "line": 37,
+      "specifier": "./ReviewArtifactPermissionRequest/ReviewArtifactPermissionRequest.js",
+      "resolvedTarget": "components\\permissions\\ReviewArtifactPermissionRequest\\ReviewArtifactPermissionRequest.js"
+    },
+    {
+      "file": "components/permissions/PermissionRequest.tsx",
+      "line": 38,
+      "specifier": "../../tools/WorkflowTool/WorkflowTool.js",
+      "resolvedTarget": "tools\\WorkflowTool\\WorkflowTool.js"
+    },
+    {
+      "file": "components/permissions/PermissionRequest.tsx",
+      "line": 39,
+      "specifier": "../../tools/WorkflowTool/WorkflowPermissionRequest.js",
+      "resolvedTarget": "tools\\WorkflowTool\\WorkflowPermissionRequest.js"
+    },
+    {
+      "file": "components/permissions/PermissionRequest.tsx",
+      "line": 40,
+      "specifier": "../../tools/MonitorTool/MonitorTool.js",
+      "resolvedTarget": "tools\\MonitorTool\\MonitorTool.js"
+    },
+    {
+      "file": "components/permissions/PermissionRequest.tsx",
+      "line": 41,
+      "specifier": "./MonitorPermissionRequest/MonitorPermissionRequest.js",
+      "resolvedTarget": "components\\permissions\\MonitorPermissionRequest\\MonitorPermissionRequest.js"
+    },
+    {
+      "file": "components/permissions/rules/PermissionRuleList.tsx",
+      "line": 25,
+      "specifier": "../../ui/option.js",
+      "resolvedTarget": "components\\ui\\option.js"
+    },
+    {
+      "file": "components/PromptInput/Notifications.tsx",
+      "line": 18,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "components/PromptInput/PromptInput.tsx",
+      "line": 52,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "components/PromptInput/PromptInputFooter.tsx",
+      "line": 15,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "components/SkillImprovementSurvey.tsx",
+      "line": 8,
+      "specifier": "./FeedbackSurvey/utils.js",
+      "resolvedTarget": "components\\FeedbackSurvey\\utils.js"
+    },
+    {
+      "file": "components/Spinner/GlimmerMessage.tsx",
+      "line": 7,
+      "specifier": "./types.js",
+      "resolvedTarget": "components\\Spinner\\types.js"
+    },
+    {
+      "file": "components/Spinner/index.ts",
+      "line": 5,
+      "specifier": "./types.js",
+      "resolvedTarget": "components\\Spinner\\types.js"
+    },
+    {
+      "file": "components/Spinner/SpinnerAnimationRow.tsx",
+      "line": 14,
+      "specifier": "./types.js",
+      "resolvedTarget": "components\\Spinner\\types.js"
+    },
+    {
+      "file": "components/Spinner/useShimmerAnimation.ts",
+      "line": 4,
+      "specifier": "./types.js",
+      "resolvedTarget": "components\\Spinner\\types.js"
+    },
+    {
+      "file": "components/Spinner/utils.ts",
+      "line": 2,
+      "specifier": "./types.js",
+      "resolvedTarget": "components\\Spinner\\types.js"
+    },
+    {
+      "file": "components/StatusLine.tsx",
+      "line": 15,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "components/StatusLine.tsx",
+      "line": 16,
+      "specifier": "../types/statusLine.js",
+      "resolvedTarget": "types\\statusLine.js"
+    },
+    {
+      "file": "components/tasks/BackgroundTasksDialog.tsx",
+      "line": 109,
+      "specifier": "./WorkflowDetailDialog.js",
+      "resolvedTarget": "components\\tasks\\WorkflowDetailDialog.js"
+    },
+    {
+      "file": "components/tasks/BackgroundTasksDialog.tsx",
+      "line": 117,
+      "specifier": "../../tasks/MonitorMcpTask/MonitorMcpTask.js",
+      "resolvedTarget": "tasks\\MonitorMcpTask\\MonitorMcpTask.js"
+    },
+    {
+      "file": "components/tasks/BackgroundTasksDialog.tsx",
+      "line": 119,
+      "specifier": "./MonitorMcpDetailDialog.js",
+      "resolvedTarget": "components\\tasks\\MonitorMcpDetailDialog.js"
+    },
+    {
+      "file": "components/TokenWarning.tsx",
+      "line": 36,
+      "specifier": "../services/contextCollapse/index.js",
+      "resolvedTarget": "services\\contextCollapse\\index.js"
+    },
+    {
+      "file": "components/TokenWarning.tsx",
+      "line": 138,
+      "specifier": "../services/contextCollapse/index.js",
+      "resolvedTarget": "services\\contextCollapse\\index.js"
+    },
+    {
+      "file": "components/VirtualMessageList.tsx",
+      "line": 10,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "components/wizard/index.ts",
+      "line": 5,
+      "specifier": "./types.js",
+      "resolvedTarget": "components\\wizard\\types.js"
+    },
+    {
+      "file": "components/wizard/useWizard.ts",
+      "line": 2,
+      "specifier": "./types.js",
+      "resolvedTarget": "components\\wizard\\types.js"
+    },
+    {
+      "file": "components/wizard/WizardProvider.tsx",
+      "line": 4,
+      "specifier": "./types.js",
+      "resolvedTarget": "components\\wizard\\types.js"
+    },
+    {
+      "file": "components/WorkflowMultiselectDialog.tsx",
+      "line": 3,
+      "specifier": "../commands/install-github-app/types.js",
+      "resolvedTarget": "commands\\install-github-app\\types.js"
+    },
+    {
+      "file": "constants/prompts.ts",
+      "line": 68,
+      "specifier": "../services/compact/cachedMCConfig.js",
+      "resolvedTarget": "services\\compact\\cachedMCConfig.js"
+    },
+    {
+      "file": "constants/prompts.ts",
+      "line": 90,
+      "specifier": "../tools/DiscoverSkillsTool/prompt.js",
+      "resolvedTarget": "tools\\DiscoverSkillsTool\\prompt.js"
+    },
+    {
+      "file": "constants/prompts.ts",
+      "line": 96,
+      "specifier": "../services/skillSearch/featureCheck.js",
+      "resolvedTarget": "services\\skillSearch\\featureCheck.js"
+    },
+    {
+      "file": "constants/tools.ts",
+      "line": 29,
+      "specifier": "../tools/WorkflowTool/constants.js",
+      "resolvedTarget": "tools\\WorkflowTool\\constants.js"
+    },
+    {
+      "file": "dialogLaunchers.tsx",
+      "line": 10,
+      "specifier": "./assistant/sessionDiscovery.js",
+      "resolvedTarget": "assistant\\sessionDiscovery.js"
+    },
+    {
+      "file": "dialogLaunchers.tsx",
+      "line": 36,
+      "specifier": "./components/agents/SnapshotUpdateDialog.js",
+      "resolvedTarget": "components\\agents\\SnapshotUpdateDialog.js"
+    },
+    {
+      "file": "dialogLaunchers.tsx",
+      "line": 63,
+      "specifier": "./assistant/AssistantSessionChooser.js",
+      "resolvedTarget": "assistant\\AssistantSessionChooser.js"
+    },
+    {
+      "file": "dialogLaunchers.tsx",
+      "line": 77,
+      "specifier": "./commands/assistant/assistant.js",
+      "resolvedTarget": "commands\\assistant\\assistant.js"
+    },
+    {
+      "file": "entrypoints/agentSdkTypes.ts",
+      "line": 22,
+      "specifier": "./sdk/controlTypes.js",
+      "resolvedTarget": "entrypoints\\sdk\\controlTypes.js"
+    },
+    {
+      "file": "entrypoints/agentSdkTypes.ts",
+      "line": 26,
+      "specifier": "./sdk/runtimeTypes.js",
+      "resolvedTarget": "entrypoints\\sdk\\runtimeTypes.js"
+    },
+    {
+      "file": "entrypoints/agentSdkTypes.ts",
+      "line": 29,
+      "specifier": "./sdk/settingsTypes.generated.js",
+      "resolvedTarget": "entrypoints\\sdk\\settingsTypes.generated.js"
+    },
+    {
+      "file": "entrypoints/agentSdkTypes.ts",
+      "line": 31,
+      "specifier": "./sdk/toolTypes.js",
+      "resolvedTarget": "entrypoints\\sdk\\toolTypes.js"
+    },
+    {
+      "file": "entrypoints/agentSdkTypes.ts",
+      "line": 62,
+      "specifier": "./sdk/runtimeTypes.js",
+      "resolvedTarget": "entrypoints\\sdk\\runtimeTypes.js"
+    },
+    {
+      "file": "entrypoints/cli.tsx",
+      "line": 103,
+      "specifier": "../daemon/workerRegistry.js",
+      "resolvedTarget": "daemon\\workerRegistry.js"
+    },
+    {
+      "file": "entrypoints/cli.tsx",
+      "line": 177,
+      "specifier": "../daemon/main.js",
+      "resolvedTarget": "daemon\\main.js"
+    },
+    {
+      "file": "entrypoints/cli.tsx",
+      "line": 191,
+      "specifier": "../cli/bg.js",
+      "resolvedTarget": "cli\\bg.js"
+    },
+    {
+      "file": "entrypoints/cli.tsx",
+      "line": 216,
+      "specifier": "../cli/handlers/templateJobs.js",
+      "resolvedTarget": "cli\\handlers\\templateJobs.js"
+    },
+    {
+      "file": "entrypoints/cli.tsx",
+      "line": 230,
+      "specifier": "../environment-runner/main.js",
+      "resolvedTarget": "environment-runner\\main.js"
+    },
+    {
+      "file": "entrypoints/cli.tsx",
+      "line": 242,
+      "specifier": "../self-hosted-runner/main.js",
+      "resolvedTarget": "self-hosted-runner\\main.js"
+    },
+    {
+      "file": "entrypoints/sdk/coreTypes.ts",
+      "line": 19,
+      "specifier": "./coreTypes.generated.js",
+      "resolvedTarget": "entrypoints\\sdk\\coreTypes.generated.js"
+    },
+    {
+      "file": "entrypoints/sdk/coreTypes.ts",
+      "line": 22,
+      "specifier": "./sdkUtilityTypes.js",
+      "resolvedTarget": "entrypoints\\sdk\\sdkUtilityTypes.js"
+    },
+    {
+      "file": "hooks/fileSuggestions.ts",
+      "line": 15,
+      "specifier": "../types/fileSuggestion.js",
+      "resolvedTarget": "types\\fileSuggestion.js"
+    },
+    {
+      "file": "hooks/toolPermission/PermissionContext.ts",
+      "line": 16,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "hooks/useAssistantHistory.ts",
+      "line": 19,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "hooks/useAwaySummary.ts",
+      "line": 9,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "hooks/useCancelRequest.ts",
+      "line": 17,
+      "specifier": "../components/Spinner/types.js",
+      "resolvedTarget": "components\\Spinner\\types.js"
+    },
+    {
+      "file": "hooks/useCanUseTool.tsx",
+      "line": 13,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "hooks/useDeferredHookMessages.ts",
+      "line": 2,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "hooks/useDirectConnect.ts",
+      "line": 18,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "hooks/useExitOnCtrlCD.ts",
+      "line": 3,
+      "specifier": "../keybindings/types.js",
+      "resolvedTarget": "keybindings\\types.js"
+    },
+    {
+      "file": "hooks/useIssueFlagBanner.ts",
+      "line": 3,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "hooks/useLogMessages.ts",
+      "line": 4,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "hooks/useRemoteSession.ts",
+      "line": 4,
+      "specifier": "../components/Spinner/types.js",
+      "resolvedTarget": "components\\Spinner\\types.js"
+    },
+    {
+      "file": "hooks/useRemoteSession.ts",
+      "line": 22,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "hooks/useReplBridge.tsx",
+      "line": 14,
+      "specifier": "../entrypoints/sdk/controlTypes.js",
+      "resolvedTarget": "entrypoints\\sdk\\controlTypes.js"
+    },
+    {
+      "file": "hooks/useReplBridge.tsx",
+      "line": 18,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "hooks/useReplBridge.tsx",
+      "line": 168,
+      "specifier": "../assistant/index.js",
+      "resolvedTarget": "assistant\\index.js"
+    },
+    {
+      "file": "hooks/useReplBridge.tsx",
+      "line": 197,
+      "specifier": "../bridge/webhookSanitizer.js",
+      "resolvedTarget": "bridge\\webhookSanitizer.js"
+    },
+    {
+      "file": "hooks/useScheduledTasks.ts",
+      "line": 9,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "hooks/useSessionBackgrounding.ts",
+      "line": 12,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "hooks/useSkillImprovementSurvey.ts",
+      "line": 2,
+      "specifier": "../components/FeedbackSurvey/utils.js",
+      "resolvedTarget": "components\\FeedbackSurvey\\utils.js"
+    },
+    {
+      "file": "hooks/useSkillImprovementSurvey.ts",
+      "line": 9,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "hooks/useSSHSession.ts",
+      "line": 23,
+      "specifier": "../ssh/createSSHSession.js",
+      "resolvedTarget": "ssh\\createSSHSession.js"
+    },
+    {
+      "file": "hooks/useSSHSession.ts",
+      "line": 24,
+      "specifier": "../ssh/SSHSessionManager.js",
+      "resolvedTarget": "ssh\\SSHSessionManager.js"
+    },
+    {
+      "file": "hooks/useSSHSession.ts",
+      "line": 27,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "hooks/useSwarmInitialization.ts",
+      "line": 13,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "hooks/useTurnDiffs.ts",
+      "line": 5,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "hooks/useVoiceIntegration.tsx",
+      "line": 12,
+      "specifier": "../keybindings/types.js",
+      "resolvedTarget": "keybindings\\types.js"
+    },
+    {
+      "file": "ink/components/Box.tsx",
+      "line": 2,
+      "specifier": "../global.d.ts",
+      "resolvedTarget": "ink\\global.d.ts"
+    },
+    {
+      "file": "ink/components/ScrollBox.tsx",
+      "line": 8,
+      "specifier": "../global.d.ts",
+      "resolvedTarget": "ink\\global.d.ts"
+    },
+    {
+      "file": "ink/events/event-handlers.ts",
+      "line": 4,
+      "specifier": "./paste-event.js",
+      "resolvedTarget": "ink\\events\\paste-event.js"
+    },
+    {
+      "file": "ink/events/event-handlers.ts",
+      "line": 5,
+      "specifier": "./resize-event.js",
+      "resolvedTarget": "ink\\events\\resize-event.js"
+    },
+    {
+      "file": "ink/frame.ts",
+      "line": 1,
+      "specifier": "./cursor.js",
+      "resolvedTarget": "ink\\cursor.js"
+    },
+    {
+      "file": "ink/reconciler.ts",
+      "line": 36,
+      "specifier": "./devtools.js",
+      "resolvedTarget": "ink\\devtools.js"
+    },
+    {
+      "file": "keybindings/defaultBindings.ts",
+      "line": 5,
+      "specifier": "./types.js",
+      "resolvedTarget": "keybindings\\types.js"
+    },
+    {
+      "file": "keybindings/KeybindingContext.tsx",
+      "line": 5,
+      "specifier": "./types.js",
+      "resolvedTarget": "keybindings\\types.js"
+    },
+    {
+      "file": "keybindings/KeybindingProviderSetup.tsx",
+      "line": 23,
+      "specifier": "./types.js",
+      "resolvedTarget": "keybindings\\types.js"
+    },
+    {
+      "file": "keybindings/loadUserBindings.ts",
+      "line": 26,
+      "specifier": "./types.js",
+      "resolvedTarget": "keybindings\\types.js"
+    },
+    {
+      "file": "keybindings/match.ts",
+      "line": 2,
+      "specifier": "./types.js",
+      "resolvedTarget": "keybindings\\types.js"
+    },
+    {
+      "file": "keybindings/parser.ts",
+      "line": 6,
+      "specifier": "./types.js",
+      "resolvedTarget": "keybindings\\types.js"
+    },
+    {
+      "file": "keybindings/resolver.ts",
+      "line": 8,
+      "specifier": "./types.js",
+      "resolvedTarget": "keybindings\\types.js"
+    },
+    {
+      "file": "keybindings/shortcutFormat.ts",
+      "line": 7,
+      "specifier": "./types.js",
+      "resolvedTarget": "keybindings\\types.js"
+    },
+    {
+      "file": "keybindings/template.ts",
+      "line": 12,
+      "specifier": "./types.js",
+      "resolvedTarget": "keybindings\\types.js"
+    },
+    {
+      "file": "keybindings/useKeybinding.ts",
+      "line": 5,
+      "specifier": "./types.js",
+      "resolvedTarget": "keybindings\\types.js"
+    },
+    {
+      "file": "keybindings/useShortcutDisplay.ts",
+      "line": 7,
+      "specifier": "./types.js",
+      "resolvedTarget": "keybindings\\types.js"
+    },
+    {
+      "file": "keybindings/validate.ts",
+      "line": 11,
+      "specifier": "./types.js",
+      "resolvedTarget": "keybindings\\types.js"
+    },
+    {
+      "file": "main.tsx",
+      "line": 80,
+      "specifier": "./assistant/index.js",
+      "resolvedTarget": "assistant\\index.js"
+    },
+    {
+      "file": "main.tsx",
+      "line": 81,
+      "specifier": "./assistant/gate.js",
+      "resolvedTarget": "assistant\\gate.js"
+    },
+    {
+      "file": "main.tsx",
+      "line": 102,
+      "specifier": "./types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "main.tsx",
+      "line": 429,
+      "specifier": "./utils/eventLoopStallDetector.js",
+      "resolvedTarget": "utils\\eventLoopStallDetector.js"
+    },
+    {
+      "file": "main.tsx",
+      "line": 619,
+      "specifier": "./server/parseConnectUrl.js",
+      "resolvedTarget": "server\\parseConnectUrl.js"
+    },
+    {
+      "file": "main.tsx",
+      "line": 2268,
+      "specifier": "./components/agents/SnapshotUpdateDialog.js",
+      "resolvedTarget": "components\\agents\\SnapshotUpdateDialog.js"
+    },
+    {
+      "file": "main.tsx",
+      "line": 2820,
+      "specifier": "./utils/sdkHeapDumpMonitor.js",
+      "resolvedTarget": "utils\\sdkHeapDumpMonitor.js"
+    },
+    {
+      "file": "main.tsx",
+      "line": 3064,
+      "specifier": "./utils/sessionDataUploader.js",
+      "resolvedTarget": "utils\\sessionDataUploader.js"
+    },
+    {
+      "file": "main.tsx",
+      "line": 3203,
+      "specifier": "./ssh/createSSHSession.js",
+      "resolvedTarget": "ssh\\createSSHSession.js"
+    },
+    {
+      "file": "main.tsx",
+      "line": 3266,
+      "specifier": "./assistant/sessionDiscovery.js",
+      "resolvedTarget": "assistant\\sessionDiscovery.js"
+    },
+    {
+      "file": "main.tsx",
+      "line": 3587,
+      "specifier": "./utils/ccshareResume.js",
+      "resolvedTarget": "utils\\ccshareResume.js"
+    },
+    {
+      "file": "main.tsx",
+      "line": 3976,
+      "specifier": "./server/server.js",
+      "resolvedTarget": "server\\server.js"
+    },
+    {
+      "file": "main.tsx",
+      "line": 3979,
+      "specifier": "./server/sessionManager.js",
+      "resolvedTarget": "server\\sessionManager.js"
+    },
+    {
+      "file": "main.tsx",
+      "line": 3982,
+      "specifier": "./server/backends/dangerousBackend.js",
+      "resolvedTarget": "server\\backends\\dangerousBackend.js"
+    },
+    {
+      "file": "main.tsx",
+      "line": 3985,
+      "specifier": "./server/serverBanner.js",
+      "resolvedTarget": "server\\serverBanner.js"
+    },
+    {
+      "file": "main.tsx",
+      "line": 3988,
+      "specifier": "./server/serverLog.js",
+      "resolvedTarget": "server\\serverLog.js"
+    },
+    {
+      "file": "main.tsx",
+      "line": 3993,
+      "specifier": "./server/lockfile.js",
+      "resolvedTarget": "server\\lockfile.js"
+    },
+    {
+      "file": "main.tsx",
+      "line": 4065,
+      "specifier": "./server/parseConnectUrl.js",
+      "resolvedTarget": "server\\parseConnectUrl.js"
+    },
+    {
+      "file": "main.tsx",
+      "line": 4091,
+      "specifier": "./server/connectHeadless.js",
+      "resolvedTarget": "server\\connectHeadless.js"
+    },
+    {
+      "file": "main.tsx",
+      "line": 4415,
+      "specifier": "./cli/handlers/ant.js",
+      "resolvedTarget": "cli\\handlers\\ant.js"
+    },
+    {
+      "file": "main.tsx",
+      "line": 4423,
+      "specifier": "./cli/handlers/ant.js",
+      "resolvedTarget": "cli\\handlers\\ant.js"
+    },
+    {
+      "file": "main.tsx",
+      "line": 4436,
+      "specifier": "./cli/handlers/ant.js",
+      "resolvedTarget": "cli\\handlers\\ant.js"
+    },
+    {
+      "file": "main.tsx",
+      "line": 4447,
+      "specifier": "./cli/handlers/ant.js",
+      "resolvedTarget": "cli\\handlers\\ant.js"
+    },
+    {
+      "file": "main.tsx",
+      "line": 4457,
+      "specifier": "./cli/handlers/ant.js",
+      "resolvedTarget": "cli\\handlers\\ant.js"
+    },
+    {
+      "file": "main.tsx",
+      "line": 4465,
+      "specifier": "./cli/handlers/ant.js",
+      "resolvedTarget": "cli\\handlers\\ant.js"
+    },
+    {
+      "file": "main.tsx",
+      "line": 4478,
+      "specifier": "./cli/handlers/ant.js",
+      "resolvedTarget": "cli\\handlers\\ant.js"
+    },
+    {
+      "file": "main.tsx",
+      "line": 4486,
+      "specifier": "./cli/handlers/ant.js",
+      "resolvedTarget": "cli\\handlers\\ant.js"
+    },
+    {
+      "file": "main.tsx",
+      "line": 4499,
+      "specifier": "./cli/handlers/ant.js",
+      "resolvedTarget": "cli\\handlers\\ant.js"
+    },
+    {
+      "file": "memdir/findRelevantMemories.ts",
+      "line": 69,
+      "specifier": "./memoryShapeTelemetry.js",
+      "resolvedTarget": "memdir\\memoryShapeTelemetry.js"
+    },
+    {
+      "file": "query/stopHooks.ts",
+      "line": 18,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "query/stopHooks.ts",
+      "line": 46,
+      "specifier": "../jobs/classifier.js",
+      "resolvedTarget": "jobs\\classifier.js"
+    },
+    {
+      "file": "query/stopHooks.ts",
+      "line": 51,
+      "specifier": "../constants/querySource.js",
+      "resolvedTarget": "constants\\querySource.js"
+    },
+    {
+      "file": "query.ts",
+      "line": 16,
+      "specifier": "./services/compact/reactiveCompact.js",
+      "resolvedTarget": "services\\compact\\reactiveCompact.js"
+    },
+    {
+      "file": "query.ts",
+      "line": 19,
+      "specifier": "./services/contextCollapse/index.js",
+      "resolvedTarget": "services\\contextCollapse\\index.js"
+    },
+    {
+      "file": "query.ts",
+      "line": 39,
+      "specifier": "./types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "query.ts",
+      "line": 67,
+      "specifier": "./services/skillSearch/prefetch.js",
+      "resolvedTarget": "services\\skillSearch\\prefetch.js"
+    },
+    {
+      "file": "query.ts",
+      "line": 70,
+      "specifier": "./jobs/classifier.js",
+      "resolvedTarget": "jobs\\classifier.js"
+    },
+    {
+      "file": "query.ts",
+      "line": 94,
+      "specifier": "./constants/querySource.js",
+      "resolvedTarget": "constants\\querySource.js"
+    },
+    {
+      "file": "query.ts",
+      "line": 104,
+      "specifier": "./query/transitions.js",
+      "resolvedTarget": "query\\transitions.js"
+    },
+    {
+      "file": "query.ts",
+      "line": 116,
+      "specifier": "./services/compact/snipCompact.js",
+      "resolvedTarget": "services\\compact\\snipCompact.js"
+    },
+    {
+      "file": "query.ts",
+      "line": 119,
+      "specifier": "./utils/taskSummary.js",
+      "resolvedTarget": "utils\\taskSummary.js"
+    },
+    {
+      "file": "QueryEngine.ts",
+      "line": 42,
+      "specifier": "./types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "QueryEngine.ts",
+      "line": 123,
+      "specifier": "./services/compact/snipCompact.js",
+      "resolvedTarget": "services\\compact\\snipCompact.js"
+    },
+    {
+      "file": "QueryEngine.ts",
+      "line": 126,
+      "specifier": "./services/compact/snipProjection.js",
+      "resolvedTarget": "services\\compact\\snipProjection.js"
+    },
+    {
+      "file": "remote/remotePermissionBridge.ts",
+      "line": 2,
+      "specifier": "../entrypoints/sdk/controlTypes.js",
+      "resolvedTarget": "entrypoints\\sdk\\controlTypes.js"
+    },
+    {
+      "file": "remote/remotePermissionBridge.ts",
+      "line": 4,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "remote/RemoteSessionManager.ts",
+      "line": 7,
+      "specifier": "../entrypoints/sdk/controlTypes.js",
+      "resolvedTarget": "entrypoints\\sdk\\controlTypes.js"
+    },
+    {
+      "file": "remote/sdkMessageAdapter.ts",
+      "line": 16,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "remote/SessionsWebSocket.ts",
+      "line": 9,
+      "specifier": "../entrypoints/sdk/controlTypes.js",
+      "resolvedTarget": "entrypoints\\sdk\\controlTypes.js"
+    },
+    {
+      "file": "screens/REPL.tsx",
+      "line": 65,
+      "specifier": "../ssh/createSSHSession.js",
+      "resolvedTarget": "ssh\\createSSHSession.js"
+    },
+    {
+      "file": "screens/REPL.tsx",
+      "line": 107,
+      "specifier": "../components/FeedbackSurvey/useFrustrationDetection.js",
+      "resolvedTarget": "components\\FeedbackSurvey\\useFrustrationDetection.js"
+    },
+    {
+      "file": "screens/REPL.tsx",
+      "line": 113,
+      "specifier": "../hooks/notifs/useAntOrgWarningNotification.js",
+      "resolvedTarget": "hooks\\notifs\\useAntOrgWarningNotification.js"
+    },
+    {
+      "file": "screens/REPL.tsx",
+      "line": 145,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "screens/REPL.tsx",
+      "line": 270,
+      "specifier": "../tools/TungstenTool/TungstenLiveMonitor.js",
+      "resolvedTarget": "tools\\TungstenTool\\TungstenLiveMonitor.js"
+    },
+    {
+      "file": "screens/REPL.tsx",
+      "line": 272,
+      "specifier": "../tools/WebBrowserTool/WebBrowserPanel.js",
+      "resolvedTarget": "tools\\WebBrowserTool\\WebBrowserPanel.js"
+    },
+    {
+      "file": "screens/REPL.tsx",
+      "line": 3686,
+      "specifier": "../services/contextCollapse/index.js",
+      "resolvedTarget": "services\\contextCollapse\\index.js"
+    },
+    {
+      "file": "screens/ResumeConversation.tsx",
+      "line": 22,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "screens/ResumeConversation.tsx",
+      "line": 267,
+      "specifier": "../services/contextCollapse/persist.js",
+      "resolvedTarget": "services\\contextCollapse\\persist.js"
+    },
+    {
+      "file": "server/directConnectManager.ts",
+      "line": 7,
+      "specifier": "../entrypoints/sdk/controlTypes.js",
+      "resolvedTarget": "entrypoints\\sdk\\controlTypes.js"
+    },
+    {
+      "file": "services/api/claude.ts",
+      "line": 44,
+      "specifier": "../../types/connectorText.js",
+      "resolvedTarget": "types\\connectorText.js"
+    },
+    {
+      "file": "services/api/claude.ts",
+      "line": 51,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "services/api/claude.ts",
+      "line": 1195,
+      "specifier": "../compact/cachedMicrocompact.js",
+      "resolvedTarget": "services\\compact\\cachedMicrocompact.js"
+    },
+    {
+      "file": "services/api/emptyUsage.ts",
+      "line": 1,
+      "specifier": "../../entrypoints/sdk/sdkUtilityTypes.js",
+      "resolvedTarget": "entrypoints\\sdk\\sdkUtilityTypes.js"
+    },
+    {
+      "file": "services/api/logging.ts",
+      "line": 31,
+      "specifier": "../../entrypoints/sdk/sdkUtilityTypes.js",
+      "resolvedTarget": "entrypoints\\sdk\\sdkUtilityTypes.js"
+    },
+    {
+      "file": "services/api/promptCacheBreakDetection.ts",
+      "line": 13,
+      "specifier": "../../constants/querySource.js",
+      "resolvedTarget": "constants\\querySource.js"
+    },
+    {
+      "file": "services/api/referral.ts",
+      "line": 18,
+      "specifier": "../oauth/types.js",
+      "resolvedTarget": "services\\oauth\\types.js"
+    },
+    {
+      "file": "services/autoDream/autoDream.ts",
+      "line": 22,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "services/awaySummary.ts",
+      "line": 3,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "services/compact/autoCompact.ts",
+      "line": 4,
+      "specifier": "../../constants/querySource.js",
+      "resolvedTarget": "constants\\querySource.js"
+    },
+    {
+      "file": "services/compact/autoCompact.ts",
+      "line": 6,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "services/compact/autoCompact.ts",
+      "line": 218,
+      "specifier": "../contextCollapse/index.js",
+      "resolvedTarget": "services\\contextCollapse\\index.js"
+    },
+    {
+      "file": "services/compact/compact.ts",
+      "line": 7,
+      "specifier": "../sessionTranscript/sessionTranscript.js",
+      "resolvedTarget": "services\\sessionTranscript\\sessionTranscript.js"
+    },
+    {
+      "file": "services/compact/compact.ts",
+      "line": 13,
+      "specifier": "../../constants/querySource.js",
+      "resolvedTarget": "constants\\querySource.js"
+    },
+    {
+      "file": "services/compact/compact.ts",
+      "line": 33,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "services/compact/grouping.ts",
+      "line": 1,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "services/compact/microCompact.ts",
+      "line": 3,
+      "specifier": "../../constants/querySource.js",
+      "resolvedTarget": "constants\\querySource.js"
+    },
+    {
+      "file": "services/compact/microCompact.ts",
+      "line": 12,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "services/compact/microCompact.ts",
+      "line": 56,
+      "specifier": "./cachedMicrocompact.js",
+      "resolvedTarget": "services\\compact\\cachedMicrocompact.js"
+    },
+    {
+      "file": "services/compact/microCompact.ts",
+      "line": 57,
+      "specifier": "./cachedMicrocompact.js",
+      "resolvedTarget": "services\\compact\\cachedMicrocompact.js"
+    },
+    {
+      "file": "services/compact/microCompact.ts",
+      "line": 59,
+      "specifier": "./cachedMicrocompact.js",
+      "resolvedTarget": "services\\compact\\cachedMicrocompact.js"
+    },
+    {
+      "file": "services/compact/microCompact.ts",
+      "line": 63,
+      "specifier": "./cachedMicrocompact.js",
+      "resolvedTarget": "services\\compact\\cachedMicrocompact.js"
+    },
+    {
+      "file": "services/compact/microCompact.ts",
+      "line": 66,
+      "specifier": "./cachedMicrocompact.js",
+      "resolvedTarget": "services\\compact\\cachedMicrocompact.js"
+    },
+    {
+      "file": "services/compact/microCompact.ts",
+      "line": 71,
+      "specifier": "./cachedMicrocompact.js",
+      "resolvedTarget": "services\\compact\\cachedMicrocompact.js"
+    },
+    {
+      "file": "services/compact/microCompact.ts",
+      "line": 89,
+      "specifier": "./cachedMicrocompact.js",
+      "resolvedTarget": "services\\compact\\cachedMicrocompact.js"
+    },
+    {
+      "file": "services/compact/microCompact.ts",
+      "line": 100,
+      "specifier": "./cachedMicrocompact.js",
+      "resolvedTarget": "services\\compact\\cachedMicrocompact.js"
+    },
+    {
+      "file": "services/compact/microCompact.ts",
+      "line": 113,
+      "specifier": "./cachedMicrocompact.js",
+      "resolvedTarget": "services\\compact\\cachedMicrocompact.js"
+    },
+    {
+      "file": "services/compact/postCompactCleanup.ts",
+      "line": 2,
+      "specifier": "../../constants/querySource.js",
+      "resolvedTarget": "constants\\querySource.js"
+    },
+    {
+      "file": "services/compact/postCompactCleanup.ts",
+      "line": 46,
+      "specifier": "../contextCollapse/index.js",
+      "resolvedTarget": "services\\contextCollapse\\index.js"
+    },
+    {
+      "file": "services/compact/postCompactCleanup.ts",
+      "line": 72,
+      "specifier": "../../utils/attributionHooks.js",
+      "resolvedTarget": "utils\\attributionHooks.js"
+    },
+    {
+      "file": "services/compact/prompt.ts",
+      "line": 2,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "services/compact/prompt.ts",
+      "line": 8,
+      "specifier": "../../proactive/index.js",
+      "resolvedTarget": "proactive\\index.js"
+    },
+    {
+      "file": "services/compact/sessionMemoryCompact.ts",
+      "line": 6,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "services/extractMemories/extractMemories.ts",
+      "line": 43,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "services/lsp/config.ts",
+      "line": 7,
+      "specifier": "./types.js",
+      "resolvedTarget": "services\\lsp\\types.js"
+    },
+    {
+      "file": "services/lsp/LSPServerInstance.ts",
+      "line": 10,
+      "specifier": "./types.js",
+      "resolvedTarget": "services\\lsp\\types.js"
+    },
+    {
+      "file": "services/lsp/LSPServerManager.ts",
+      "line": 11,
+      "specifier": "./types.js",
+      "resolvedTarget": "services\\lsp\\types.js"
+    },
+    {
+      "file": "services/mcp/auth.ts",
+      "line": 43,
+      "specifier": "../../utils/secureStorage/types.js",
+      "resolvedTarget": "utils\\secureStorage\\types.js"
+    },
+    {
+      "file": "services/mcp/client.ts",
+      "line": 119,
+      "specifier": "../../skills/mcpSkills.js",
+      "resolvedTarget": "skills\\mcpSkills.js"
+    },
+    {
+      "file": "services/mcp/useManageMCPConnections.ts",
+      "line": 24,
+      "specifier": "../../skills/mcpSkills.js",
+      "resolvedTarget": "skills\\mcpSkills.js"
+    },
+    {
+      "file": "services/mcp/useManageMCPConnections.ts",
+      "line": 29,
+      "specifier": "../skillSearch/localSearch.js",
+      "resolvedTarget": "services\\skillSearch\\localSearch.js"
+    },
+    {
+      "file": "services/mcp/utils.ts",
+      "line": 5,
+      "specifier": "../../components/mcp/types.js",
+      "resolvedTarget": "components\\mcp\\types.js"
+    },
+    {
+      "file": "services/mockRateLimits.ts",
+      "line": 8,
+      "specifier": "../services/oauth/types.js",
+      "resolvedTarget": "services\\oauth\\types.js"
+    },
+    {
+      "file": "services/oauth/client.ts",
+      "line": 32,
+      "specifier": "./types.js",
+      "resolvedTarget": "services\\oauth\\types.js"
+    },
+    {
+      "file": "services/oauth/index.ts",
+      "line": 12,
+      "specifier": "./types.js",
+      "resolvedTarget": "services\\oauth\\types.js"
+    },
+    {
+      "file": "services/PromptSuggestion/promptSuggestion.ts",
+      "line": 3,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "services/PromptSuggestion/speculation.ts",
+      "line": 16,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "services/SessionMemory/sessionMemory.ts",
+      "line": 19,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "services/tips/tipRegistry.ts",
+      "line": 57,
+      "specifier": "./types.js",
+      "resolvedTarget": "services\\tips\\types.js"
+    },
+    {
+      "file": "services/tips/tipScheduler.ts",
+      "line": 8,
+      "specifier": "./types.js",
+      "resolvedTarget": "services\\tips\\types.js"
+    },
+    {
+      "file": "services/tools/StreamingToolExecutor.ts",
+      "line": 10,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "services/tools/toolExecution.ts",
+      "line": 59,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "services/tools/toolHooks.ts",
+      "line": 14,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "services/tools/toolOrchestration.ts",
+      "line": 4,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "services/vcr.ts",
+      "line": 15,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "setup.ts",
+      "line": 96,
+      "specifier": "./utils/udsMessaging.js",
+      "resolvedTarget": "utils\\udsMessaging.js"
+    },
+    {
+      "file": "setup.ts",
+      "line": 298,
+      "specifier": "./services/contextCollapse/index.js",
+      "resolvedTarget": "services\\contextCollapse\\index.js"
+    },
+    {
+      "file": "setup.ts",
+      "line": 355,
+      "specifier": "./utils/attributionHooks.js",
+      "resolvedTarget": "utils\\attributionHooks.js"
+    },
+    {
+      "file": "skills/bundled/claudeApiContent.ts",
+      "line": 4,
+      "specifier": "./claude-api/csharp/claude-api.md",
+      "resolvedTarget": "skills\\bundled\\claude-api\\csharp\\claude-api.md"
+    },
+    {
+      "file": "skills/bundled/claudeApiContent.ts",
+      "line": 5,
+      "specifier": "./claude-api/curl/examples.md",
+      "resolvedTarget": "skills\\bundled\\claude-api\\curl\\examples.md"
+    },
+    {
+      "file": "skills/bundled/claudeApiContent.ts",
+      "line": 6,
+      "specifier": "./claude-api/go/claude-api.md",
+      "resolvedTarget": "skills\\bundled\\claude-api\\go\\claude-api.md"
+    },
+    {
+      "file": "skills/bundled/claudeApiContent.ts",
+      "line": 7,
+      "specifier": "./claude-api/java/claude-api.md",
+      "resolvedTarget": "skills\\bundled\\claude-api\\java\\claude-api.md"
+    },
+    {
+      "file": "skills/bundled/claudeApiContent.ts",
+      "line": 8,
+      "specifier": "./claude-api/php/claude-api.md",
+      "resolvedTarget": "skills\\bundled\\claude-api\\php\\claude-api.md"
+    },
+    {
+      "file": "skills/bundled/claudeApiContent.ts",
+      "line": 9,
+      "specifier": "./claude-api/python/agent-sdk/patterns.md",
+      "resolvedTarget": "skills\\bundled\\claude-api\\python\\agent-sdk\\patterns.md"
+    },
+    {
+      "file": "skills/bundled/claudeApiContent.ts",
+      "line": 10,
+      "specifier": "./claude-api/python/agent-sdk/README.md",
+      "resolvedTarget": "skills\\bundled\\claude-api\\python\\agent-sdk\\README.md"
+    },
+    {
+      "file": "skills/bundled/claudeApiContent.ts",
+      "line": 11,
+      "specifier": "./claude-api/python/claude-api/batches.md",
+      "resolvedTarget": "skills\\bundled\\claude-api\\python\\claude-api\\batches.md"
+    },
+    {
+      "file": "skills/bundled/claudeApiContent.ts",
+      "line": 12,
+      "specifier": "./claude-api/python/claude-api/files-api.md",
+      "resolvedTarget": "skills\\bundled\\claude-api\\python\\claude-api\\files-api.md"
+    },
+    {
+      "file": "skills/bundled/claudeApiContent.ts",
+      "line": 13,
+      "specifier": "./claude-api/python/claude-api/README.md",
+      "resolvedTarget": "skills\\bundled\\claude-api\\python\\claude-api\\README.md"
+    },
+    {
+      "file": "skills/bundled/claudeApiContent.ts",
+      "line": 14,
+      "specifier": "./claude-api/python/claude-api/streaming.md",
+      "resolvedTarget": "skills\\bundled\\claude-api\\python\\claude-api\\streaming.md"
+    },
+    {
+      "file": "skills/bundled/claudeApiContent.ts",
+      "line": 15,
+      "specifier": "./claude-api/python/claude-api/tool-use.md",
+      "resolvedTarget": "skills\\bundled\\claude-api\\python\\claude-api\\tool-use.md"
+    },
+    {
+      "file": "skills/bundled/claudeApiContent.ts",
+      "line": 16,
+      "specifier": "./claude-api/ruby/claude-api.md",
+      "resolvedTarget": "skills\\bundled\\claude-api\\ruby\\claude-api.md"
+    },
+    {
+      "file": "skills/bundled/claudeApiContent.ts",
+      "line": 17,
+      "specifier": "./claude-api/SKILL.md",
+      "resolvedTarget": "skills\\bundled\\claude-api\\SKILL.md"
+    },
+    {
+      "file": "skills/bundled/claudeApiContent.ts",
+      "line": 18,
+      "specifier": "./claude-api/shared/error-codes.md",
+      "resolvedTarget": "skills\\bundled\\claude-api\\shared\\error-codes.md"
+    },
+    {
+      "file": "skills/bundled/claudeApiContent.ts",
+      "line": 19,
+      "specifier": "./claude-api/shared/live-sources.md",
+      "resolvedTarget": "skills\\bundled\\claude-api\\shared\\live-sources.md"
+    },
+    {
+      "file": "skills/bundled/claudeApiContent.ts",
+      "line": 20,
+      "specifier": "./claude-api/shared/models.md",
+      "resolvedTarget": "skills\\bundled\\claude-api\\shared\\models.md"
+    },
+    {
+      "file": "skills/bundled/claudeApiContent.ts",
+      "line": 21,
+      "specifier": "./claude-api/shared/prompt-caching.md",
+      "resolvedTarget": "skills\\bundled\\claude-api\\shared\\prompt-caching.md"
+    },
+    {
+      "file": "skills/bundled/claudeApiContent.ts",
+      "line": 22,
+      "specifier": "./claude-api/shared/tool-use-concepts.md",
+      "resolvedTarget": "skills\\bundled\\claude-api\\shared\\tool-use-concepts.md"
+    },
+    {
+      "file": "skills/bundled/claudeApiContent.ts",
+      "line": 23,
+      "specifier": "./claude-api/typescript/agent-sdk/patterns.md",
+      "resolvedTarget": "skills\\bundled\\claude-api\\typescript\\agent-sdk\\patterns.md"
+    },
+    {
+      "file": "skills/bundled/claudeApiContent.ts",
+      "line": 24,
+      "specifier": "./claude-api/typescript/agent-sdk/README.md",
+      "resolvedTarget": "skills\\bundled\\claude-api\\typescript\\agent-sdk\\README.md"
+    },
+    {
+      "file": "skills/bundled/claudeApiContent.ts",
+      "line": 25,
+      "specifier": "./claude-api/typescript/claude-api/batches.md",
+      "resolvedTarget": "skills\\bundled\\claude-api\\typescript\\claude-api\\batches.md"
+    },
+    {
+      "file": "skills/bundled/claudeApiContent.ts",
+      "line": 26,
+      "specifier": "./claude-api/typescript/claude-api/files-api.md",
+      "resolvedTarget": "skills\\bundled\\claude-api\\typescript\\claude-api\\files-api.md"
+    },
+    {
+      "file": "skills/bundled/claudeApiContent.ts",
+      "line": 27,
+      "specifier": "./claude-api/typescript/claude-api/README.md",
+      "resolvedTarget": "skills\\bundled\\claude-api\\typescript\\claude-api\\README.md"
+    },
+    {
+      "file": "skills/bundled/claudeApiContent.ts",
+      "line": 28,
+      "specifier": "./claude-api/typescript/claude-api/streaming.md",
+      "resolvedTarget": "skills\\bundled\\claude-api\\typescript\\claude-api\\streaming.md"
+    },
+    {
+      "file": "skills/bundled/claudeApiContent.ts",
+      "line": 29,
+      "specifier": "./claude-api/typescript/claude-api/tool-use.md",
+      "resolvedTarget": "skills\\bundled\\claude-api\\typescript\\claude-api\\tool-use.md"
+    },
+    {
+      "file": "skills/bundled/skillify.ts",
+      "line": 2,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "skills/bundled/verifyContent.ts",
+      "line": 4,
+      "specifier": "./verify/examples/cli.md",
+      "resolvedTarget": "skills\\bundled\\verify\\examples\\cli.md"
+    },
+    {
+      "file": "skills/bundled/verifyContent.ts",
+      "line": 5,
+      "specifier": "./verify/examples/server.md",
+      "resolvedTarget": "skills\\bundled\\verify\\examples\\server.md"
+    },
+    {
+      "file": "skills/bundled/verifyContent.ts",
+      "line": 6,
+      "specifier": "./verify/SKILL.md",
+      "resolvedTarget": "skills\\bundled\\verify\\SKILL.md"
+    },
+    {
+      "file": "state/AppStateStore.ts",
+      "line": 22,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "state/AppStateStore.ts",
+      "line": 24,
+      "specifier": "../types/utils.js",
+      "resolvedTarget": "types\\utils.js"
+    },
+    {
+      "file": "tasks/InProcessTeammateTask/InProcessTeammateTask.tsx",
+      "line": 13,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "tasks/InProcessTeammateTask/types.ts",
+      "line": 4,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "tasks/LocalAgentTask/LocalAgentTask.tsx",
+      "line": 13,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "tasks/LocalMainSessionTask.ts",
+      "line": 31,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "tasks/types.ts",
+      "line": 8,
+      "specifier": "./LocalWorkflowTask/LocalWorkflowTask.js",
+      "resolvedTarget": "tasks\\LocalWorkflowTask\\LocalWorkflowTask.js"
+    },
+    {
+      "file": "tasks/types.ts",
+      "line": 9,
+      "specifier": "./MonitorMcpTask/MonitorMcpTask.js",
+      "resolvedTarget": "tasks\\MonitorMcpTask\\MonitorMcpTask.js"
+    },
+    {
+      "file": "Tool.ts",
+      "line": 40,
+      "specifier": "./types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "Tool.ts",
+      "line": 58,
+      "specifier": "./types/tools.js",
+      "resolvedTarget": "types\\tools.js"
+    },
+    {
+      "file": "Tool.ts",
+      "line": 76,
+      "specifier": "./constants/querySource.js",
+      "resolvedTarget": "constants\\querySource.js"
+    },
+    {
+      "file": "Tool.ts",
+      "line": 85,
+      "specifier": "./types/utils.js",
+      "resolvedTarget": "types\\utils.js"
+    },
+    {
+      "file": "tools/AgentTool/AgentTool.tsx",
+      "line": 59,
+      "specifier": "../../proactive/index.js",
+      "resolvedTarget": "proactive\\index.js"
+    },
+    {
+      "file": "tools/AgentTool/AgentTool.tsx",
+      "line": 192,
+      "specifier": "../../types/tools.js",
+      "resolvedTarget": "types\\tools.js"
+    },
+    {
+      "file": "tools/AgentTool/agentToolUtils.ts",
+      "line": 39,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "tools/AgentTool/builtInAgents.ts",
+      "line": 39,
+      "specifier": "../../coordinator/workerAgent.js",
+      "resolvedTarget": "coordinator\\workerAgent.js"
+    },
+    {
+      "file": "tools/AgentTool/forkSubagent.ts",
+      "line": 13,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "tools/AgentTool/runAgent.ts",
+      "line": 12,
+      "specifier": "../../constants/querySource.js",
+      "resolvedTarget": "constants\\querySource.js"
+    },
+    {
+      "file": "tools/AgentTool/runAgent.ts",
+      "line": 42,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "tools/AgentTool/runAgent.ts",
+      "line": 851,
+      "specifier": "../../tasks/MonitorMcpTask/MonitorMcpTask.js",
+      "resolvedTarget": "tasks\\MonitorMcpTask\\MonitorMcpTask.js"
+    },
+    {
+      "file": "tools/AgentTool/UI.tsx",
+      "line": 19,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "tools/AgentTool/UI.tsx",
+      "line": 20,
+      "specifier": "../../types/tools.js",
+      "resolvedTarget": "types\\tools.js"
+    },
+    {
+      "file": "tools/BashTool/BashTool.tsx",
+      "line": 16,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "tools/BashTool/BashTool.tsx",
+      "line": 299,
+      "specifier": "../../types/tools.js",
+      "resolvedTarget": "types\\tools.js"
+    },
+    {
+      "file": "tools/BashTool/BashTool.tsx",
+      "line": 300,
+      "specifier": "../../types/tools.js",
+      "resolvedTarget": "types\\tools.js"
+    },
+    {
+      "file": "tools/BashTool/UI.tsx",
+      "line": 14,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "tools/BriefTool/UI.tsx",
+      "line": 7,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "tools/EnterPlanModeTool/UI.tsx",
+      "line": 6,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "tools/EnterWorktreeTool/UI.tsx",
+      "line": 4,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "tools/ExitPlanModeTool/UI.tsx",
+      "line": 9,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "tools/ExitWorktreeTool/UI.tsx",
+      "line": 4,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "tools/FileEditTool/UI.tsx",
+      "line": 14,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "tools/FileWriteTool/UI.tsx",
+      "line": 18,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "tools/GrepTool/UI.tsx",
+      "line": 10,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "tools/ListMcpResourcesTool/UI.tsx",
+      "line": 6,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "tools/MCPTool/MCPTool.ts",
+      "line": 25,
+      "specifier": "../../types/tools.js",
+      "resolvedTarget": "types\\tools.js"
+    },
+    {
+      "file": "tools/MCPTool/UI.tsx",
+      "line": 12,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "tools/MCPTool/UI.tsx",
+      "line": 13,
+      "specifier": "../../types/tools.js",
+      "resolvedTarget": "types\\tools.js"
+    },
+    {
+      "file": "tools/NotebookEditTool/NotebookEditTool.ts",
+      "line": 9,
+      "specifier": "../../types/notebook.js",
+      "resolvedTarget": "types\\notebook.js"
+    },
+    {
+      "file": "tools/PowerShellTool/PowerShellTool.tsx",
+      "line": 15,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "tools/PowerShellTool/PowerShellTool.tsx",
+      "line": 259,
+      "specifier": "../../types/tools.js",
+      "resolvedTarget": "types\\tools.js"
+    },
+    {
+      "file": "tools/PowerShellTool/PowerShellTool.tsx",
+      "line": 260,
+      "specifier": "../../types/tools.js",
+      "resolvedTarget": "types\\tools.js"
+    },
+    {
+      "file": "tools/PowerShellTool/UI.tsx",
+      "line": 11,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "tools/PowerShellTool/UI.tsx",
+      "line": 12,
+      "specifier": "../../types/tools.js",
+      "resolvedTarget": "types\\tools.js"
+    },
+    {
+      "file": "tools/ReadMcpResourceTool/UI.tsx",
+      "line": 7,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "tools/SendMessageTool/SendMessageTool.ts",
+      "line": 759,
+      "specifier": "../../bridge/peerSessions.js",
+      "resolvedTarget": "bridge\\peerSessions.js"
+    },
+    {
+      "file": "tools/SendMessageTool/SendMessageTool.ts",
+      "line": 778,
+      "specifier": "../../utils/udsClient.js",
+      "resolvedTarget": "utils\\udsClient.js"
+    },
+    {
+      "file": "tools/SkillTool/SkillTool.ts",
+      "line": 97,
+      "specifier": "../../types/tools.js",
+      "resolvedTarget": "types\\tools.js"
+    },
+    {
+      "file": "tools/SkillTool/SkillTool.ts",
+      "line": 99,
+      "specifier": "../../types/tools.js",
+      "resolvedTarget": "types\\tools.js"
+    },
+    {
+      "file": "tools/SkillTool/SkillTool.ts",
+      "line": 110,
+      "specifier": "../../services/skillSearch/remoteSkillState.js",
+      "resolvedTarget": "services\\skillSearch\\remoteSkillState.js"
+    },
+    {
+      "file": "tools/SkillTool/SkillTool.ts",
+      "line": 111,
+      "specifier": "../../services/skillSearch/remoteSkillLoader.js",
+      "resolvedTarget": "services\\skillSearch\\remoteSkillLoader.js"
+    },
+    {
+      "file": "tools/SkillTool/SkillTool.ts",
+      "line": 112,
+      "specifier": "../../services/skillSearch/telemetry.js",
+      "resolvedTarget": "services\\skillSearch\\telemetry.js"
+    },
+    {
+      "file": "tools/SkillTool/SkillTool.ts",
+      "line": 113,
+      "specifier": "../../services/skillSearch/featureCheck.js",
+      "resolvedTarget": "services\\skillSearch\\featureCheck.js"
+    },
+    {
+      "file": "tools/SkillTool/UI.tsx",
+      "line": 13,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "tools/TaskOutputTool/TaskOutputTool.tsx",
+      "line": 57,
+      "specifier": "../../types/tools.js",
+      "resolvedTarget": "types\\tools.js"
+    },
+    {
+      "file": "tools/ToolSearchTool/prompt.ts",
+      "line": 17,
+      "specifier": "../SendUserFileTool/prompt.js",
+      "resolvedTarget": "tools\\SendUserFileTool\\prompt.js"
+    },
+    {
+      "file": "tools/WebFetchTool/UI.tsx",
+      "line": 6,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "tools/WebSearchTool/UI.tsx",
+      "line": 5,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "tools/WebSearchTool/WebSearchTool.ts",
+      "line": 72,
+      "specifier": "../../types/tools.js",
+      "resolvedTarget": "types\\tools.js"
+    },
+    {
+      "file": "tools/WebSearchTool/WebSearchTool.ts",
+      "line": 74,
+      "specifier": "../../types/tools.js",
+      "resolvedTarget": "types\\tools.js"
+    },
+    {
+      "file": "tools.ts",
+      "line": 60,
+      "specifier": "./tools/TungstenTool/TungstenTool.js",
+      "resolvedTarget": "tools\\TungstenTool\\TungstenTool.js"
+    },
+    {
+      "file": "types/command.ts",
+      "line": 13,
+      "specifier": "./message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "types/logs.ts",
+      "line": 5,
+      "specifier": "./message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "types/logs.ts",
+      "line": 6,
+      "specifier": "./messageQueueTypes.js",
+      "resolvedTarget": "types\\messageQueueTypes.js"
+    },
+    {
+      "file": "types/plugin.ts",
+      "line": 1,
+      "specifier": "../services/lsp/types.js",
+      "resolvedTarget": "services\\lsp\\types.js"
+    },
+    {
+      "file": "types/textInputTypes.ts",
+      "line": 10,
+      "specifier": "./message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "utils/analyzeContext.ts",
+      "line": 48,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "utils/analyzeContext.ts",
+      "line": 1122,
+      "specifier": "../services/contextCollapse/index.js",
+      "resolvedTarget": "services\\contextCollapse\\index.js"
+    },
+    {
+      "file": "utils/api.ts",
+      "line": 37,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "utils/attachments.ts",
+      "line": 88,
+      "specifier": "../services/skillSearch/signals.js",
+      "resolvedTarget": "services\\skillSearch\\signals.js"
+    },
+    {
+      "file": "utils/attachments.ts",
+      "line": 98,
+      "specifier": "../services/skillSearch/featureCheck.js",
+      "resolvedTarget": "services\\skillSearch\\featureCheck.js"
+    },
+    {
+      "file": "utils/attachments.ts",
+      "line": 100,
+      "specifier": "../services/skillSearch/prefetch.js",
+      "resolvedTarget": "services\\skillSearch\\prefetch.js"
+    },
+    {
+      "file": "utils/attachments.ts",
+      "line": 161,
+      "specifier": "../constants/querySource.js",
+      "resolvedTarget": "constants\\querySource.js"
+    },
+    {
+      "file": "utils/attachments.ts",
+      "line": 207,
+      "specifier": "../services/sessionTranscript/sessionTranscript.js",
+      "resolvedTarget": "services\\sessionTranscript\\sessionTranscript.js"
+    },
+    {
+      "file": "utils/attachments.ts",
+      "line": 3973,
+      "specifier": "../services/compact/snipCompact.js",
+      "resolvedTarget": "services\\compact\\snipCompact.js"
+    },
+    {
+      "file": "utils/attribution.ts",
+      "line": 384,
+      "specifier": "./attributionTrailer.js",
+      "resolvedTarget": "utils\\attributionTrailer.js"
+    },
+    {
+      "file": "utils/auth.ts",
+      "line": 28,
+      "specifier": "../services/oauth/types.js",
+      "resolvedTarget": "services\\oauth\\types.js"
+    },
+    {
+      "file": "utils/collapseBackgroundBashNotifications.ts",
+      "line": 10,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "utils/collapseHookSummaries.ts",
+      "line": 4,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "utils/collapseReadSearch.ts",
+      "line": 23,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "utils/collapseReadSearch.ts",
+      "line": 39,
+      "specifier": "../tools/SnipTool/prompt.js",
+      "resolvedTarget": "tools\\SnipTool\\prompt.js"
+    },
+    {
+      "file": "utils/collapseTeammateShutdowns.ts",
+      "line": 1,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "utils/config.ts",
+      "line": 14,
+      "specifier": "../services/oauth/types.js",
+      "resolvedTarget": "services\\oauth\\types.js"
+    },
+    {
+      "file": "utils/contextAnalysis.ts",
+      "line": 11,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "utils/conversationRecovery.ts",
+      "line": 19,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "utils/conversationRecovery.ts",
+      "line": 69,
+      "specifier": "../tools/SendUserFileTool/prompt.js",
+      "resolvedTarget": "tools\\SendUserFileTool\\prompt.js"
+    },
+    {
+      "file": "utils/conversationRecovery.ts",
+      "line": 494,
+      "specifier": "./udsClient.js",
+      "resolvedTarget": "utils\\udsClient.js"
+    },
+    {
+      "file": "utils/envUtils.ts",
+      "line": 142,
+      "specifier": "./protectedNamespace.js",
+      "resolvedTarget": "utils\\protectedNamespace.js"
+    },
+    {
+      "file": "utils/exportRenderer.tsx",
+      "line": 6,
+      "specifier": "../keybindings/types.js",
+      "resolvedTarget": "keybindings\\types.js"
+    },
+    {
+      "file": "utils/exportRenderer.tsx",
+      "line": 9,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "utils/filePersistence/filePersistence.ts",
+      "line": 37,
+      "specifier": "./types.js",
+      "resolvedTarget": "utils\\filePersistence\\types.js"
+    },
+    {
+      "file": "utils/filePersistence/outputsScanner.ts",
+      "line": 14,
+      "specifier": "./types.js",
+      "resolvedTarget": "utils\\filePersistence\\types.js"
+    },
+    {
+      "file": "utils/fingerprint.ts",
+      "line": 2,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "utils/forkedAgent.ts",
+      "line": 14,
+      "specifier": "../constants/querySource.js",
+      "resolvedTarget": "constants\\querySource.js"
+    },
+    {
+      "file": "utils/forkedAgent.ts",
+      "line": 26,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "utils/groupToolUses.ts",
+      "line": 11,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "utils/handlePromptSubmit.ts",
+      "line": 6,
+      "specifier": "../components/Spinner/types.js",
+      "resolvedTarget": "components\\Spinner\\types.js"
+    },
+    {
+      "file": "utils/handlePromptSubmit.ts",
+      "line": 7,
+      "specifier": "../constants/querySource.js",
+      "resolvedTarget": "constants\\querySource.js"
+    },
+    {
+      "file": "utils/handlePromptSubmit.ts",
+      "line": 14,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "utils/hooks/apiQueryHookHelper.ts",
+      "line": 2,
+      "specifier": "../../constants/querySource.js",
+      "resolvedTarget": "constants\\querySource.js"
+    },
+    {
+      "file": "utils/hooks/apiQueryHookHelper.ts",
+      "line": 4,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "utils/hooks/execAgentHook.ts",
+      "line": 11,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "utils/hooks/execPromptHook.ts",
+      "line": 5,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "utils/hooks/postSamplingHooks.ts",
+      "line": 1,
+      "specifier": "../../constants/querySource.js",
+      "resolvedTarget": "constants\\querySource.js"
+    },
+    {
+      "file": "utils/hooks/postSamplingHooks.ts",
+      "line": 3,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "utils/hooks/skillImprovement.ts",
+      "line": 11,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "utils/hooks.ts",
+      "line": 110,
+      "specifier": "../types/statusLine.js",
+      "resolvedTarget": "types\\statusLine.js"
+    },
+    {
+      "file": "utils/hooks.ts",
+      "line": 112,
+      "specifier": "../types/fileSuggestion.js",
+      "resolvedTarget": "types\\fileSuggestion.js"
+    },
+    {
+      "file": "utils/hooks.ts",
+      "line": 149,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "utils/mcpInstructionsDelta.ts",
+      "line": 7,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "utils/messagePredicates.ts",
+      "line": 1,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "utils/messageQueueManager.ts",
+      "line": 9,
+      "specifier": "../types/messageQueueTypes.js",
+      "resolvedTarget": "types\\messageQueueTypes.js"
+    },
+    {
+      "file": "utils/messages.ts",
+      "line": 40,
+      "specifier": "../types/connectorText.js",
+      "resolvedTarget": "types\\connectorText.js"
+    },
+    {
+      "file": "utils/messages.ts",
+      "line": 73,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "utils/messages.ts",
+      "line": 2354,
+      "specifier": "../services/compact/snipCompact.js",
+      "resolvedTarget": "services\\compact\\snipCompact.js"
+    },
+    {
+      "file": "utils/messages.ts",
+      "line": 2424,
+      "specifier": "../services/compact/snipCompact.js",
+      "resolvedTarget": "services\\compact\\snipCompact.js"
+    },
+    {
+      "file": "utils/messages.ts",
+      "line": 4152,
+      "specifier": "../services/compact/snipCompact.js",
+      "resolvedTarget": "services\\compact\\snipCompact.js"
+    },
+    {
+      "file": "utils/messages.ts",
+      "line": 4651,
+      "specifier": "../services/compact/snipProjection.js",
+      "resolvedTarget": "services\\compact\\snipProjection.js"
+    },
+    {
+      "file": "utils/notebook.ts",
+      "line": 15,
+      "specifier": "../types/notebook.js",
+      "resolvedTarget": "types\\notebook.js"
+    },
+    {
+      "file": "utils/permissions/classifierDecision.ts",
+      "line": 29,
+      "specifier": "../../tools/TerminalCaptureTool/prompt.js",
+      "resolvedTarget": "tools\\TerminalCaptureTool\\prompt.js"
+    },
+    {
+      "file": "utils/permissions/classifierDecision.ts",
+      "line": 34,
+      "specifier": "../../tools/OverflowTestTool/OverflowTestTool.js",
+      "resolvedTarget": "tools\\OverflowTestTool\\OverflowTestTool.js"
+    },
+    {
+      "file": "utils/permissions/classifierDecision.ts",
+      "line": 40,
+      "specifier": "../../tools/VerifyPlanExecutionTool/constants.js",
+      "resolvedTarget": "tools\\VerifyPlanExecutionTool\\constants.js"
+    },
+    {
+      "file": "utils/permissions/classifierDecision.ts",
+      "line": 45,
+      "specifier": "../../tools/WorkflowTool/constants.js",
+      "resolvedTarget": "tools\\WorkflowTool\\constants.js"
+    },
+    {
+      "file": "utils/permissions/permissionExplainer.ts",
+      "line": 4,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "utils/permissions/permissions.ts",
+      "line": 14,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "utils/permissions/yoloClassifier.ts",
+      "line": 20,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "utils/plugins/lspPluginIntegration.ts",
+      "line": 7,
+      "specifier": "../../services/lsp/types.js",
+      "resolvedTarget": "services\\lsp\\types.js"
+    },
+    {
+      "file": "utils/processUserInput/processUserInput.ts",
+      "line": 27,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "utils/queryContext.ts",
+      "line": 19,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "utils/queryHelpers.ts",
+      "line": 19,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "utils/sdkEventQueue.ts",
+      "line": 4,
+      "specifier": "../types/tools.js",
+      "resolvedTarget": "types\\tools.js"
+    },
+    {
+      "file": "utils/secureStorage/fallbackStorage.ts",
+      "line": 1,
+      "specifier": "./types.js",
+      "resolvedTarget": "utils\\secureStorage\\types.js"
+    },
+    {
+      "file": "utils/secureStorage/index.ts",
+      "line": 4,
+      "specifier": "./types.js",
+      "resolvedTarget": "utils\\secureStorage\\types.js"
+    },
+    {
+      "file": "utils/secureStorage/macOsKeychainHelpers.ts",
+      "line": 21,
+      "specifier": "./types.js",
+      "resolvedTarget": "utils\\secureStorage\\types.js"
+    },
+    {
+      "file": "utils/secureStorage/macOsKeychainStorage.ts",
+      "line": 14,
+      "specifier": "./types.js",
+      "resolvedTarget": "utils\\secureStorage\\types.js"
+    },
+    {
+      "file": "utils/secureStorage/plainTextStorage.ts",
+      "line": 11,
+      "specifier": "./types.js",
+      "resolvedTarget": "utils\\secureStorage\\types.js"
+    },
+    {
+      "file": "utils/sessionFileAccessHooks.ts",
+      "line": 39,
+      "specifier": "../memdir/memoryShapeTelemetry.js",
+      "resolvedTarget": "memdir\\memoryShapeTelemetry.js"
+    },
+    {
+      "file": "utils/sessionRestore.ts",
+      "line": 30,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "utils/sessionRestore.ts",
+      "line": 130,
+      "specifier": "../services/contextCollapse/persist.js",
+      "resolvedTarget": "services\\contextCollapse\\persist.js"
+    },
+    {
+      "file": "utils/sessionRestore.ts",
+      "line": 497,
+      "specifier": "../services/contextCollapse/persist.js",
+      "resolvedTarget": "services\\contextCollapse\\persist.js"
+    },
+    {
+      "file": "utils/sessionStart.ts",
+      "line": 2,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "utils/sessionStorage.ts",
+      "line": 64,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "utils/sessionStorage.ts",
+      "line": 65,
+      "specifier": "../types/messageQueueTypes.js",
+      "resolvedTarget": "types\\messageQueueTypes.js"
+    },
+    {
+      "file": "utils/sessionTitle.ts",
+      "line": 19,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "utils/shell/prefix.ts",
+      "line": 11,
+      "specifier": "../../constants/querySource.js",
+      "resolvedTarget": "constants\\querySource.js"
+    },
+    {
+      "file": "utils/sideQuery.ts",
+      "line": 8,
+      "specifier": "../constants/querySource.js",
+      "resolvedTarget": "constants\\querySource.js"
+    },
+    {
+      "file": "utils/sideQuestion.ts",
+      "line": 11,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "utils/swarm/inProcessRunner.ts",
+      "line": 58,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "utils/systemPrompt.ts",
+      "line": 20,
+      "specifier": "../proactive/index.js",
+      "resolvedTarget": "proactive\\index.js"
+    },
+    {
+      "file": "utils/task/sdkProgress.ts",
+      "line": 1,
+      "specifier": "../../types/tools.js",
+      "resolvedTarget": "types\\tools.js"
+    },
+    {
+      "file": "utils/teammateMailbox.ts",
+      "line": 16,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "utils/telemetry/betaSessionTracing.ts",
+      "line": 33,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "utils/telemetry/sessionTracing.ts",
+      "line": 17,
+      "specifier": "../../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "utils/teleport.tsx",
+      "line": 19,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "utils/tokens.ts",
+      "line": 3,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "utils/toolResultStorage.ts",
+      "line": 18,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "utils/toolSearch.ts",
+      "line": 27,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "utils/transcriptSearch.ts",
+      "line": 1,
+      "specifier": "../types/message.js",
+      "resolvedTarget": "types\\message.js"
+    },
+    {
+      "file": "utils/worktree.ts",
+      "line": 606,
+      "specifier": "./postCommitAttribution.js",
+      "resolvedTarget": "utils\\postCommitAttribution.js"
+    }
+  ]
+}

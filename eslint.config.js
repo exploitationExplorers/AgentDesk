@@ -37,7 +37,7 @@ export default tseslint.config(
     rules: reactHooks.configs.recommended.rules,
   },
   {
-    files: ["apps/cli/**/*.jsx"],
+    files: ["apps/cli/**/*.{ts,tsx,jsx}"],
     languageOptions: {
       parserOptions: { ecmaFeatures: { jsx: true } },
     },

@@ -1,10 +1,11 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { loadConfig } from "../src/config";
 import { startSidecar } from "../src/runtime";
-import { aiCommitWorkerPath } from "../src/worker-path";
+import { aiCommitWorkerArgs, aiCommitWorkerPath } from "../src/worker-path";
 
 function config() {
   return loadConfig({
@@ -55,7 +56,35 @@ describe("独立运行服务", () => {
 
   it("源码运行能定位独立提交 worker", () => {
     expect(aiCommitWorkerPath().replaceAll("\\", "/")).toMatch(
-      /apps\/sidecar\/scripts\/ai-commit-worker\.mjs$/,
+      /apps\/sidecar\/scripts\/ai-commit-worker\.ts$/,
     );
+  });
+
+  it("源码 worker 在独立进程中完成任务，不要求发行包或全局 tsx", () => {
+    const dir = mkdtempSync(join(tmpdir(), "agentdesk-commit-worker-"));
+    const jobPath = join(dir, "job.json");
+    writeFileSync(
+      jobPath,
+      JSON.stringify({
+        id: "worker-test",
+        projectId: "project-test",
+        repoPath: dir,
+        message: "test",
+        needsCommit: false,
+        stageAll: false,
+        push: false,
+        commitHash: "existing",
+        status: "running",
+      }),
+    );
+    execFileSync(process.execPath, aiCommitWorkerArgs(jobPath), {
+      cwd: dir,
+      windowsHide: true,
+      timeout: 10_000,
+    });
+    expect(JSON.parse(readFileSync(jobPath, "utf8"))).toMatchObject({
+      status: "done",
+      result: { commitHash: "existing", pushed: false },
+    });
   });
 });

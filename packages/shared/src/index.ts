@@ -10,3 +10,4 @@ export * from "./contracts/browser";
 export * from "./contracts/memory";
 export * from "./contracts/disk";
 export * from "./contracts/task";
+export * from "./contracts/code";

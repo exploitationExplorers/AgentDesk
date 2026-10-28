@@ -15,6 +15,7 @@ import { errorMessage, newId, nowIso, toJsonSafe } from "../util";
 import type { ApprovalService } from "./approvals";
 import { ConversationStore } from "./conversation-store";
 import type { MemoryService } from "./memory";
+import type { ProjectInstructionService } from "./project-instructions";
 import { createDelegateHandler } from "./task-executor";
 import type { TaskService } from "./tasks";
 
@@ -28,6 +29,7 @@ export class ChatService {
     private readonly approvals: ApprovalService,
     private readonly memory: MemoryService,
     private readonly tasks: TaskService,
+    private readonly projectInstructions: ProjectInstructionService,
   ) {
     this.conversations = new Collection<Conversation>(db, "conversations");
     this.conversationStore = new ConversationStore(db);
@@ -72,19 +74,35 @@ export class ChatService {
   private shadowTaskFor(
     conversationId: string,
     userMessage: string,
+    agent: ChatRequest["agent"],
+    controller: AbortController,
+    workspace?: string,
   ): { taskId: string; runId: string } | null {
     try {
-      const existing = this.tasks.findByConversation(conversationId);
+      const previous = this.tasks.findByConversation(conversationId);
+      const effectiveWorkspace =
+        workspace ??
+        (previous?.currentRunId
+          ? this.tasks.getRun(previous.currentRunId)?.input.workspace
+          : undefined);
+      const existing =
+        previous && !["closed", "completed"].includes(previous.status) ? previous : undefined;
       const task =
         existing ??
-        this.tasks.create({ goal: userMessage, conversationId, requiresPlanApproval: false });
+        this.tasks.create({
+          goal: userMessage,
+          agent,
+          conversationId,
+          requiresPlanApproval: false,
+        });
       const run = this.tasks.createRun({
         taskId: task.id,
         kind: "root",
-        agent: task.agent ?? "orchestrator",
+        agent: agent ?? task.agent ?? "orchestrator",
         trigger: existing ? "followup" : "create",
-        input: { userMessage },
+        input: { userMessage, workspace: effectiveWorkspace },
       });
+      this.tasks.startRunDirect(run.id, controller);
       return { taskId: task.id, runId: run.id };
     } catch (error) {
       console.error("[tasks] shadow task 创建失败", error);
@@ -102,6 +120,7 @@ export class ChatService {
     signal: AbortSignal,
   ): Promise<string> {
     const req = ChatRequest.parse(input);
+    const workspace = await this.projectInstructions.validateWorkspace(req.workspace);
     let conversation = req.conversationId ? this.conversations.get(req.conversationId) : undefined;
     if (req.conversationId && !conversation) throw new AppError(ErrorCode.NotFound, "会话不存在");
     if (!conversation) {
@@ -113,7 +132,15 @@ export class ChatService {
       });
     }
     const conversationId = conversation.id;
-    const shadow = this.shadowTaskFor(conversationId, req.message);
+    const controller = new AbortController();
+    signal = AbortSignal.any([signal, controller.signal]);
+    const shadow = this.shadowTaskFor(
+      conversationId,
+      req.message,
+      req.agent,
+      controller,
+      workspace,
+    );
     const history = this.messages(conversationId);
     this.insertMessage({
       id: newId(),
@@ -158,7 +185,7 @@ export class ChatService {
       return this.approvals
         .request({ kind: "question", ...request }, signal, (approval) => {
           approvalId = approval.id;
-          traced({
+          forwardToShadow({
             type: "approval_required",
             approvalId: approval.id,
             title: approval.title,
@@ -181,6 +208,11 @@ export class ChatService {
       console.error("[memory] recall failed", error);
     }
     try {
+      const effectiveWorkspace = shadow
+        ? this.tasks.getRun(shadow.runId)?.input.workspace
+        : workspace;
+      const projectContext = await this.projectInstructions.load(effectiveWorkspace, signal);
+      context = [context, projectContext].filter(Boolean).join("\n\n") || undefined;
       const result = await this.orchestrator.run({
         history: this.conversationStore.toPiMessages(history),
         userMessage: req.message,
@@ -190,7 +222,7 @@ export class ChatService {
         emit: forwardToShadow,
         requestApproval: (request) =>
           this.approvals.request({ kind: "tool", ...request }, signal, (approval) =>
-            traced({
+            forwardToShadow({
               type: "approval_required",
               approvalId: approval.id,
               title: approval.title,
@@ -235,13 +267,18 @@ export class ChatService {
             resultText: text,
             toolCalls: result.toolCalls,
           });
+          this.tasks.appendEvent({
+            taskId: shadow.taskId,
+            runId: shadow.runId,
+            event: { type: "run_ended", runId: shadow.runId, status: "succeeded" },
+          });
         } catch (error) {
           console.error("[tasks] shadow run 落地失败", error);
         }
       }
     } catch (error) {
       const message = errorMessage(error);
-      traced({ type: "error", message });
+      forwardToShadow({ type: "error", message });
       this.insertMessage({
         id: assistantId,
         conversationId,
@@ -253,7 +290,13 @@ export class ChatService {
       });
       if (shadow) {
         try {
-          this.tasks.finalizeRunDirect(shadow.runId, { status: "failed", resultError: message });
+          const status = signal.aborted ? "cancelled" : "failed";
+          this.tasks.finalizeRunDirect(shadow.runId, { status, resultError: message });
+          this.tasks.appendEvent({
+            taskId: shadow.taskId,
+            runId: shadow.runId,
+            event: { type: "run_ended", runId: shadow.runId, status, error: message },
+          });
         } catch (shadowError) {
           console.error("[tasks] shadow run 落地失败", shadowError);
         }

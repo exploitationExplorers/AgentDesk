@@ -13,6 +13,7 @@ import {
   Segmented,
   Spinner,
 } from "@agentdesk/ui";
+import { ModelBrandIcon } from "../../components/ModelBrandIcon";
 import { api } from "../../lib/api";
 
 const SOURCE_LABEL = { manual: "手动", dotenv: ".env", "cc-switch": "CC Switch" } as const;
@@ -311,9 +312,12 @@ function ProviderRow({ provider, onEdit }: { provider: Provider; onEdit: () => v
 
   return (
     <div className="flex items-center gap-4 border-b px-4 py-3 last:border-b-0">
-      <div className="grid h-9 w-9 place-items-center rounded-xl border bg-surface-2 text-muted">
-        <KeyRound className="h-4 w-4" />
-      </div>
+      <ModelBrandIcon
+        model={provider.defaultModel}
+        baseUrl={provider.baseUrl}
+        api={provider.api}
+        size={28}
+      />
       <button type="button" className="min-w-0 flex-1 text-left" onClick={onEdit}>
         <div className="flex items-center gap-2">
           <span className="text-[13.5px] font-medium">{provider.name}</span>

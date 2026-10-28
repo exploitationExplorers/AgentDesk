@@ -19,10 +19,12 @@
     "access": "public"
   },
   "scripts": {
-    "build": "node scripts/build.mjs",
-    "prepack": "node scripts/build.mjs",
-    "test": "node --import ./scripts/register-jsx-loader.mjs --test test/*.test.mjs",
-    "typecheck": "tsc -p tsconfig.json"
+    "build": "tsx scripts/build.ts",
+    "prepack": "tsx scripts/build.ts",
+    "test": "node --import tsx --test test/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.tools.json",
+    "test:dist": "node --import tsx test/interactive-dist-smoke.ts",
+    "test:package": "node --import tsx test/package-smoke.ts"
   },
   "dependencies": {
     "better-sqlite3": "^12.4.1",
@@ -34,11 +36,15 @@
     "react": "19.3.1"
   },
   "devDependencies": {
+    "@agentdesk/shared": "workspace:*",
     "@agentdesk/sidecar": "workspace:*",
+    "@types/marked-terminal": "^6.1.1",
     "@types/node": "^22.18.10",
+    "@types/react": "19.3.0",
     "@voidzero-dev/vite-plus-prompts": "1.4.0",
     "esbuild": "^0.25.11",
     "ink-testing-library": "^4.0.0",
+    "tsx": "4.20.6",
     "typescript": "^5.9.3"
   }
 }

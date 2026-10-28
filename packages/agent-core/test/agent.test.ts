@@ -37,6 +37,61 @@ const projectAgent: AgentDefinition = {
 };
 
 describe("runAgent", () => {
+  it("用尽轮次仍在调用工具时明确失败，保留工具事件且不执行超限轮次", async () => {
+    const models = setup();
+    let executions = 0;
+    const tool = defineTool({
+      name: "projects.list",
+      description: "列出项目",
+      parameters: Type.Object({}),
+      risk: "safe",
+      execute: async () => ++executions,
+    });
+    faux!.setResponses([
+      fauxAssistantMessage(fauxToolCall(toWireName(tool.name), {}), { stopReason: "toolUse" }),
+      fauxAssistantMessage(fauxToolCall(toWireName(tool.name), {}), { stopReason: "toolUse" }),
+    ]);
+    const events: AgentStreamEvent[] = [];
+    await expect(
+      runAgent({
+        definition: { ...projectAgent, maxTurns: 1 },
+        tools: [tool],
+        models,
+        messages: [],
+        emit: (event) => events.push(event),
+        requestApproval: async () => true,
+      }),
+    ).rejects.toThrow("1 轮执行上限");
+    expect(executions).toBe(1);
+    expect(events.filter((event) => event.type === "tool_result")).toHaveLength(1);
+    expect(events.some((event) => event.type === "agent_end")).toBe(false);
+  });
+
+  it("最后允许的一轮正常回答时仍成功返回", async () => {
+    const models = setup();
+    const tool = defineTool({
+      name: "projects.list",
+      description: "列出项目",
+      parameters: Type.Object({}),
+      risk: "safe",
+      execute: async () => ["project"],
+    });
+    faux!.setResponses([
+      fauxAssistantMessage(fauxToolCall(toWireName(tool.name), {}), { stopReason: "toolUse" }),
+      fauxAssistantMessage(fauxText("查询完成")),
+    ]);
+    const result = await runAgent({
+      definition: { ...projectAgent, maxTurns: 2 },
+      tools: [tool],
+      models,
+      messages: [],
+      emit: () => {},
+      requestApproval: async () => true,
+    });
+    expect(result.text).toBe("查询完成");
+    expect(result.toolCalls).toHaveLength(1);
+  });
+
   it("执行工具调用并把结果回填给模型", async () => {
     const models = setup();
     const listTool = defineTool({

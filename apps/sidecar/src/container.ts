@@ -16,6 +16,7 @@ import { DiskService } from "./services/disk";
 import { FeedService } from "./services/feed";
 import { MemoryService } from "./services/memory";
 import { ProjectService } from "./services/projects";
+import { ProjectInstructionService } from "./services/project-instructions";
 import { ProviderService } from "./services/providers";
 import { Scheduler } from "./services/scheduler";
 import { SettingsService } from "./services/settings";
@@ -33,6 +34,7 @@ export interface Container {
   approvals: ApprovalService;
   providers: ProviderService;
   projects: ProjectService;
+  projectInstructions: ProjectInstructionService;
   feed: FeedService;
   memory: MemoryService;
   disk: DiskService;
@@ -61,6 +63,7 @@ export async function createContainer(
   const approvals = new ApprovalService(db, hub);
   const providers = new ProviderService(db, secrets, settings);
   const projects = new ProjectService(db, secrets, settings, providers, config.dataDir, hub);
+  const projectInstructions = new ProjectInstructionService(projects);
   const feed = new FeedService(db, settings, providers, hub);
   const memory = new MemoryService(dbHandle.raw, providers);
   const disk = new DiskService(settings, providers, { extraProtected: [config.dataDir] });
@@ -133,10 +136,11 @@ export async function createContainer(
     approvals,
     conversationStore,
     registry,
+    projectInstructions,
   });
   const tasks = new TaskService(db, hub, { executor: taskExecutor });
   lazyTasks.current = tasks;
-  const chat = new ChatService(db, orchestrator, approvals, memory, tasks);
+  const chat = new ChatService(db, orchestrator, approvals, memory, tasks, projectInstructions);
   const scheduler = new Scheduler(db, settings, feed, workflows);
 
   return {
@@ -148,6 +152,7 @@ export async function createContainer(
     approvals,
     providers,
     projects,
+    projectInstructions,
     feed,
     memory,
     disk,

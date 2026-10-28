@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import type { AgentModelBinding, AgentName } from "@agentdesk/shared";
 import { Button, Card, Input, Select } from "@agentdesk/ui";
+import { ModelBrandIcon } from "../../components/ModelBrandIcon";
 import { AGENT_META } from "../../lib/agents";
 import { api } from "../../lib/api";
 
@@ -85,12 +86,21 @@ export function BindingsTab() {
                   </option>
                 ))}
               </Select>
-              <Input
-                list={`models-${agent}`}
-                value={value.model}
-                onChange={(e) => update({ model: e.target.value })}
-                placeholder="模型 ID"
-              />
+              <div className="flex min-w-0 items-center gap-2">
+                <ModelBrandIcon
+                  model={value.model}
+                  baseUrl={provider?.baseUrl}
+                  api={provider?.api}
+                  size={18}
+                />
+                <Input
+                  list={`models-${agent}`}
+                  value={value.model}
+                  onChange={(e) => update({ model: e.target.value })}
+                  placeholder="模型 ID"
+                  className="min-w-0"
+                />
+              </div>
               <datalist id={`models-${agent}`}>
                 {provider?.models.map((m) => (
                   <option key={m} value={m} />

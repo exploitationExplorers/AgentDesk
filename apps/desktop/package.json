@@ -17,6 +17,7 @@
     "@agentdesk/shared": "workspace:*",
     "@agentdesk/ui": "workspace:*",
     "@agentdesk/workflow": "workspace:*",
+    "@lobehub/icons": "^6.13.0",
     "@tanstack/react-query": "^5.90.5",
     "@tanstack/react-router": "^1.133.13",
     "@tauri-apps/api": "^2.11.1",

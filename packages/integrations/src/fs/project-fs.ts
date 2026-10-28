@@ -1,5 +1,6 @@
-import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
-import { dirname, join, normalize, relative, resolve, sep } from "node:path";
+import { mkdir, readFile, readdir, realpath, stat, writeFile } from "node:fs/promises";
+import { dirname, isAbsolute, join, matchesGlob, relative, resolve, sep } from "node:path";
+import { contentHash, fileChange } from "./file-change";
 
 const MAX_READ_BYTES = 512_000;
 
@@ -15,34 +16,96 @@ export function resolveUnderRoot(projectRoot: string, relOrAbs: string): string 
   const root = resolve(projectRoot);
   const candidate = resolve(root, relOrAbs);
   const rel = relative(root, candidate);
-  if (rel.startsWith("..") || rel === ".." || normalize(rel).startsWith(`..${sep}`)) {
+  if (isAbsolute(rel) || rel === ".." || rel.startsWith(`..${sep}`)) {
     throw new ProjectFsError(`路径越界：${relOrAbs} 不在项目根 ${root} 内`);
   }
   return candidate;
 }
 
+/** 路径中的 junction / symlink 也必须留在项目内，包括尚不存在文件的父目录。 */
+async function checkedPath(root: string, path: string): Promise<string> {
+  const full = resolveUnderRoot(root, path);
+  const actualRoot = await realpath(root);
+  let parent = full;
+  for (;;) {
+    try {
+      resolveUnderRoot(actualRoot, await realpath(parent));
+      return full;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      const next = dirname(parent);
+      if (next === parent) throw error;
+      parent = next;
+    }
+  }
+}
+
+const mutations = new Map<string, Promise<unknown>>();
+async function mutate<T>(path: string, operation: () => Promise<T>): Promise<T> {
+  const key = process.platform === "win32" ? path.toLowerCase() : path;
+  const previous = mutations.get(key) ?? Promise.resolve();
+  const next = previous.catch(() => {}).then(operation);
+  mutations.set(key, next);
+  try {
+    return await next;
+  } finally {
+    if (mutations.get(key) === next) mutations.delete(key);
+  }
+}
+
+function checkVersion(content: string | null, expectedHash?: string): void {
+  if (expectedHash !== undefined && (content === null ? "" : contentHash(content)) !== expectedHash)
+    throw new ProjectFsError("文件在读取后已改变，请重新 fs.read 后再修改");
+}
+
 export async function fsRead(
   projectRoot: string,
   path: string,
-): Promise<{ path: string; content: string; bytes: number }> {
-  const full = resolveUnderRoot(projectRoot, path);
+): Promise<{ path: string; content: string; bytes: number; hash: string }> {
+  const full = await checkedPath(projectRoot, path);
   const st = await stat(full);
   if (!st.isFile()) throw new ProjectFsError(`不是文件：${path}`);
   if (st.size > MAX_READ_BYTES)
     throw new ProjectFsError(`文件过大（>${MAX_READ_BYTES} 字节）：${path}`);
   const content = await readFile(full, "utf8");
-  return { path: full, content, bytes: Buffer.byteLength(content, "utf8") };
+  if (content.includes("\0")) throw new ProjectFsError(`不支持二进制文件：${path}`);
+  return {
+    path: full,
+    content,
+    bytes: Buffer.byteLength(content, "utf8"),
+    hash: contentHash(content),
+  };
 }
 
 export async function fsWrite(
   projectRoot: string,
   path: string,
   content: string,
-): Promise<{ path: string; bytes: number }> {
-  const full = resolveUnderRoot(projectRoot, path);
-  await mkdir(dirname(full), { recursive: true });
-  await writeFile(full, content, "utf8");
-  return { path: full, bytes: Buffer.byteLength(content, "utf8") };
+  options: { expectedHash?: string; signal?: AbortSignal } = {},
+) {
+  const full = await checkedPath(projectRoot, path);
+  return mutate(full, async () => {
+    options.signal?.throwIfAborted();
+    if (Buffer.byteLength(content, "utf8") > MAX_READ_BYTES || content.includes("\0"))
+      throw new ProjectFsError("仅支持不超过 512 KB 的文本文件");
+    let before: string | null = null;
+    try {
+      before = (await fsRead(projectRoot, path)).content;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    checkVersion(before, options.expectedHash);
+    const change = fileChange(full, before, content);
+    await mkdir(dirname(full), { recursive: true });
+    await checkedPath(projectRoot, path);
+    options.signal?.throwIfAborted();
+    await writeFile(full, content, "utf8");
+    return {
+      path: full,
+      bytes: Buffer.byteLength(content, "utf8"),
+      change,
+    };
+  });
 }
 
 export async function fsPatch(
@@ -50,14 +113,32 @@ export async function fsPatch(
   path: string,
   oldText: string,
   newText: string,
-): Promise<{ path: string; replacements: number }> {
+  options: { replaceAll?: boolean; expectedHash?: string; signal?: AbortSignal } = {},
+) {
   if (!oldText) throw new ProjectFsError("oldText 不能为空");
-  const { content, path: full } = await fsRead(projectRoot, path);
-  const parts = content.split(oldText);
-  const replacements = parts.length - 1;
-  if (replacements === 0) throw new ProjectFsError(`未找到要替换的文本：${path}`);
-  await writeFile(full, parts.join(newText), "utf8");
-  return { path: full, replacements };
+  const full = await checkedPath(projectRoot, path);
+  return mutate(full, async () => {
+    options.signal?.throwIfAborted();
+    const { content } = await fsRead(projectRoot, path);
+    checkVersion(content, options.expectedHash);
+    const ending = content.includes("\r\n") ? "\r\n" : "\n";
+    const normalized = content.replace(/\r\n/g, "\n");
+    const parts = normalized.split(oldText.replace(/\r\n/g, "\n"));
+    const replacements = parts.length - 1;
+    if (replacements === 0) throw new ProjectFsError(`未找到要替换的文本：${path}`);
+    if (replacements > 1 && !options.replaceAll)
+      throw new ProjectFsError(
+        `找到 ${replacements} 处匹配，请增加上下文使其唯一，或显式设置 replaceAll=true`,
+      );
+    const after = parts.join(newText.replace(/\r\n/g, "\n")).replace(/\n/g, ending);
+    if (Buffer.byteLength(after, "utf8") > MAX_READ_BYTES || after.includes("\0"))
+      throw new ProjectFsError("修改结果超过 512 KB 或包含二进制内容");
+    const change = fileChange(full, content, after);
+    await checkedPath(projectRoot, path);
+    options.signal?.throwIfAborted();
+    await writeFile(full, after, "utf8");
+    return { path: full, replacements, change };
+  });
 }
 
 export async function fsGlob(projectRoot: string, pattern: string, max = 80): Promise<string[]> {
@@ -76,6 +157,7 @@ export async function fsGlob(projectRoot: string, pattern: string, max = 80): Pr
     for (const ent of entries) {
       if (out.length >= max) return;
       if (ent.name === "node_modules" || ent.name === ".git" || ent.name === "dist") continue;
+      if (ent.isSymbolicLink()) continue;
       const full = join(dir, ent.name);
       const rel = relative(root, full).replace(/\\/g, "/");
       if (ent.isDirectory()) {
@@ -122,15 +204,6 @@ export async function fsSearch(
 /** 极简 glob：支持 * 与 ** 片段、以及子串匹配兜底 */
 function matchGlob(path: string, pattern: string): boolean {
   if (!pattern || pattern === "*" || pattern === "**") return true;
-  if (!pattern.includes("*")) return path.includes(pattern);
-  const escaped = pattern
-    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
-    .replace(/\*\*/g, ":::DBL:::")
-    .replace(/\*/g, "[^/]*")
-    .replace(/:::DBL:::/g, ".*");
-  try {
-    return new RegExp(`^${escaped}$`, "i").test(path) || path.includes(pattern.replace(/\*/g, ""));
-  } catch {
-    return path.includes(pattern.replace(/\*/g, ""));
-  }
+  if (!/[*?{[]/.test(pattern)) return path.includes(pattern);
+  return matchesGlob(path, pattern.includes("/") ? pattern : `**/${pattern}`);
 }

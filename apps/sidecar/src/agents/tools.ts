@@ -35,17 +35,126 @@ export interface ToolDeps {
   workflows: () => WorkflowService;
 }
 
-/** 只读命令白名单：命中时 shell.run 免审批 */
-const READONLY_COMMANDS = [
-  /^git (status|log|diff|branch|remote -v|fetch|show)\b/,
-  /^(ls|dir|pwd|whoami|echo)\b/,
-  /^(node|npm|pnpm|yarn|bun|python|go|java|cargo|rustc) (-v|--version)$/,
-];
+/** 仅放行明确的参数组合；未知参数继续使用已有审批路径。 */
+const GIT_READONLY_FLAGS: Record<string, ReadonlySet<string>> = {
+  status: new Set([
+    "--short",
+    "-s",
+    "--branch",
+    "-b",
+    "--porcelain",
+    "--porcelain=v1",
+    "--porcelain=v2",
+    "--untracked-files=no",
+    "-uno",
+  ]),
+  branch: new Set([
+    "--list",
+    "-l",
+    "--all",
+    "-a",
+    "--remotes",
+    "-r",
+    "--verbose",
+    "-v",
+    "-vv",
+    "--show-current",
+    "--no-color",
+  ]),
+  diff: new Set([
+    "--stat",
+    "--numstat",
+    "--shortstat",
+    "--name-only",
+    "--name-status",
+    "--cached",
+    "--staged",
+    "--check",
+    "--summary",
+    "--no-color",
+    "--no-ext-diff",
+    "--no-textconv",
+  ]),
+  log: new Set([
+    "--oneline",
+    "--all",
+    "--graph",
+    "--decorate",
+    "--no-decorate",
+    "--stat",
+    "--name-only",
+    "--name-status",
+    "--no-color",
+    "--no-ext-diff",
+    "--no-textconv",
+  ]),
+  show: new Set([
+    "--stat",
+    "--numstat",
+    "--shortstat",
+    "--name-only",
+    "--name-status",
+    "--summary",
+    "--oneline",
+    "--no-patch",
+    "-s",
+    "--no-color",
+    "--no-ext-diff",
+    "--no-textconv",
+  ]),
+};
+
+function isReadOnlyGit(args: string[]): boolean {
+  const [command, ...rest] = args;
+  if (command === "remote") return rest.length === 1 && rest[0] === "-v";
+  if (!command) return false;
+  const flags = GIT_READONLY_FLAGS[command];
+  if (!flags) return false;
+  for (let index = 0; index < rest.length; index++) {
+    const argument = rest[index]!;
+    if (flags.has(argument)) continue;
+    if ((command === "log" || command === "show") && argument === "-n") {
+      if (!/^\d{1,5}$/.test(rest[++index] ?? "")) return false;
+      continue;
+    }
+    if (
+      (command === "log" || command === "show") &&
+      /^(?:-\d{1,5}|--max-count=\d{1,5})$/.test(argument)
+    )
+      continue;
+    // branch 的位置参数可创建分支，不能按普通 revision 放行。
+    if (
+      (command === "diff" || command === "log" || command === "show") &&
+      /^[a-zA-Z0-9_./:@~-]+$/.test(argument) &&
+      !argument.startsWith("-")
+    )
+      continue;
+    return false;
+  }
+  return true;
+}
 
 export function shellRisk(command: string): RiskLevel {
   const trimmed = command.trim();
-  if (/[;&|`$><]/.test(trimmed)) return "dangerous";
-  return READONLY_COMMANDS.some((r) => r.test(trimmed)) ? "safe" : "dangerous";
+  // 同时防止 POSIX/cmd/PowerShell 的分隔、转义与变量展开改变已检查的命令。
+  if (
+    /[;&|`$><%^!(){}"']/.test(trimmed) ||
+    [...trimmed].some((character) => character.charCodeAt(0) < 32 && character !== "\t")
+  )
+    return "dangerous";
+  const [executable, ...args] = trimmed.split(/\s+/);
+  if (executable === "git") return isReadOnlyGit(args) ? "safe" : "dangerous";
+  if (
+    /^(node|npm|pnpm|yarn|bun|python|go|java|cargo|rustc)$/.test(executable ?? "") &&
+    args.length === 1 &&
+    (args[0] === "-v" || args[0] === "--version")
+  )
+    return "safe";
+  if (executable === "echo") return "safe";
+  if ((executable === "pwd" || executable === "whoami") && args.length === 0) return "safe";
+  if (executable === "ls" && args.every((arg) => /^-(?:[alh]+)$/.test(arg))) return "safe";
+  if (executable === "dir" && args.every((arg) => /^\/(?:a|b|s)$/i.test(arg))) return "safe";
+  return "dangerous";
 }
 
 function htmlToText(html: string): string {
@@ -66,6 +175,7 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
   registry.register(
     defineTool({
       name: "projects.list",
+      isConcurrencySafe: true,
       description: "列出工作台管理的所有本地项目（含平台、分支、未提交改动、最近提交）",
       parameters: Type.Object({
         keyword: Type.Optional(Type.String({ description: "按名称过滤" })),
@@ -141,6 +251,7 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
     }),
     defineTool({
       name: "claude.sessions",
+      isConcurrencySafe: true,
       description: "列出最近的 Claude Code 会话（可按项目过滤）",
       parameters: Type.Object({ project: Type.Optional(Type.String()) }),
       risk: "safe",
@@ -150,7 +261,7 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
     defineTool({
       name: "claude.run",
       description:
-        "无头调用本机 Claude Code（claude --print）在指定项目仓库里改代码并返回结论。修禅道 bug / 本地改文件优先用此工具，不要只靠 fs.search 空转。",
+        "用户明确选择本机 Claude Code 时，无头调用 claude --print 在指定项目仓库执行任务。普通编码任务优先使用 fs.read、fs.patch、fs.write 和 shell.run，便于在工作台查看真实改动过程。",
       parameters: Type.Object({
         project: Type.String({ description: "项目 ID、名称或路径" }),
         prompt: Type.String({ description: "交给 Claude Code 的完整任务说明（含复现与约束）" }),
@@ -253,6 +364,7 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
 
     defineTool({
       name: "deploy.list",
+      isConcurrencySafe: true,
       description: "列出宝塔服务器和部署配方",
       parameters: Type.Object({}),
       risk: "safe",
@@ -267,6 +379,7 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
     }),
     defineTool({
       name: "deploy.runs",
+      isConcurrencySafe: true,
       description: "查看最近的部署记录及失败步骤日志",
       parameters: Type.Object({ recipeId: Type.Optional(Type.String()) }),
       risk: "safe",
@@ -315,6 +428,7 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
 
     defineTool({
       name: "feed.today",
+      isConcurrencySafe: true,
       description: "获取某天（默认今天）的技术热榜，可按来源或标签过滤",
       parameters: Type.Object({
         date: Type.Optional(Type.String({ description: "YYYY-MM-DD" })),
@@ -345,6 +459,7 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
     }),
     defineTool({
       name: "feed.search",
+      isConcurrencySafe: true,
       description: "在历史热榜中搜索关键词",
       parameters: Type.Object({ q: Type.String() }),
       risk: "safe",
@@ -373,6 +488,7 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
     }),
     defineTool({
       name: "web.fetch",
+      isConcurrencySafe: true,
       description: "读取网页正文（README、文档、博客），返回纯文本",
       parameters: Type.Object({ url: Type.String() }),
       risk: "safe",
@@ -395,6 +511,7 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
 
     defineTool({
       name: "workflow.list",
+      isConcurrencySafe: true,
       description: "列出已保存的工作流",
       parameters: Type.Object({}),
       risk: "safe",
@@ -454,6 +571,13 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
           cwd: dir,
           timeoutMs: 5 * 60_000,
           signal: ctx.signal,
+          onOutput: (delta) =>
+            ctx.emit({
+              type: "tool_output",
+              agent: ctx.agent,
+              toolCallId: ctx.toolCallId ?? "shell",
+              delta: delta.slice(-16_000),
+            }),
         });
         return { exitCode: result.code, output: (result.stdout + result.stderr).slice(-8000) };
       },
@@ -538,6 +662,7 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
 
     defineTool({
       name: "fs.read",
+      isConcurrencySafe: true,
       description: "读取已登记项目内的文本文件（路径相对项目根或绝对但不得越界）",
       parameters: Type.Object({
         project: Type.String({ description: "项目 ID、名称或路径" }),
@@ -548,38 +673,70 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
     }),
     defineTool({
       name: "fs.write",
-      description: "写入项目内文件（覆盖），需审批",
+      description:
+        "新建或写入项目内文本文件，返回真实差异。覆盖已有文件前先 fs.read，并传回 hash 为 expectedHash。需审批。",
       parameters: Type.Object({
         project: Type.String(),
         path: Type.String(),
         content: Type.String(),
+        expectedHash: Type.Optional(
+          Type.String({ description: "fs.read 返回的 hash；创建文件时使用空字符串" }),
+        ),
       }),
       risk: "confirm",
       describeApproval: ({ project, path, content }) => ({
         title: `写入文件 ${path}`,
         detail: `项目：${project}\n长度：${content.length} 字符\n预览：\n${content.slice(0, 800)}`,
       }),
-      execute: async ({ project, path, content }) => fsWrite(projectRoot(project), path, content),
+      execute: async ({ project, path, content, expectedHash }, ctx) => {
+        const result = await fsWrite(projectRoot(project), path, content, {
+          expectedHash,
+          signal: ctx.signal,
+        });
+        ctx.emit({
+          type: "file_change",
+          agent: ctx.agent,
+          toolCallId: ctx.toolCallId ?? path,
+          change: result.change,
+        });
+        return result;
+      },
     }),
     defineTool({
       name: "fs.patch",
-      description: "在项目文件中把 oldText 替换为 newText（可多处）",
+      description:
+        "精确修改项目文件。先 fs.read，再将唯一的 oldText 替换为 newText，并传回 hash 为 expectedHash。多处替换必须显式 replaceAll=true。返回真实差异。",
       parameters: Type.Object({
         project: Type.String(),
         path: Type.String(),
         oldText: Type.String(),
         newText: Type.String(),
+        expectedHash: Type.Optional(Type.String()),
+        replaceAll: Type.Optional(Type.Boolean()),
       }),
       risk: "confirm",
       describeApproval: ({ project, path, oldText, newText }) => ({
         title: `修补文件 ${path}`,
         detail: `项目：${project}\n- 旧：\n${oldText.slice(0, 400)}\n+ 新：\n${newText.slice(0, 400)}`,
       }),
-      execute: async ({ project, path, oldText, newText }) =>
-        fsPatch(projectRoot(project), path, oldText, newText),
+      execute: async ({ project, path, oldText, newText, expectedHash, replaceAll }, ctx) => {
+        const result = await fsPatch(projectRoot(project), path, oldText, newText, {
+          expectedHash,
+          replaceAll,
+          signal: ctx.signal,
+        });
+        ctx.emit({
+          type: "file_change",
+          agent: ctx.agent,
+          toolCallId: ctx.toolCallId ?? path,
+          change: result.change,
+        });
+        return result;
+      },
     }),
     defineTool({
       name: "fs.glob",
+      isConcurrencySafe: true,
       description: "在项目内按 glob/子串列出文件路径",
       parameters: Type.Object({
         project: Type.String(),
@@ -593,6 +750,7 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
     }),
     defineTool({
       name: "fs.search",
+      isConcurrencySafe: true,
       description: "在项目源码中搜索包含关键字的行",
       parameters: Type.Object({
         project: Type.String(),
@@ -623,6 +781,7 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
     }),
     defineTool({
       name: "memory.recall",
+      isConcurrencySafe: true,
       description: "按问题检索长期记忆，返回相关的偏好、事实和决定",
       parameters: Type.Object({
         query: Type.String({ description: "用来召回的问题或关键词" }),

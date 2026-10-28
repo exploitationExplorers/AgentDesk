@@ -53,6 +53,7 @@ export const Run = z.object({
   input: z.object({
     userMessage: z.string(),
     context: z.string().optional(),
+    workspace: z.string().min(1).max(4096).optional(),
   }),
   resultText: z.string().nullable(),
   resultError: z.string().nullable(),
@@ -96,3 +97,12 @@ export type TaskStreamEvent =
   | { type: "run_ended"; runId: string; status: RunStatus; error?: string }
   | { type: "task_status"; status: TaskStatus }
   | { type: "plan_updated"; artifactId: string; version: number };
+
+export interface RunEventRecord {
+  seq: number;
+  taskId: string;
+  runId: string;
+  parentRunId: string | null;
+  event: TaskStreamEvent;
+  createdAt: string;
+}

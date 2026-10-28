@@ -44,7 +44,7 @@ export function taskChannelToSse(
     let lastSentSeq = initialAfter;
     let lastWritten: RunEventRecord | null = null;
     const writeRecord = async (record: RunEventRecord) => {
-      await stream.writeSSE({ data: JSON.stringify(record) });
+      await stream.writeSSE({ id: String(record.seq), data: JSON.stringify(record) });
       lastSentSeq = record.seq;
       lastWritten = record;
     };
@@ -52,8 +52,16 @@ export function taskChannelToSse(
     // 2) 查库补齐历史事件。任务级订阅下历史里可能混有更早、早已终止的根 Run（例如 resume
     // 之前的那一轮），这类旧记录不能用来判定"该不该收尾"——只有补齐完之后最新的那一条才代表
     // 当前订阅是否已经没有更多事情可做。
-    for (const record of tasks.eventsAfter({ ...filter, after: initialAfter, limit: 500 })) {
-      await writeRecord(record);
+    for (;;) {
+      const page = tasks.eventsAfter({ ...filter, after: lastSentSeq, limit: 500 });
+      for (const record of page) {
+        if (closed) {
+          unsubscribe();
+          return;
+        }
+        await writeRecord(record);
+      }
+      if (page.length < 500) break;
     }
 
     // 3) 排空订阅期间攒下的队列，按 seq 去重

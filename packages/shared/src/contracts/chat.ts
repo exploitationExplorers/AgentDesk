@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { AgentName } from "./provider";
+import type { FileChange } from "./code";
 
 export const ToolCallRecord = z.object({
   id: z.string(),
@@ -38,6 +39,8 @@ export type AgentStreamEvent =
   | { type: "text_delta"; agent: AgentName; delta: string }
   | { type: "tool_call"; agent: AgentName; id: string; name: string; args: unknown }
   | { type: "tool_result"; agent: AgentName; id: string; result: unknown; isError: boolean }
+  | { type: "file_change"; agent: AgentName; toolCallId: string; change: FileChange }
+  | { type: "tool_output"; agent: AgentName; toolCallId: string; delta: string }
   | { type: "approval_required"; approvalId: string; title: string; detail: string }
   | { type: "agent_end"; agent: AgentName }
   | { type: "error"; message: string }
@@ -47,5 +50,6 @@ export const ChatRequest = z.object({
   conversationId: z.string().optional(),
   message: z.string().min(1),
   agent: AgentName.optional(),
+  workspace: z.string().max(4096).optional(),
 });
 export type ChatRequest = z.infer<typeof ChatRequest>;

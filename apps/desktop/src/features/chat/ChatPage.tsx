@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
-import { AlertTriangle, MessageSquarePlus, Trash2, User } from "lucide-react";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { AlertTriangle, Code2, MessageSquarePlus, Trash2, User } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentName } from "@agentdesk/shared";
 import { cn } from "@agentdesk/ui";
@@ -148,6 +148,18 @@ export function ChatPage() {
           />
         ) : (
           <>
+            {conversationId && (
+              <div className="flex justify-end border-b px-6 py-2">
+                <Link
+                  to="/code"
+                  search={{ c: conversationId, source: "workbench" }}
+                  className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs text-muted hover:bg-surface-2 hover:text-fg"
+                >
+                  <Code2 className="h-3.5 w-3.5" />
+                  在编码现场查看
+                </Link>
+              </div>
+            )}
             <div className="min-h-0 flex-1 overflow-y-auto">
               <div className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-8">
                 {(messages.data ?? []).map((m) =>

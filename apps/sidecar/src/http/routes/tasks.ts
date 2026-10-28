@@ -20,12 +20,14 @@ const CreateTaskBody = z.object({
   requiresPlanApproval: z.boolean().optional(),
   conversationId: z.string().optional(),
   idempotencyKey: z.string().optional(),
+  workspace: z.string().min(1).max(4096).optional(),
 });
 
 const CreateRunBody = z.object({
   trigger: RunTrigger,
   message: z.string().min(1),
   idempotencyKey: z.string().optional(),
+  workspace: z.string().min(1).max(4096).optional(),
 });
 
 const ReviewBody = z.object({
@@ -35,7 +37,7 @@ const ReviewBody = z.object({
   note: z.string().optional(),
 });
 
-export function taskRoutes({ tasks, approvals, hub, dbHandle }: Container) {
+export function taskRoutes({ tasks, approvals, hub, dbHandle, projectInstructions }: Container) {
   const app = new Hono();
   // 本阶段不抽取共用的 conversation-store：POST /tasks 自动建会话时直接复用
   // ChatService 创建 Conversation 的逻辑，允许少量临时重复（见开发任务.md 阶段 B 范围说明）。
@@ -43,6 +45,7 @@ export function taskRoutes({ tasks, approvals, hub, dbHandle }: Container) {
 
   app.post("/tasks", async (c) => {
     const body = CreateTaskBody.parse(await c.req.json());
+    const workspace = await projectInstructions.validateWorkspace(body.workspace);
     let conversationId = body.conversationId;
     if (!conversationId) {
       const conversation = conversations.put({
@@ -66,7 +69,7 @@ export function taskRoutes({ tasks, approvals, hub, dbHandle }: Container) {
       agent: body.agent ?? "orchestrator",
       trigger: "create",
       idempotencyKey: body.idempotencyKey,
-      input: { userMessage: body.goal },
+      input: { userMessage: body.goal, workspace },
     });
     const queued = tasks.transition(task.id, "queued");
     tasks.enqueue(run.id);
@@ -92,13 +95,14 @@ export function taskRoutes({ tasks, approvals, hub, dbHandle }: Container) {
     if (task.status === "closed")
       throw new AppError(ErrorCode.Conflict, "任务已关闭，不能新建运行");
     const body = CreateRunBody.parse(await c.req.json());
+    const workspace = await projectInstructions.validateWorkspace(body.workspace);
     const run = tasks.createRun({
       taskId: id,
       kind: "root",
       agent: task.agent ?? "orchestrator",
       trigger: body.trigger,
       idempotencyKey: body.idempotencyKey,
-      input: { userMessage: body.message },
+      input: { userMessage: body.message, workspace },
     });
     tasks.enqueue(run.id);
     return c.json(run, 201);
@@ -108,9 +112,28 @@ export function taskRoutes({ tasks, approvals, hub, dbHandle }: Container) {
     const id = c.req.param("id");
     const task = tasks.get(id);
     if (!task) throw new AppError(ErrorCode.NotFound, "任务不存在");
-    const after = Number(c.req.query("after") ?? 0);
-    const limit = Number(c.req.query("limit") ?? 200);
+    const after = z.coerce
+      .number()
+      .int()
+      .min(0)
+      .parse(c.req.query("after") ?? 0);
+    const limit = z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(1000)
+      .parse(c.req.query("limit") ?? 200);
     return c.json(tasks.eventsAfter({ taskId: id, after, limit }));
+  });
+
+  app.get("/tasks/:id/runs", (c) => {
+    if (!tasks.get(c.req.param("id"))) throw new AppError(ErrorCode.NotFound, "任务不存在");
+    return c.json(tasks.listRuns(c.req.param("id")));
+  });
+
+  app.get("/tasks/:id/artifacts", (c) => {
+    if (!tasks.get(c.req.param("id"))) throw new AppError(ErrorCode.NotFound, "任务不存在");
+    return c.json(tasks.listArtifacts(c.req.param("id")));
   });
 
   app.get("/tasks/:id/stream", (c) => {

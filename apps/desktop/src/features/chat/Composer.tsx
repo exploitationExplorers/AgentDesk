@@ -1,10 +1,36 @@
+import { useQuery } from "@tanstack/react-query";
 import { ArrowUp, Square } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import type { AgentName } from "@agentdesk/shared";
+import type { AgentModelBinding, AgentName, Provider } from "@agentdesk/shared";
 import { cn } from "@agentdesk/ui";
+import { ModelBrandIcon } from "../../components/ModelBrandIcon";
 import { AGENT_META } from "../../lib/agents";
+import { api } from "../../lib/api";
 
 const AGENT_ORDER: AgentName[] = ["orchestrator", "project", "deploy", "research", "code"];
+
+function BoundModelIcon({
+  agent,
+  bindings,
+  providers,
+}: {
+  agent: AgentName;
+  bindings?: AgentModelBinding[];
+  providers?: Provider[];
+}) {
+  const own = bindings?.find((item) => item.agent === agent);
+  const binding = own?.model ? own : bindings?.find((item) => item.agent === "orchestrator");
+  if (!binding?.model) return null;
+  const provider = providers?.find((item) => item.id === binding.providerId);
+  return (
+    <ModelBrandIcon
+      model={binding.model}
+      baseUrl={provider?.baseUrl}
+      api={provider?.api}
+      size={14}
+    />
+  );
+}
 
 export function Composer({
   onSend,
@@ -27,6 +53,8 @@ export function Composer({
 }) {
   const [text, setText] = useState(initial ?? "");
   const ref = useRef<HTMLTextAreaElement>(null);
+  const bindings = useQuery({ queryKey: ["bindings"], queryFn: api.bindings });
+  const providers = useQuery({ queryKey: ["providers"], queryFn: api.providers });
 
   useEffect(() => {
     if (initial) setText(initial);
@@ -86,6 +114,7 @@ export function Composer({
               )}
             >
               <meta.icon className="h-3.5 w-3.5" />
+              <BoundModelIcon agent={name} bindings={bindings.data} providers={providers.data} />
               {name === "orchestrator" ? "自动" : meta.label}
             </button>
           );

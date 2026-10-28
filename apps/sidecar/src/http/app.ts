@@ -6,6 +6,7 @@ import type { Container } from "../container";
 import { browserRoutes } from "./routes/browser";
 import { diskRoutes } from "./routes/disk";
 import { chatRoutes } from "./routes/chat";
+import { cliMonitorRoutes } from "./routes/cli-monitor";
 import { deployRoutes } from "./routes/deploy";
 import { feedRoutes } from "./routes/feed";
 import { memoryRoutes } from "./routes/memory";
@@ -60,6 +61,7 @@ export function createApp(container: Container): Hono {
   app.route("/api", chatRoutes(container));
   app.route("/api", workflowRoutes(container));
   app.route("/api", taskRoutes(container));
+  app.route("/api", cliMonitorRoutes());
   app.route("/api", wechatRoutes(container));
 
   app.notFound((c) =>

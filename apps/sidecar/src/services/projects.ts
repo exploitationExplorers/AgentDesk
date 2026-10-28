@@ -38,10 +38,8 @@ import { Collection } from "../db/collection";
 import { GLOBAL_CHANNEL, type EventHub, type GlobalEvent } from "../events";
 import type { SecretStore } from "../secrets";
 import { errorMessage, newId, nowIso, shortHash } from "../util";
-import { aiCommitWorkerPath } from "../worker-path";
+import { aiCommitWorkerArgs, aiCommitWorkerPath } from "../worker-path";
 import type { SettingsService } from "./settings";
-
-const WORKER = aiCommitWorkerPath();
 
 type GitAccountDoc = Omit<GitAccount, "hasToken"> & { id: string };
 
@@ -523,8 +521,9 @@ export class ProjectService {
       message = message || project.lastCommit?.message || "(no new commit)";
     }
 
-    if (!existsSync(WORKER)) {
-      throw new AppError(ErrorCode.IntegrationFailed, `找不到提交 worker：${WORKER}`);
+    const worker = aiCommitWorkerPath();
+    if (!existsSync(worker)) {
+      throw new AppError(ErrorCode.IntegrationFailed, `找不到提交 worker：${worker}`);
     }
 
     const jobId = newId();
@@ -546,7 +545,7 @@ export class ProjectService {
       }),
     );
 
-    const child = spawn(process.execPath, [WORKER, jobPath], {
+    const child = spawn(process.execPath, aiCommitWorkerArgs(jobPath), {
       detached: true,
       stdio: "ignore",
       windowsHide: true,

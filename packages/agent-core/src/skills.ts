@@ -12,6 +12,10 @@ export interface Skill {
   agents: AgentName[];
   triggers: string[];
   allowedTools: string[];
+  /** 禁止模型主动加载；仍可被未来的显式用户调用入口使用。 */
+  disableModelInvocation?: boolean;
+  /** 是否应出现在用户可调用的技能菜单。 */
+  userInvocable?: boolean;
   instructions: string;
   dir: string;
 }
@@ -25,6 +29,10 @@ export function parseSkill(source: string, dir: string): Skill {
   if (!match) throw new Error(`SKILL.md 缺少 frontmatter：${dir}`);
   const meta = (parseYaml(match[1] ?? "") ?? {}) as Record<string, unknown>;
   const list = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : []);
+  const tools = meta["allowed-tools"] ?? meta.allowed_tools;
+  // Claude 的规则参数可以含空格，例如 Bash(npm test)，不能在括号内拆开。
+  const allowedTools =
+    typeof tools === "string" ? tools.split(/[,\s]+(?![^()]*\))/).filter(Boolean) : list(tools);
   if (typeof meta.name !== "string" || typeof meta.description !== "string") {
     throw new Error(`SKILL.md 需要 name 和 description：${dir}`);
   }
@@ -34,7 +42,9 @@ export function parseSkill(source: string, dir: string): Skill {
     version: String(meta.version ?? "1.0.0"),
     agents: list(meta.agents) as AgentName[],
     triggers: list(meta.triggers),
-    allowedTools: list(meta.allowed_tools),
+    allowedTools,
+    disableModelInvocation: meta["disable-model-invocation"] === true,
+    userInvocable: meta["user-invocable"] !== false,
     instructions: (match[2] ?? "").trim(),
     dir,
   };
@@ -89,13 +99,13 @@ export class SkillRegistry {
   /** 用户消息命中 trigger 的技能，会在本轮直接注入完整指令。 */
   matchTriggers(agent: AgentName, text: string): Skill[] {
     const lower = text.toLowerCase();
-    return this.forAgent(agent).filter((s) =>
-      s.triggers.some((t) => lower.includes(t.toLowerCase())),
+    return this.forAgent(agent).filter(
+      (s) => !s.disableModelInvocation && s.triggers.some((t) => lower.includes(t.toLowerCase())),
     );
   }
 
   promptFor(agent: AgentName, userText: string): string {
-    const available = this.forAgent(agent);
+    const available = this.forAgent(agent).filter((s) => !s.disableModelInvocation);
     if (available.length === 0) return "";
     const catalog = available.map((s) => `- ${s.name}: ${s.description}`).join("\n");
     const activated = this.matchTriggers(agent, userText)
@@ -115,9 +125,13 @@ export class SkillRegistry {
       description: "加载指定技能的完整操作指令（SKILL.md）",
       parameters: Type.Object({ name: Type.String({ description: "技能名称" }) }),
       risk: "safe",
-      execute: async ({ name }) => {
+      isConcurrencySafe: true,
+      execute: async ({ name }, ctx) => {
         const skill = this.get(name);
         if (!skill) throw new Error(`技能不存在：${name}`);
+        if (skill.disableModelInvocation) throw new Error(`技能 ${name} 不允许模型主动调用。`);
+        if (skill.agents.length && !skill.agents.includes(ctx.agent))
+          throw new Error(`技能 ${name} 不适用于当前 Agent。`);
         return {
           name: skill.name,
           version: skill.version,
