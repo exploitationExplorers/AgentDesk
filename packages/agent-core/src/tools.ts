@@ -1,5 +1,5 @@
 import type { Static, TSchema, Tool } from "@mariozechner/pi-ai";
-import type { AgentName, AgentStreamEvent, RiskLevel } from "@agentdesk/shared";
+import type { AgentName, AgentStreamEvent, ArtifactKind, RiskLevel } from "@agentdesk/shared";
 
 export interface ApprovalRequest {
   title: string;
@@ -8,12 +8,34 @@ export interface ApprovalRequest {
   payload: unknown;
 }
 
+export interface RecordArtifactInput {
+  kind: ArtifactKind;
+  title: string;
+  content?: string;
+  metadata?: unknown;
+}
+
+export interface RecordedArtifact {
+  id: string;
+  version: number;
+}
+
 export interface ToolContext {
   agent: AgentName;
   signal?: AbortSignal;
   emit: (event: AgentStreamEvent) => void;
   /** 返回 true 表示用户批准。 */
   requestApproval: (request: ApprovalRequest) => Promise<boolean>;
+  /**
+   * 可选：向用户追问并拿到回答文本的能力。只在支持追问的执行上下文（Task 根 Run、
+   * /chat 借壳任务）中提供；委派给子 Agent 的上下文不提供，工具需要自行判断缺失时报错。
+   */
+  requestAnswer?: (request: ApprovalRequest) => Promise<string>;
+  /**
+   * 可选：记录一份任务产物（方案/变更/测试结果等），落库由调用方（TaskService）实现。
+   * 只在方案关口等支持产物持久化的执行上下文中提供，例如 tasks.submit_plan 工具。
+   */
+  recordArtifact?: (input: RecordArtifactInput) => RecordedArtifact;
 }
 
 export interface AgentTool<TParams extends TSchema = TSchema> {

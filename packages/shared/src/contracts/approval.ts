@@ -9,7 +9,7 @@ export type ApprovalStatus = z.infer<typeof ApprovalStatus>;
 /** ActionDraft：危险操作先落草稿，人工确认后再执行。 */
 export const Approval = z.object({
   id: z.string(),
-  kind: z.enum(["tool", "deploy", "workflow"]),
+  kind: z.enum(["tool", "deploy", "workflow", "question", "plan", "review"]),
   title: z.string(),
   detail: z.string(),
   risk: RiskLevel,

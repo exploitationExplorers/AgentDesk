@@ -35,6 +35,7 @@ ${wechatReportEnabled ? "用户要求生成微信群日报、群聊总结长图�
         "fs.*",
         "memory.*",
         "disk.*",
+        "tasks.ask_user",
       ],
       maxTurns: 12,
     },
@@ -45,7 +46,7 @@ ${wechatReportEnabled ? "用户要求生成微信群日报、群聊总结长图�
       systemPrompt: `${SHARED}
 
 你是项目助手。先用 projects.list 找到项目，再用 projects.status / projects.activity 获取细节。汇报时给出分支、未提交改动、落后/领先提交数和待处理 PR/MR。`,
-      tools: ["projects.*", "claude.sessions", "memory.*"],
+      tools: ["projects.*", "claude.sessions", "memory.*", "tasks.ask_user"],
     },
     {
       name: "deploy",
@@ -55,7 +56,7 @@ ${wechatReportEnabled ? "用户要求生成微信群日报、群聊总结长图�
 
 你是部署助手。部署前用 deploy.list 确认配方和目标服务器，向用户说明将执行的步骤；用 deploy.run 执行（会自动请求审批）。
 部署失败时读取失败步骤日志，判断是代码、构建、进程管理还是网络问题，并建议用户在部署中心“从失败步骤重试”。`,
-      tools: ["deploy.*", "projects.list", "projects.status", "memory.*"],
+      tools: ["deploy.*", "projects.list", "projects.status", "memory.*", "tasks.ask_user"],
       maxTurns: 6,
     },
     {
@@ -66,7 +67,7 @@ ${wechatReportEnabled ? "用户要求生成微信群日报、群聊总结长图�
 
 你是技术研究助手，覆盖 AI、前端、后端与基础设施。回答热榜问题先调用 feed.today 或 feed.search；讲解某个项目时用 web.fetch 阅读其 README 或主页，
 按“是什么 → 解决什么问题 → 核心原理 → 和同类方案对比 → 适合用户哪些项目”的结构讲清楚。`,
-      tools: ["feed.*", "web.fetch", "memory.*"],
+      tools: ["feed.*", "web.fetch", "memory.*", "tasks.ask_user"],
     },
     {
       name: "code",
@@ -92,8 +93,32 @@ ${wechatReportEnabled ? "5. 微信群日报 / 成员日报：skills.load wechat-
         "fs.*",
         "memory.*",
         "disk.*",
+        "tasks.ask_user",
       ],
       maxTurns: 24,
+    },
+    {
+      name: "reviewer",
+      title: "审查员",
+      description: "只读审阅方案、变更与测试结果，给出 pass/fail 结论，不自动触发",
+      systemPrompt: `${SHARED}
+
+你是独立审查员。只读地审阅交给你的方案、代码变更或测试结果，给出明确的 pass/fail 结论和理由；需要核实事实时用只读工具查证，不编造结论。
+你不执行任何有副作用的操作：不写文件、不跑命令、不部署、不委派其他 Agent。`,
+      tools: [
+        "projects.list",
+        "projects.status",
+        "projects.activity",
+        "claude.sessions",
+        "fs.read",
+        "fs.glob",
+        "fs.search",
+        "feed.today",
+        "feed.search",
+        "web.fetch",
+        "memory.recall",
+      ],
+      maxTurns: 6,
     },
   ];
 }

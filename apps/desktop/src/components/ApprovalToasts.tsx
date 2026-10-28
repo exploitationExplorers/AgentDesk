@@ -8,6 +8,9 @@ const KIND_LABEL = {
   workflow: "工作流",
   tool: "工具",
   deploy: "部署",
+  question: "追问",
+  plan: "方案",
+  review: "验收",
 } as const;
 
 /** 待审批固定在右下角：任意页面可见（不代表你刚点了执行）。 */

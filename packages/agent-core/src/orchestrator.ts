@@ -3,7 +3,13 @@ import type { AgentName, AgentStreamEvent, ToolCallRecord } from "@agentdesk/sha
 import { runAgent, type AgentDefinition } from "./agent";
 import type { ModelResolver } from "./llm";
 import type { SkillRegistry } from "./skills";
-import { defineTool, type ApprovalRequest, type ToolRegistry } from "./tools";
+import {
+  defineTool,
+  type ApprovalRequest,
+  type RecordArtifactInput,
+  type RecordedArtifact,
+  type ToolRegistry,
+} from "./tools";
 
 export interface OrchestratorDeps {
   agents: AgentDefinition[];
@@ -19,9 +25,30 @@ export interface OrchestratorRunOptions {
   agent?: AgentName;
   emit: (event: AgentStreamEvent) => void;
   requestApproval: (request: ApprovalRequest) => Promise<boolean>;
+  /** 可选：向用户追问并拿到回答文本的能力，透传给 tasks.ask_user 等工具的 ToolContext。 */
+  requestAnswer?: (request: ApprovalRequest) => Promise<string>;
   signal?: AbortSignal;
   /** 额外系统上下文，例如召回的长期记忆。总控和被委派的 Agent 都会看到。 */
   context?: string;
+  /**
+   * 可选：覆盖这次调用可用的工具集（按工具名精确匹配或 `ns.*` 通配，复用
+   * ToolRegistry.select 的匹配规则）。不传时沿用现有的"按 agent definition 的 tools
+   * 字段匹配"逻辑，不影响任何现有调用方。用于方案关口等需要临时收紧工具范围的场景。
+   */
+  allowedTools?: string[];
+  /** 可选：记录任务产物的能力，透传给 ToolContext，供 tasks.submit_plan 等工具使用。 */
+  recordArtifact?: (input: RecordArtifactInput) => RecordedArtifact;
+  /**
+   * 每次 agents.delegate 委派开始时触发，用于把这次子任务的事件流、审批请求和最终结果
+   * 接到独立的追踪通道（例如 Task 引擎里的子 Run）。不传时委派行为与现状完全一致：
+   * 事件/审批直接走 opts.emit/opts.requestApproval，不做任何额外路由。
+   * 并发委派场景下每次调用都会拿到各自独立的 handle，互不串台。
+   */
+  onDelegate?: (info: { agent: AgentName; task: string }) => {
+    emit: (event: AgentStreamEvent) => void;
+    requestApproval: (request: ApprovalRequest) => Promise<boolean>;
+    done: (result: { text: string; toolCalls: ToolCallRecord[] } | { error: string }) => void;
+  };
 }
 
 export interface OrchestratorResult {
@@ -89,13 +116,25 @@ export class Orchestrator {
     name: AgentName,
     messages: Message[],
     userText: string,
-    opts: Pick<OrchestratorRunOptions, "emit" | "requestApproval" | "signal" | "context">,
+    opts: Pick<
+      OrchestratorRunOptions,
+      | "emit"
+      | "requestApproval"
+      | "requestAnswer"
+      | "signal"
+      | "context"
+      | "allowedTools"
+      | "recordArtifact"
+    >,
   ) {
     const def = this.definition(name);
     const models = await this.deps.resolver.resolve(name);
+    const tools = opts.allowedTools
+      ? this.deps.registry.select(opts.allowedTools)
+      : this.toolsFor(def);
     return runAgent({
       definition: def,
-      tools: this.toolsFor(def),
+      tools,
       models,
       messages,
       systemPromptSuffix: [opts.context, this.deps.skills?.promptFor(name, userText)]
@@ -103,6 +142,8 @@ export class Orchestrator {
         .join("\n\n"),
       emit: opts.emit,
       requestApproval: opts.requestApproval,
+      requestAnswer: opts.requestAnswer,
+      recordArtifact: opts.recordArtifact,
       signal: opts.signal,
     });
   }
@@ -131,23 +172,40 @@ export class Orchestrator {
       risk: "safe",
       execute: async ({ agent, task }) => {
         opts.emit({ type: "route", agent, reason: task });
-        const sub = await this.runSpecialist(
-          agent,
-          [{ role: "user", content: task, timestamp: Date.now() }],
-          task,
-          opts,
-        );
-        delegated.push(...sub.toolCalls);
-        return { agent, answer: sub.text, toolCalls: sub.toolCalls.map((c) => c.name) };
+        const handle = opts.onDelegate?.({ agent, task });
+        const subEmit = handle?.emit ?? opts.emit;
+        const subApproval = handle?.requestApproval ?? opts.requestApproval;
+        try {
+          const sub = await this.runSpecialist(
+            agent,
+            [{ role: "user", content: task, timestamp: Date.now() }],
+            task,
+            {
+              emit: subEmit,
+              requestApproval: subApproval,
+              signal: opts.signal,
+              context: opts.context,
+            },
+          );
+          delegated.push(...sub.toolCalls);
+          handle?.done({ text: sub.text, toolCalls: sub.toolCalls });
+          return { agent, answer: sub.text, toolCalls: sub.toolCalls.map((c) => c.name) };
+        } catch (error) {
+          handle?.done({ error: error instanceof Error ? error.message : String(error) });
+          throw error;
+        }
       },
     });
 
     const def = this.definition("orchestrator");
     const models = await this.deps.resolver.resolve("orchestrator");
     const hint = routeByKeywords(opts.userMessage);
+    const tools = opts.allowedTools
+      ? this.deps.registry.select(opts.allowedTools)
+      : [...this.toolsFor(def), delegate];
     const result = await runAgent({
       definition: def,
-      tools: [...this.toolsFor(def), delegate],
+      tools,
       models,
       messages,
       systemPromptSuffix: [
@@ -159,6 +217,8 @@ export class Orchestrator {
         .join("\n\n"),
       emit: opts.emit,
       requestApproval: opts.requestApproval,
+      requestAnswer: opts.requestAnswer,
+      recordArtifact: opts.recordArtifact,
       signal: opts.signal,
     });
     return {

@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { AppSettings, type HealthInfo } from "@agentdesk/shared";
+import { AppError, AppSettings, ErrorCode, type HealthInfo } from "@agentdesk/shared";
 import type { Container } from "../../container";
 import { GLOBAL_CHANNEL } from "../../events";
 import { applyProxy, resolveProxy } from "../../proxy";
@@ -34,6 +34,13 @@ export function systemRoutes(container: Container) {
   app.post("/approvals/:id", async (c) => {
     const body = (await c.req.json()) as { approved?: boolean };
     return c.json(approvals.resolve(c.req.param("id"), body.approved === true));
+  });
+  app.post("/approvals/:id/answer", async (c) => {
+    const body = (await c.req.json()) as { text?: string };
+    if (typeof body.text !== "string" || body.text.trim().length === 0) {
+      throw new AppError(ErrorCode.BadRequest, "text 不能为空");
+    }
+    return c.json(approvals.answer(c.req.param("id"), body.text));
   });
 
   app.get("/skills", (c) =>

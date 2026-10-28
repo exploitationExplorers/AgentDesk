@@ -44,7 +44,14 @@ export const ProviderCandidate = z.object({
 });
 export type ProviderCandidate = z.infer<typeof ProviderCandidate>;
 
-export const AgentName = z.enum(["orchestrator", "project", "deploy", "research", "code"]);
+export const AgentName = z.enum([
+  "orchestrator",
+  "project",
+  "deploy",
+  "research",
+  "code",
+  "reviewer",
+]);
 export type AgentName = z.infer<typeof AgentName>;
 
 export const AgentModelBinding = z.object({

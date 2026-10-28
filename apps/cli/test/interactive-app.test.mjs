@@ -14,9 +14,17 @@ function makeConsumeSse(events) {
   };
 }
 
-function makeApiRequest({ onApprovalResolved } = {}) {
+function makeApiRequest({ onApprovalResolved, conversations, history } = {}) {
   return async (_state, path, options = {}) => {
     if (path === "/chat") return { body: {} };
+    if (path === "/conversations") {
+      if (conversations) return { json: async () => conversations };
+      throw new Error("未预期的请求：/conversations");
+    }
+    if (path.startsWith("/conversations/") && path.endsWith("/messages")) {
+      const id = path.split("/")[2];
+      return { json: async () => history?.[id] ?? [] };
+    }
     if (path.startsWith("/approvals/") && options.method === "POST") {
       onApprovalResolved?.(JSON.parse(options.body).approved);
       return { json: async () => ({ ok: true }) };
@@ -24,6 +32,10 @@ function makeApiRequest({ onApprovalResolved } = {}) {
     if (path.startsWith("/approvals")) return { json: async () => [] };
     throw new Error(`未预期的请求：${path}`);
   };
+}
+
+function lineWith(frame, needle) {
+  return frame.split("\n").find((line) => line.includes(needle)) ?? "";
 }
 
 async function waitFor(instance, predicate, { timeout = 2000, interval = 10 } = {}) {
@@ -155,6 +167,192 @@ test("Ctrl+C 在流式阶段中断当前这一轮，不等待网络请求收尾"
   instance.stdin.write("\x03");
   await waitFor(instance, (frame) => frame.includes("已中断"));
   await waitFor(instance, (frame) => frame.includes("空闲"));
+  settle();
+  instance.unmount();
+});
+
+test("有多个历史会话时启动显示选择器", async () => {
+  const conversations = [
+    {
+      id: "conv-a",
+      title: "第一个话题",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-02T00:00:00.000Z",
+    },
+    {
+      id: "conv-b",
+      title: "第二个话题",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-03T00:00:00.000Z",
+    },
+  ];
+  const instance = render(
+    createElement(App, {
+      state: { port: 1 },
+      theme,
+      apiRequest: makeApiRequest({ conversations }),
+      consumeSse: makeConsumeSse([]),
+    }),
+  );
+  await waitFor(instance, (frame) => frame.includes("新建对话"));
+  const frame = instance.lastFrame();
+  assert.ok(frame.includes("第一个话题"));
+  assert.ok(frame.includes("第二个话题"));
+  instance.unmount();
+});
+
+test("选择已有会话后正确回放历史", async () => {
+  const conversations = [
+    {
+      id: "conv-a",
+      title: "旧话题",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-02T00:00:00.000Z",
+    },
+  ];
+  const history = {
+    "conv-a": [
+      { role: "user", content: "之前问过的问题", agent: null, toolCalls: [] },
+      { role: "assistant", content: "之前的回答", agent: "orchestrator", toolCalls: [] },
+    ],
+  };
+  const instance = render(
+    createElement(App, {
+      state: { port: 1 },
+      theme,
+      apiRequest: makeApiRequest({ conversations, history }),
+      consumeSse: makeConsumeSse([]),
+    }),
+  );
+  await waitFor(instance, (frame) => frame.includes("新建对话"));
+  instance.stdin.write("\x1B[B");
+  await delay(30);
+  instance.stdin.write("\r");
+  await waitFor(instance, (frame) => frame.includes("之前的回答"));
+  assert.ok(instance.lastFrame().includes("之前问过的问题"));
+  instance.unmount();
+});
+
+test("选择新建对话后是空会话", async () => {
+  const conversations = [
+    {
+      id: "conv-a",
+      title: "旧话题",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-02T00:00:00.000Z",
+    },
+  ];
+  const instance = render(
+    createElement(App, {
+      state: { port: 1 },
+      theme,
+      apiRequest: makeApiRequest({ conversations }),
+      consumeSse: makeConsumeSse([]),
+    }),
+  );
+  await waitFor(instance, (frame) => frame.includes("新建对话"));
+  instance.stdin.write("\r");
+  await waitFor(instance, (frame) => frame.includes("空闲"));
+  assert.ok(!instance.lastFrame().includes("旧话题"));
+  instance.unmount();
+});
+
+test("显式传入 --conversation 时跳过选择器", async () => {
+  const instance = render(
+    createElement(App, {
+      state: { port: 1 },
+      theme,
+      conversationId: "conv-z",
+      apiRequest: makeApiRequest(),
+      consumeSse: makeConsumeSse([]),
+    }),
+  );
+  await waitFor(instance, (frame) => frame.includes("空闲"));
+  assert.ok(!instance.lastFrame().includes("选择会话"));
+  instance.unmount();
+});
+
+test("Tab 切换到步骤焦点后上下移动高亮", async () => {
+  let settle;
+  const consumeSse = (_body, onEvent) =>
+    new Promise((resolve) => {
+      settle = resolve;
+      void onEvent({
+        type: "tool_call",
+        agent: "code",
+        id: "call-1",
+        name: "fs.read",
+        args: { path: "a.ts" },
+      });
+      void onEvent({
+        type: "tool_call",
+        agent: "code",
+        id: "call-2",
+        name: "fs.write",
+        args: { path: "b.ts" },
+      });
+    });
+  const instance = render(
+    createElement(App, {
+      state: { port: 1 },
+      theme,
+      apiRequest: makeApiRequest(),
+      consumeSse,
+    }),
+  );
+  await typeAndSubmit(instance, "读取并写入文件");
+  await waitFor(instance, (frame) => frame.includes("fs.write"));
+  instance.stdin.write("\t");
+  await delay(30);
+  let frame = instance.lastFrame();
+  assert.ok(lineWith(frame, "fs.read").includes("▌"));
+  assert.ok(!lineWith(frame, "fs.write").includes("▌"));
+  instance.stdin.write("\x1B[B");
+  await delay(30);
+  frame = instance.lastFrame();
+  assert.ok(!lineWith(frame, "fs.read").includes("▌"));
+  assert.ok(lineWith(frame, "fs.write").includes("▌"));
+  settle();
+  instance.unmount();
+});
+
+test("Enter 单独展开聚焦行而其他行保持折叠", async () => {
+  let settle;
+  const consumeSse = (_body, onEvent) =>
+    new Promise((resolve) => {
+      settle = resolve;
+      void onEvent({
+        type: "tool_call",
+        agent: "code",
+        id: "call-1",
+        name: "fs.read",
+        args: { path: "a.ts" },
+      });
+      void onEvent({
+        type: "tool_call",
+        agent: "code",
+        id: "call-2",
+        name: "fs.write",
+        args: { path: "b.ts" },
+      });
+    });
+  const instance = render(
+    createElement(App, {
+      state: { port: 1 },
+      theme,
+      apiRequest: makeApiRequest(),
+      consumeSse,
+    }),
+  );
+  await typeAndSubmit(instance, "读取并写入文件");
+  await waitFor(instance, (frame) => frame.includes("fs.write"));
+  instance.stdin.write("\t");
+  await delay(30);
+  instance.stdin.write("\r");
+  await delay(30);
+  const frame = instance.lastFrame();
+  assert.ok(frame.includes("a.ts"));
+  assert.ok(!frame.includes("b.ts"));
   settle();
   instance.unmount();
 });

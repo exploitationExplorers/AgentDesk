@@ -10,6 +10,7 @@ import { SecretStore } from "./secrets";
 import { ApprovalService } from "./services/approvals";
 import { BrowserService } from "./services/browser";
 import { ChatService } from "./services/chat";
+import { ConversationStore } from "./services/conversation-store";
 import { DeployService } from "./services/deploy";
 import { DiskService } from "./services/disk";
 import { FeedService } from "./services/feed";
@@ -18,6 +19,8 @@ import { ProjectService } from "./services/projects";
 import { ProviderService } from "./services/providers";
 import { Scheduler } from "./services/scheduler";
 import { SettingsService } from "./services/settings";
+import { createOrchestratorExecutor } from "./services/task-executor";
+import { TaskService } from "./services/tasks";
 import { WechatReportService } from "./services/wechat-report";
 import { WorkflowService } from "./services/workflows";
 
@@ -39,6 +42,7 @@ export interface Container {
   wechat: WechatReportService | null;
   orchestrator: Orchestrator;
   chat: ChatService;
+  tasks: TaskService;
   workflows: WorkflowService;
   scheduler: Scheduler;
   registry: ReturnType<typeof buildToolRegistry>;
@@ -117,7 +121,22 @@ export async function createContainer(
     deploy,
   });
   lazy.workflows = workflows;
-  const chat = new ChatService(db, orchestrator, approvals, memory);
+
+  // TaskService 的真实 executor 需要引用 TaskService 自身（委派产生子 Run、写 run_events），
+  // 而 TaskService 的构造又需要先拿到 executor：用 lazyTasks 打破这个循环依赖，
+  // executor 内部让出一次微任务后才会用到它，构造完成时机已经晚于下面的赋值。
+  const lazyTasks: { current?: TaskService } = {};
+  const conversationStore = new ConversationStore(db);
+  const taskExecutor = createOrchestratorExecutor({
+    getTasks: () => lazyTasks.current!,
+    orchestrator,
+    approvals,
+    conversationStore,
+    registry,
+  });
+  const tasks = new TaskService(db, hub, { executor: taskExecutor });
+  lazyTasks.current = tasks;
+  const chat = new ChatService(db, orchestrator, approvals, memory, tasks);
   const scheduler = new Scheduler(db, settings, feed, workflows);
 
   return {
@@ -138,6 +157,7 @@ export async function createContainer(
     wechat,
     orchestrator,
     chat,
+    tasks,
     workflows,
     scheduler,
     registry,

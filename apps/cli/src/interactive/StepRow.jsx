@@ -18,7 +18,7 @@ function preview(value) {
   return text.length > 200 ? `${text.slice(0, 200)}…` : text;
 }
 
-export default function StepRow({ step, expanded, theme }) {
+export default function StepRow({ step, expanded, theme, focused = false }) {
   const pending = step.kind === "tool" && !step.done;
   const spinner = useSpinner(pending, theme.motion);
   if (step.kind === "route") {
@@ -34,8 +34,11 @@ export default function StepRow({ step, expanded, theme }) {
   return (
     <Box flexDirection="column">
       <Box>
+        <Text color="cyan">{focused ? "▌" : " "}</Text>
         <Text color={pending ? "cyan" : step.isError ? "red" : "green"}>{mark} </Text>
-        <Text bold>{step.name}</Text>
+        <Text bold inverse={focused}>
+          {step.name}
+        </Text>
       </Box>
       {expanded ? (
         <Box flexDirection="column" paddingLeft={2}>

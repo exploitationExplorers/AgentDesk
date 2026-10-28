@@ -84,4 +84,20 @@ export class ApprovalService {
     this.hub.publish(GLOBAL_CHANNEL, { type: "approval", approvalId: id } satisfies GlobalEvent);
     return next;
   }
+
+  /**
+   * 回答一条 kind='question' 的审批：把回答文本写进 payload.answer，再按"已回答等价于已批准"
+   * 的语义调用现有的 resolve(id, true)。非 pending 状态沿用 resolve 本身的幂等语义，直接返回原值。
+   */
+  answer(id: string, text: string): Approval {
+    const approval = this.store.get(id);
+    if (!approval) throw new AppError(ErrorCode.NotFound, "审批不存在");
+    if (approval.status !== "pending") return approval;
+    const payload =
+      typeof approval.payload === "object" && approval.payload !== null
+        ? (approval.payload as Record<string, unknown>)
+        : {};
+    this.store.put({ ...approval, payload: { ...payload, answer: text } });
+    return this.resolve(id, true);
+  }
 }

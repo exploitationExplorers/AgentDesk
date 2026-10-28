@@ -134,6 +134,75 @@ describe("Orchestrator", () => {
     expect(result.text).toBe("你目前有 2 个项目。");
     expect(events.find((e) => e.type === "route")).toMatchObject({ agent: "project" });
   });
+
+  it("并行委派时每个子任务通过 onDelegate 拿到独立的事件/结果通道，互不串台", async () => {
+    const models = setup();
+    const researchAgent: AgentDefinition = {
+      name: "research",
+      title: "研究助手",
+      description: "调研",
+      systemPrompt: "你是研究助手",
+      tools: [],
+    };
+    faux!.setResponses([
+      fauxAssistantMessage(
+        [
+          fauxToolCall(toWireName("agents.delegate"), { agent: "project", task: "任务A" }),
+          fauxToolCall(toWireName("agents.delegate"), { agent: "research", task: "任务B" }),
+        ],
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage(fauxText("子任务A结论")),
+      fauxAssistantMessage(fauxText("子任务B结论")),
+      fauxAssistantMessage(fauxText("汇总完成")),
+    ]);
+    const orchestrator = new Orchestrator({
+      agents: [
+        {
+          name: "orchestrator",
+          title: "总控",
+          description: "路由",
+          systemPrompt: "总控",
+          tools: [],
+        },
+        projectAgent,
+        researchAgent,
+      ],
+      registry: new ToolRegistry(),
+      resolver: { resolve: async () => models },
+    });
+
+    const subEvents = new Map<string, AgentStreamEvent[]>();
+    const doneResults = new Map<string, unknown>();
+    const result = await orchestrator.run({
+      history: [],
+      userMessage: "并行委派两个任务",
+      emit: () => {},
+      requestApproval: async () => true,
+      onDelegate: ({ agent, task }) => {
+        const key = `${agent}:${task}`;
+        const events: AgentStreamEvent[] = [];
+        subEvents.set(key, events);
+        return {
+          emit: (e) => events.push(e),
+          requestApproval: async () => true,
+          done: (r) => doneResults.set(key, r),
+        };
+      },
+    });
+
+    expect(result.text).toBe("汇总完成");
+    expect(subEvents.size).toBe(2);
+    const aEvents = subEvents.get("project:任务A")!;
+    const bEvents = subEvents.get("research:任务B")!;
+    expect(aEvents.some((e) => e.type === "agent_start" && e.agent === "project")).toBe(true);
+    expect(bEvents.some((e) => e.type === "agent_start" && e.agent === "research")).toBe(true);
+    // 不串台：A 的子事件流里不应该出现 B 的 agent 事件，反之亦然
+    expect(aEvents.every((e) => !("agent" in e) || e.agent !== "research")).toBe(true);
+    expect(bEvents.every((e) => !("agent" in e) || e.agent !== "project")).toBe(true);
+    expect(doneResults.get("project:任务A")).toEqual({ text: "子任务A结论", toolCalls: [] });
+    expect(doneResults.get("research:任务B")).toEqual({ text: "子任务B结论", toolCalls: [] });
+  });
 });
 
 describe("routing & skills", () => {

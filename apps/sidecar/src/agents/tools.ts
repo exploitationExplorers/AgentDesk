@@ -701,5 +701,49 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
       execute: async ({ ids }) => disk.cleanLatest(ids),
     }),
   );
+
+  registry.register(
+    defineTool({
+      name: "tasks.ask_user",
+      description: "当需要用户进一步澄清或提供缺失信息时调用，会阻塞当前任务直到用户回答",
+      parameters: Type.Object({
+        question: Type.String({ description: "需要用户回答的问题" }),
+      }),
+      risk: "confirm",
+      describeApproval: ({ question }) => ({
+        title: "需要你补充信息",
+        detail: question,
+      }),
+      execute: async ({ question }, ctx) => {
+        if (!ctx.requestAnswer) throw new Error("当前上下文不支持追问");
+        return ctx.requestAnswer({
+          title: "需要你补充信息",
+          detail: question,
+          risk: "confirm",
+          payload: { kind: "question", question },
+        });
+      },
+    }),
+    defineTool({
+      name: "tasks.submit_plan",
+      description:
+        "提交本次任务的执行方案（需求理解与分步计划），不执行任何有副作用的操作。只在方案关口场景下可用。",
+      parameters: Type.Object({
+        summary: Type.String({ description: "方案摘要：要做什么、为什么这么做" }),
+        steps: Type.Array(Type.String(), { description: "具体执行步骤，按顺序列出" }),
+      }),
+      risk: "safe",
+      execute: async ({ summary, steps }, ctx) => {
+        if (!ctx.recordArtifact) throw new Error("当前上下文不支持提交方案");
+        const content = [summary, "", ...steps.map((step, i) => `${i + 1}. ${step}`)].join("\n");
+        const artifact = ctx.recordArtifact({
+          kind: "plan",
+          title: summary.slice(0, 60) || "方案",
+          content,
+        });
+        return `方案已记录（版本 ${artifact.version}）`;
+      },
+    }),
+  );
   return registry;
 }

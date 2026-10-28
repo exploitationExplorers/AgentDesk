@@ -1,10 +1,9 @@
-import { asc, desc, eq } from "drizzle-orm";
-import type { Message, Orchestrator } from "@agentdesk/agent-core";
+import { desc, eq } from "drizzle-orm";
+import type { ApprovalRequest, Orchestrator } from "@agentdesk/agent-core";
 import {
   AppError,
   ChatRequest,
   ErrorCode,
-  type AgentName,
   type AgentStreamEvent,
   type ChatMessage,
   type Conversation,
@@ -14,48 +13,24 @@ import { Collection } from "../db/collection";
 import { messages, traces } from "../db/schema";
 import { errorMessage, newId, nowIso, toJsonSafe } from "../util";
 import type { ApprovalService } from "./approvals";
+import { ConversationStore } from "./conversation-store";
 import type { MemoryService } from "./memory";
-
-const HISTORY_LIMIT = 20;
-
-/** 历史消息只回放文本；工具调用细节以摘要附在助手消息后，控制上下文长度。 */
-function toPiMessages(history: ChatMessage[]): Message[] {
-  return history.slice(-HISTORY_LIMIT).map((m): Message => {
-    if (m.role === "user")
-      return { role: "user", content: m.content, timestamp: Date.parse(m.createdAt) };
-    const toolNote = m.toolCalls.length
-      ? `\n\n(本轮调用了工具：${[...new Set(m.toolCalls.map((t) => t.name))].join(", ")})`
-      : "";
-    return {
-      role: "assistant",
-      content: [{ type: "text", text: `${m.content}${toolNote}` }],
-      api: "openai-completions",
-      provider: "history",
-      model: "history",
-      usage: {
-        input: 0,
-        output: 0,
-        cacheRead: 0,
-        cacheWrite: 0,
-        totalTokens: 0,
-        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-      },
-      stopReason: "stop",
-      timestamp: Date.parse(m.createdAt),
-    };
-  });
-}
+import { createDelegateHandler } from "./task-executor";
+import type { TaskService } from "./tasks";
 
 export class ChatService {
   private readonly conversations: Collection<Conversation>;
+  private readonly conversationStore: ConversationStore;
 
   constructor(
     private readonly db: Db,
     private readonly orchestrator: Orchestrator,
     private readonly approvals: ApprovalService,
     private readonly memory: MemoryService,
+    private readonly tasks: TaskService,
   ) {
     this.conversations = new Collection<Conversation>(db, "conversations");
+    this.conversationStore = new ConversationStore(db);
   }
 
   listConversations(): Conversation[] {
@@ -63,17 +38,7 @@ export class ChatService {
   }
 
   messages(conversationId: string): ChatMessage[] {
-    return this.db
-      .select()
-      .from(messages)
-      .where(eq(messages.conversationId, conversationId))
-      .orderBy(asc(messages.createdAt))
-      .all()
-      .map((r) => ({
-        ...r,
-        agent: r.agent as AgentName | null,
-        toolCalls: r.toolCalls as ChatMessage["toolCalls"],
-      }));
+    return this.conversationStore.listMessages(conversationId);
   }
 
   deleteConversation(id: string): void {
@@ -97,7 +62,34 @@ export class ChatService {
   }
 
   private insertMessage(message: ChatMessage) {
-    this.db.insert(messages).values(toJsonSafe(message)).run();
+    this.conversationStore.insertMessage(message);
+  }
+
+  /**
+   * 不影响 /chat 本身的响应：找不到或创建失败时返回 null，由调用方 best-effort 忽略。
+   * 同一个 conversationId 复用同一个 Task，每轮对话各自一条 Run。
+   */
+  private shadowTaskFor(
+    conversationId: string,
+    userMessage: string,
+  ): { taskId: string; runId: string } | null {
+    try {
+      const existing = this.tasks.findByConversation(conversationId);
+      const task =
+        existing ??
+        this.tasks.create({ goal: userMessage, conversationId, requiresPlanApproval: false });
+      const run = this.tasks.createRun({
+        taskId: task.id,
+        kind: "root",
+        agent: task.agent ?? "orchestrator",
+        trigger: existing ? "followup" : "create",
+        input: { userMessage },
+      });
+      return { taskId: task.id, runId: run.id };
+    } catch (error) {
+      console.error("[tasks] shadow task 创建失败", error);
+      return null;
+    }
   }
 
   /**
@@ -121,6 +113,7 @@ export class ChatService {
       });
     }
     const conversationId = conversation.id;
+    const shadow = this.shadowTaskFor(conversationId, req.message);
     const history = this.messages(conversationId);
     this.insertMessage({
       id: newId(),
@@ -142,9 +135,44 @@ export class ChatService {
       }
       emit(event);
     };
+    const forwardToShadow = (event: AgentStreamEvent) => {
+      traced(event);
+      if (shadow) {
+        try {
+          this.tasks.appendEvent({
+            taskId: shadow.taskId,
+            runId: shadow.runId,
+            parentRunId: null,
+            event,
+          });
+        } catch (error) {
+          console.error("[tasks] shadow 事件转发失败", error);
+        }
+      }
+    };
 
     emit({ type: "conversation", conversationId });
     const assistantId = newId();
+    const requestAnswer = (request: ApprovalRequest): Promise<string> => {
+      let approvalId = "";
+      return this.approvals
+        .request({ kind: "question", ...request }, signal, (approval) => {
+          approvalId = approval.id;
+          traced({
+            type: "approval_required",
+            approvalId: approval.id,
+            title: approval.title,
+            detail: approval.detail,
+          });
+        })
+        .then((approved) => {
+          if (!approved) throw new Error("用户未回答该问题（审批被拒绝或已过期）");
+          const resolved = this.approvals.list("approved").find((a) => a.id === approvalId);
+          const payload = resolved?.payload as { answer?: string } | undefined;
+          if (!payload?.answer) throw new Error("未获取到用户回答");
+          return payload.answer;
+        });
+    };
     let text = "";
     let context: string | undefined;
     try {
@@ -154,12 +182,12 @@ export class ChatService {
     }
     try {
       const result = await this.orchestrator.run({
-        history: toPiMessages(history),
+        history: this.conversationStore.toPiMessages(history),
         userMessage: req.message,
         agent: req.agent,
         context,
         signal,
-        emit: traced,
+        emit: forwardToShadow,
         requestApproval: (request) =>
           this.approvals.request({ kind: "tool", ...request }, signal, (approval) =>
             traced({
@@ -169,6 +197,16 @@ export class ChatService {
               detail: approval.detail,
             }),
           ),
+        requestAnswer,
+        onDelegate: shadow
+          ? createDelegateHandler({
+              tasks: this.tasks,
+              approvals: this.approvals,
+              taskId: shadow.taskId,
+              parentRunId: shadow.runId,
+              signal,
+            })
+          : undefined,
       });
       text = result.text;
       this.insertMessage({
@@ -190,6 +228,17 @@ export class ChatService {
       } catch (error) {
         console.error("[memory] capture failed", error);
       }
+      if (shadow) {
+        try {
+          this.tasks.finalizeRunDirect(shadow.runId, {
+            status: "succeeded",
+            resultText: text,
+            toolCalls: result.toolCalls,
+          });
+        } catch (error) {
+          console.error("[tasks] shadow run 落地失败", error);
+        }
+      }
     } catch (error) {
       const message = errorMessage(error);
       traced({ type: "error", message });
@@ -202,6 +251,13 @@ export class ChatService {
         toolCalls: [],
         createdAt: nowIso(),
       });
+      if (shadow) {
+        try {
+          this.tasks.finalizeRunDirect(shadow.runId, { status: "failed", resultError: message });
+        } catch (shadowError) {
+          console.error("[tasks] shadow run 落地失败", shadowError);
+        }
+      }
     }
     this.conversations.put({ ...conversation, updatedAt: nowIso() });
     traced({ type: "done", messageId: assistantId });

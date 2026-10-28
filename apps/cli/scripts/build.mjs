@@ -30,6 +30,16 @@ await build({
   // Ink 仅在 DEV=true 且 devtools 可达时才真正调用该可选集成；单文件 bundle 下其静态 import
   // 仍会被 esbuild 提升解析，所以用空实现 shim 代替未安装的开发期依赖。
   alias: { "react-devtools-core": join(root, "scripts/shims/react-devtools-core.mjs") },
+  // Ink 的依赖链（signal-exit 等，用于进程退出时恢复终端光标/状态）里有对 Node 内置模块
+  // （assert/events）的 require() 调用；纯 ESM bundle 下 esbuild 把它转成 __require()，
+  // 运行时没有真正的 require 可用就会抛 "Dynamic require of ... is not supported"，
+  // 用和 runtime.mjs 同款的 banner 提供一个基于 createRequire 的真实 require。
+  banner: {
+    js: [
+      "import { createRequire as __cr } from 'node:module';",
+      "const require = __cr(import.meta.url);",
+    ].join("\n"),
+  },
 });
 await build({
   ...options,

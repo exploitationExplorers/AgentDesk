@@ -10,10 +10,10 @@ import { createUi, nextCommand } from "./ui.mjs";
 
 export const AGENTS = ["orchestrator", "project", "deploy", "research", "code"];
 
-export async function initialize(home, values, { version = "" } = {}) {
+export async function initialize(home, workerPath, values, { version = "" } = {}) {
   const ui = createUi();
   await ui.welcome("连接模型，开启你的 Agent 之旅", version);
-  const state = await runningState(home);
+  const state = await runningState(home, workerPath);
   const providers = await (await apiRequest(state, "/providers")).json();
   const interactive = process.stdin.isTTY && process.stderr.isTTY;
   if (providers.some((p) => p.enabled) && !values["base-url"] && !values.model) {
@@ -114,8 +114,8 @@ export async function initialize(home, values, { version = "" } = {}) {
   ui.outro("配置完成，开始创造吧。");
 }
 
-export async function chat(home, message, values) {
-  const state = await runningState(home);
+export async function chat(home, workerPath, message, values) {
+  const state = await runningState(home, workerPath);
   if (values.agent && !AGENTS.includes(values.agent))
     throw new Error(`--agent 可选值：${AGENTS.join(", ")}`);
   const controller = new AbortController();
@@ -277,4 +277,290 @@ export async function logs(home, { lines = "80", follow = false } = {}) {
     process.removeListener("SIGINT", stop);
     process.removeListener("SIGTERM", stop);
   }
+}
+
+/** 一次性路径与交互式路径（task-session.mjs）判定 Task 是否"算成功退出"的同一套终态集合。 */
+export const TASK_SUCCESS_STATUSES = new Set(["completed", "awaiting_review"]);
+
+/**
+ * resume 未传 --message 时的默认值：POST /tasks/:id/runs 的 message 字段要求非空
+ * （见 apps/sidecar/src/http/routes/tasks.ts 的 CreateRunBody），而 resume 的语义本来就是
+ * "不用重新说明、接着上次失败的地方继续"——真正的上次失败原因/工具调用摘要已经由后端
+ * task-executor.ts 的 resumeContext 拼进了这次执行的 context，这里只是满足 schema 的非空要求。
+ */
+export const DEFAULT_RESUME_MESSAGE = "继续执行";
+
+const RUN_TRIGGER_LABEL = {
+  create: "新建",
+  followup: "追加指令",
+  resume: "重跑",
+  continue: "继续",
+  delegate: "委派",
+};
+
+/** --conversation 传了就对已有任务发追加指令；没传就新建任务。返回目标 taskId。 */
+export async function createOrContinueTask(state, goal, values) {
+  if (values.conversation) {
+    await apiRequest(state, `/tasks/${encodeURIComponent(values.conversation)}/runs`, {
+      method: "POST",
+      body: JSON.stringify({ trigger: "followup", message: goal }),
+    });
+    return values.conversation;
+  }
+  const created = await (
+    await apiRequest(state, "/tasks", {
+      method: "POST",
+      body: JSON.stringify({
+        goal,
+        agent: values.agent,
+        requiresPlanApproval: values.plan === true,
+      }),
+    })
+  ).json();
+  return created.id;
+}
+
+/** 非 JSON 一次性路径下，把一条 RunEventRecord 简要打印到对应流（文本走 stdout，其余走 stderr）。 */
+function printTaskEventText(record) {
+  const { event, parentRunId } = record;
+  const prefix = parentRunId ? "[子运行] " : "";
+  switch (event.type) {
+    case "run_started":
+      process.stderr.write(
+        `\n${prefix}▶ 运行开始（agent=${event.agent}, ${RUN_TRIGGER_LABEL[event.trigger] ?? event.trigger}）\n`,
+      );
+      break;
+    case "run_ended":
+      process.stderr.write(
+        `\n${prefix}■ 运行结束：${event.status}${event.error ? `（${event.error}）` : ""}\n`,
+      );
+      break;
+    case "task_status":
+      process.stderr.write(`\n· 任务状态：${event.status}\n`);
+      break;
+    case "plan_updated":
+      process.stderr.write(`\n· 方案已更新（版本 ${event.version}）\n`);
+      break;
+    case "route":
+      process.stderr.write(`\n${prefix}↳ 委派给 ${event.agent}：${event.reason}\n`);
+      break;
+    case "tool_call":
+      process.stderr.write(`\n${prefix}[工具] ${event.name}\n`);
+      break;
+    case "approval_required":
+      process.stderr.write(`\n${prefix}[审批] ${event.title}\n${event.detail}\n`);
+      break;
+    case "text_delta":
+      process.stdout.write(event.delta);
+      break;
+    case "error":
+      process.stderr.write(`\n${prefix}✗ ${event.message}\n`);
+      break;
+    default:
+      break;
+  }
+}
+
+/** 一次性路径共用的事件消费：打印 + 审批 y/n（非交互自动拒绝，与 chat() 保持一致）。 */
+async function consumeTaskEvents(state, response, { json, interactivePrompt }) {
+  await consumeSse(response.body, async (record) => {
+    const { event } = record;
+    if (json) process.stdout.write(`${JSON.stringify({ seq: record.seq, event })}\n`);
+    else printTaskEventText(record);
+    if (event.type === "approval_required") {
+      let approved = false;
+      if (interactivePrompt) {
+        const answer = await question(`\n[审批] ${event.title}\n${event.detail}\n是否允许？[y/N] `);
+        approved = /^(y|yes|是)$/i.test(answer);
+      } else process.stderr.write(`\n非交互模式已拒绝审批 ${event.approvalId}，未自动授权。\n`);
+      await apiRequest(state, `/approvals/${encodeURIComponent(event.approvalId)}`, {
+        method: "POST",
+        body: JSON.stringify({ approved }),
+      });
+    }
+  });
+}
+
+/**
+ * 一次性路径跟流直到结束，再查一次任务终态决定退出码。Ctrl+C 只断开本地连接（AbortController），
+ * 刻意不调用 POST /tasks/:id/cancel——关闭页面/断开连接不应意外取消后端正在执行的任务，这是
+ * 开发任务.md 开篇就定下的全局原则；取消任务只能通过显式的 `agentdesk cancel <taskId>` 完成。
+ */
+export async function followTaskOneShot(state, taskId, values, { afterSeq = 0 } = {}) {
+  // run_started 事件只带 runId，不带 taskId（见 packages/shared/src/contracts/task.ts），
+  // 新建任务时这是用户/脚本唯一能拿到 taskId 的地方——必须在事件流之外单独报一次。
+  if (values.json) process.stdout.write(`${JSON.stringify({ taskId })}\n`);
+  else process.stderr.write(`任务：${taskId}\n`);
+  const controller = new AbortController();
+  const interrupt = () => controller.abort();
+  process.once("SIGINT", interrupt);
+  try {
+    const response = await apiRequest(
+      state,
+      `/tasks/${encodeURIComponent(taskId)}/stream?after=${afterSeq}`,
+      { signal: controller.signal },
+    );
+    if (!response.body) throw new Error("服务未返回事件流。");
+    const interactivePrompt = !values.json && process.stdin.isTTY && process.stderr.isTTY;
+    await consumeTaskEvents(state, response, { json: values.json, interactivePrompt });
+  } finally {
+    process.removeListener("SIGINT", interrupt);
+  }
+  const task = await (await apiRequest(state, `/tasks/${encodeURIComponent(taskId)}`)).json();
+  if (values.json)
+    process.stdout.write(`${JSON.stringify({ taskId: task.id, status: task.status })}\n`);
+  else {
+    process.stdout.write(`\n任务 ${task.id} 当前状态：${task.status}\n`);
+    if (task.pendingApprovalId)
+      process.stdout.write(
+        `待处理审批：${task.pendingApprovalId}（使用 agentdesk approvals/approve/reject 处理）\n`,
+      );
+  }
+  if (!TASK_SUCCESS_STATUSES.has(task.status)) process.exitCode = 1;
+}
+
+export async function runTask(home, workerPath, goal, values) {
+  const state = await runningState(home, workerPath);
+  if (values.agent && !AGENTS.includes(values.agent))
+    throw new Error(`--agent 可选值：${AGENTS.join(", ")}`);
+  const trimmed = (goal ?? "").trim();
+  if (!trimmed) throw new Error('run 需要任务目标，例如 agentdesk run "修复登录页报错"');
+  const taskId = await createOrContinueTask(state, trimmed, values);
+  await followTaskOneShot(state, taskId, values, { afterSeq: 0 });
+}
+
+function truncateId(id, length = 10) {
+  return id.length > length ? `${id.slice(0, length)}…` : id;
+}
+
+export async function listTasks(home, workerPath, values) {
+  const state = await runningState(home, workerPath);
+  const query = values.status ? `?status=${encodeURIComponent(values.status)}` : "";
+  const tasks = await (await apiRequest(state, `/tasks${query}`)).json();
+  if (values.json) {
+    console.info(JSON.stringify(tasks, null, 2));
+    return;
+  }
+  const ui = createUi({ stream: process.stdout });
+  ui.header("任务列表");
+  if (!tasks.length) {
+    ui.note("暂无任务。");
+    ui.outro(`创建任务：${nextCommand('run "..."', home)}`);
+    return;
+  }
+  for (const task of tasks) {
+    ui.card(`${truncateId(task.id)}  [${task.status}]  ${task.title}`, [
+      ["创建", task.createdAt],
+      ["更新", task.updatedAt],
+    ]);
+  }
+  ui.outro(`共 ${tasks.length} 个任务`);
+}
+
+/** 时间线里跳过逐字的 text_delta，只保留结构性事件，避免刷屏。 */
+function formatTimelineLine(record) {
+  const { event, runId, parentRunId } = record;
+  const prefix = parentRunId ? `  ↳[${truncateId(runId, 8)}] ` : `[${truncateId(runId, 8)}] `;
+  switch (event.type) {
+    case "run_started":
+      return `${prefix}运行开始 agent=${event.agent} trigger=${RUN_TRIGGER_LABEL[event.trigger] ?? event.trigger}`;
+    case "run_ended":
+      return `${prefix}运行结束 ${event.status}${event.error ? `（${event.error}）` : ""}`;
+    case "task_status":
+      return `[任务] 状态变为 ${event.status}`;
+    case "plan_updated":
+      return `[任务] 方案更新到版本 ${event.version}`;
+    case "route":
+      return `${prefix}委派给 ${event.agent}：${event.reason}`;
+    case "agent_start":
+      return `${prefix}Agent ${event.agent} 开始执行`;
+    case "agent_end":
+      return `${prefix}Agent ${event.agent} 结束`;
+    case "tool_call":
+      return `${prefix}调用工具 ${event.name}`;
+    case "tool_result":
+      return `${prefix}工具结果 ${event.isError ? "失败" : "成功"}`;
+    case "approval_required":
+      return `${prefix}需要审批：${event.title}`;
+    case "error":
+      return `${prefix}错误：${event.message}`;
+    default:
+      return null;
+  }
+}
+
+/**
+ * GET /tasks/:id + GET /tasks/:id/events 快照打印。当前后端未暴露任何 artifacts HTTP 路由
+ * （TaskService.recordArtifact/listArtifacts 只是服务层方法，apps/sidecar/src/http/routes/tasks.ts
+ * 没有对应路由），因此方案概要只能从事件流里的 plan_updated（若有）读出版本号，无法取到产物正文；
+ * 这是后端实际接口缺口，不是 CLI 遗漏，按仓库约定不在本阶段新增后端路由来凑齐它。
+ */
+export async function inspectTask(home, workerPath, taskId, values) {
+  const state = await runningState(home, workerPath);
+  const task = await (await apiRequest(state, `/tasks/${encodeURIComponent(taskId)}`)).json();
+  const records = await (
+    await apiRequest(state, `/tasks/${encodeURIComponent(taskId)}/events?after=0&limit=200`)
+  ).json();
+  const latestPlan = records.filter((r) => r.event.type === "plan_updated").at(-1)?.event;
+  if (values.json) {
+    // --follow 时后面还会跟着 NDJSON 的 {seq,event} 行，这一行快照必须保持单行 JSON，
+    // 否则按行解析的脚本会把缩进后的多行快照和 NDJSON 事件行混在一起。
+    console.info(JSON.stringify({ task, events: records, latestPlan: latestPlan ?? null }));
+  } else {
+    const ui = createUi({ stream: process.stdout });
+    ui.header(`任务：${task.title}`);
+    ui.card("概况", [
+      ["ID", task.id],
+      ["状态", task.status],
+      ["目标", task.goal],
+      ["创建", task.createdAt],
+      ["更新", task.updatedAt],
+    ]);
+    if (task.pendingApprovalId)
+      ui.note(
+        `待处理审批 ${task.pendingApprovalId}：使用 agentdesk approvals/approve/reject 处理。`,
+      );
+    if (latestPlan)
+      ui.note(
+        `最新方案：版本 ${latestPlan.version}（产物 ID ${latestPlan.artifactId}；当前 API 未提供产物内容查询）。`,
+      );
+    const lines = records.map(formatTimelineLine).filter(Boolean);
+    const tail = lines.slice(-50);
+    ui.note(
+      `最近事件（共 ${lines.length} 条${lines.length > tail.length ? `，仅显示最后 ${tail.length} 条` : ""}）：`,
+    );
+    for (const line of tail) ui.note(`  ${line}`);
+    if (!values.follow) ui.outro(nextCommand(`inspect ${task.id} --follow`, home));
+  }
+  if (!values.follow) return;
+  const afterSeq = records.at(-1)?.seq ?? 0;
+  await followTaskOneShot(state, taskId, values, { afterSeq });
+}
+
+export async function cancelTaskCommand(home, workerPath, taskId, values) {
+  const state = await runningState(home, workerPath);
+  const task = await (
+    await apiRequest(state, `/tasks/${encodeURIComponent(taskId)}/cancel`, { method: "POST" })
+  ).json();
+  if (values.json) {
+    console.info(JSON.stringify(task, null, 2));
+    return;
+  }
+  const terminal = new Set(["completed", "failed", "cancelled", "closed"]);
+  if (task.status === "cancelled") console.info(`任务 ${task.id} 已取消。`);
+  else if (terminal.has(task.status))
+    console.info(`任务 ${task.id} 已处于终态（${task.status}），无需取消。`);
+  else
+    console.info(
+      `任务 ${task.id} 当前状态：${task.status}（取消请求已提交，执行中的运行会尽快中止）。`,
+    );
+}
+
+export async function resumeTask(home, workerPath, taskId, values) {
+  const state = await runningState(home, workerPath);
+  await apiRequest(state, `/tasks/${encodeURIComponent(taskId)}/runs`, {
+    method: "POST",
+    body: JSON.stringify({ trigger: "resume", message: values.message ?? DEFAULT_RESUME_MESSAGE }),
+  });
+  await followTaskOneShot(state, taskId, values, { afterSeq: 0 });
 }

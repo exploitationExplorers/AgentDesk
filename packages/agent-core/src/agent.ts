@@ -13,6 +13,8 @@ import {
   toPiTool,
   type AnyAgentTool,
   type ApprovalRequest,
+  type RecordArtifactInput,
+  type RecordedArtifact,
   type ToolContext,
 } from "./tools";
 
@@ -34,6 +36,8 @@ export interface RunAgentOptions {
   systemPromptSuffix?: string;
   emit: (event: AgentStreamEvent) => void;
   requestApproval: (request: ApprovalRequest) => Promise<boolean>;
+  requestAnswer?: (request: ApprovalRequest) => Promise<string>;
+  recordArtifact?: (input: RecordArtifactInput) => RecordedArtifact;
   signal?: AbortSignal;
 }
 
@@ -225,6 +229,8 @@ async function executeToolCall(
       signal: options.signal,
       emit: options.emit,
       requestApproval: options.requestApproval,
+      requestAnswer: options.requestAnswer,
+      recordArtifact: options.recordArtifact,
     };
     output = await tool.execute(args, ctx);
   } catch (error) {

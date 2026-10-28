@@ -13,6 +13,11 @@ const COMMAND_OPTIONS = {
   approvals: ["json"],
   approve: [],
   reject: [],
+  run: ["agent", "plan", "conversation", "json"],
+  tasks: ["status", "json"],
+  inspect: ["follow", "json"],
+  cancel: ["json"],
+  resume: ["message", "json"],
   help: [],
   version: [],
 };
@@ -40,6 +45,9 @@ export function parseCommand(argv) {
       "api-key-env": { type: "string" },
       agent: { type: "string" },
       conversation: { type: "string" },
+      plan: { type: "boolean" },
+      status: { type: "string" },
+      message: { type: "string" },
     },
   });
   const command = values.version ? "version" : (positionals.shift() ?? "help");
@@ -63,7 +71,9 @@ export function parseCommand(argv) {
   if (!values.help && !values.version) {
     if (["approve", "reject"].includes(command)) {
       if (positionals.length !== 1) throw new Error(`${command} 需要一个审批 ID。`);
-    } else if (command !== "chat" && positionals.length)
+    } else if (["inspect", "cancel", "resume"].includes(command)) {
+      if (positionals.length !== 1) throw new Error(`${command} 需要一个任务 ID。`);
+    } else if (!["chat", "run"].includes(command) && positionals.length)
       throw new Error(`${command} 不接受额外的位置参数。`);
   }
   return { command, values, positionals };
@@ -93,6 +103,16 @@ export const HELP = `AgentDesk — 本地 Agent 工作台命令行
   approvals              列出待处理审批
   approve ID / reject ID 明确批准 / 拒绝指定审批
   version                显示版本
+
+持久化任务（可跨进程重连、断开不影响后端执行）
+  run "目标"             创建任务并跟随执行（--agent，--plan 要求方案审批，--json）
+  run "目标" --conversation ID
+                         对已有任务追加一次新的运行（ID 为任务 ID，沿用 --conversation 这个
+                         参数名是为了和 chat 续接历史的心智一致，但这里传的是任务 ID 不是会话 ID）
+  tasks [--status=S]     列出任务（--json）
+  inspect ID [--follow]  查看任务状态、待处理审批与最近事件；--follow 续接后续事件
+  cancel ID [--json]     显式取消任务（关闭终端/断开连接不会取消，必须用这个命令）
+  resume ID [--message]  对失败/取消的任务重新发起一次运行并跟随执行
 
 全局参数：
   --data-dir <目录>      CLI 数据根目录（默认 ~/.agentdesk）

@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { apiRequest, verifyInstance } from "./client.mjs";
-import { nextCommand } from "./ui.mjs";
+import { createUi } from "./ui.mjs";
 import {
   ensureHome,
   processAlive,
@@ -26,14 +26,14 @@ export async function serviceStatus(home) {
   }
 }
 
-export async function runningState(home) {
+/** 服务未运行时自动拉起（复用 startService 的启动与就绪轮询），而不是报错中断调用方。 */
+export async function runningState(home, workerPath) {
   const result = await serviceStatus(home);
-  if (result.status !== "running") {
-    throw new Error(
-      `CLI 服务尚未就绪（${result.status}）。请执行 ${nextCommand("start", home)}，或查看 ${nextCommand("logs", home)}。`,
-    );
-  }
-  return result.state;
+  if (result.status === "running") return result.state;
+  const started = await createUi().task("检测到本地服务未运行，正在自动启动…", () =>
+    startService(home, { workerPath }),
+  );
+  return started.state;
 }
 
 export async function startService(home, { workerPath, port, foreground = false } = {}) {

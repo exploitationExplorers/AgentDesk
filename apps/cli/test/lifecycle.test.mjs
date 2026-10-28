@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
-import { serviceStatus, startService, stopService } from "../src/lifecycle.mjs";
+import { runningState, serviceStatus, startService, stopService } from "../src/lifecycle.mjs";
 import { claimState, readState } from "../src/state.mjs";
 
 const workerPath = fileURLToPath(new URL("./fixtures/service.mjs", import.meta.url));
@@ -63,6 +63,30 @@ test("失联记录指向仍存活进程时不强杀也不覆盖", async () => {
   await assert.rejects(stopService(home), /拒绝/);
   await assert.rejects(startService(home, { workerPath }), /已有 CLI 进程/);
   assert.equal(readState(home).instanceId, instanceId);
+});
+
+test("runningState 在服务未启动时自动拉起真实子进程并返回其 state", async () => {
+  const home = homeDir();
+  try {
+    assert.equal((await serviceStatus(home)).status, "stopped");
+    const state = await runningState(home, workerPath);
+    assert.notEqual(state.pid, process.pid);
+    assert.equal((await serviceStatus(home)).status, "running");
+  } finally {
+    await stopService(home);
+  }
+});
+
+test("runningState 在服务已运行时直接复用，不创建第二个实例", async () => {
+  const home = homeDir();
+  try {
+    const started = await startService(home, { workerPath });
+    const state = await runningState(home, workerPath);
+    assert.equal(state.pid, started.state.pid);
+    assert.equal(state.instanceId, started.state.instanceId);
+  } finally {
+    await stopService(home);
+  }
 });
 
 test("损坏状态文件明确失败，不静默覆盖", async () => {

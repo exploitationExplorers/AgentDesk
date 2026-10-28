@@ -3,7 +3,17 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { HELP, parseCommand } from "./args.mjs";
 import { apiRequest } from "./client.mjs";
-import { chat, doctor, initialize, logs } from "./commands.mjs";
+import {
+  cancelTaskCommand,
+  chat,
+  doctor,
+  initialize,
+  inspectTask,
+  listTasks,
+  logs,
+  resumeTask,
+  runTask,
+} from "./commands.mjs";
 import { runningState, serviceStatus, startService, stopService } from "./lifecycle.mjs";
 import { cliHome } from "./state.mjs";
 import { configureUi, createUi, nextCommand } from "./ui.mjs";
@@ -21,6 +31,23 @@ async function main() {
     console.info(VERSION);
     return;
   }
+  const home = cliHome(values["data-dir"]);
+  // 裸执行（无子命令、真实交互终端）：已配置模型直接进对话，否则先走配置向导再无缝接续，
+  // 跳过 HELP。非 TTY/管道场景不满足三流 TTY 条件，原样回落到下面的 help 分支打印 HELP。
+  const bareInteractive =
+    process.argv.length === 2 &&
+    process.stdin.isTTY &&
+    process.stderr.isTTY &&
+    process.stdout.isTTY;
+  if (bareInteractive) {
+    const state = await runningState(home, workerPath);
+    const providers = await (await apiRequest(state, "/providers")).json();
+    if (!providers.some((p) => p.enabled))
+      await initialize(home, workerPath, values, { version: VERSION });
+    const { runInteractiveChat } = await import("./interactive/session.mjs");
+    await runInteractiveChat(home, workerPath, values);
+    return;
+  }
   if (values.help || command === "help") {
     if (ui.interactive) {
       if (process.argv.length === 2) await ui.welcome("从一个想法开始", VERSION);
@@ -29,7 +56,6 @@ async function main() {
     process.stdout.write(HELP);
     return;
   }
-  const home = cliHome(values["data-dir"]);
   if (command === "start" || command === "restart") {
     let port = values.port === undefined ? undefined : Number(values.port);
     if (command === "restart") {
@@ -87,7 +113,7 @@ async function main() {
   } else if (command === "logs") await logs(home, values);
   else if (command === "doctor") {
     if (!(await doctor(home, workerPath, values.json))) process.exitCode = 1;
-  } else if (command === "init") await initialize(home, values, { version: VERSION });
+  } else if (command === "init") await initialize(home, workerPath, values, { version: VERSION });
   else if (command === "chat") {
     const message = positionals.join(" ").trim();
     const interactive =
@@ -99,10 +125,39 @@ async function main() {
     if (interactive) {
       // 动态导入：避免 help/status 等其他命令在运行未打包源码时加载 Ink/JSX 组件树。
       const { runInteractiveChat } = await import("./interactive/session.mjs");
-      await runInteractiveChat(home, values);
-    } else await chat(home, message, values);
+      await runInteractiveChat(home, workerPath, values);
+    } else await chat(home, workerPath, message, values);
+  } else if (command === "run") {
+    const goal = positionals.join(" ").trim();
+    const interactive =
+      !values.json && process.stdin.isTTY && process.stderr.isTTY && process.stdout.isTTY;
+    if (interactive) {
+      const { runInteractiveTask } = await import("./interactive/task-session.mjs");
+      await runInteractiveTask(home, workerPath, goal, values);
+    } else await runTask(home, workerPath, goal, values);
+  } else if (command === "tasks") await listTasks(home, workerPath, values);
+  else if (command === "inspect") {
+    const interactive =
+      values.follow &&
+      !values.json &&
+      process.stdin.isTTY &&
+      process.stderr.isTTY &&
+      process.stdout.isTTY;
+    if (interactive) {
+      const { runInteractiveInspect } = await import("./interactive/task-session.mjs");
+      await runInteractiveInspect(home, workerPath, positionals[0], values);
+    } else await inspectTask(home, workerPath, positionals[0], values);
+  } else if (command === "cancel")
+    await cancelTaskCommand(home, workerPath, positionals[0], values);
+  else if (command === "resume") {
+    const interactive =
+      !values.json && process.stdin.isTTY && process.stderr.isTTY && process.stdout.isTTY;
+    if (interactive) {
+      const { runInteractiveResume } = await import("./interactive/task-session.mjs");
+      await runInteractiveResume(home, workerPath, positionals[0], values);
+    } else await resumeTask(home, workerPath, positionals[0], values);
   } else {
-    const state = await runningState(home);
+    const state = await runningState(home, workerPath);
     if (command === "approvals") {
       const approvals = await (await apiRequest(state, "/approvals?status=pending")).json();
       if (values.json) console.info(JSON.stringify(approvals, null, 2));

@@ -7,8 +7,8 @@ import App from "./App.jsx";
 import { resolveAccessibility } from "./theme.mjs";
 
 /** 打开持久化交互式会话：校验 Agent、可选回放历史、渲染 Ink 组件树直到用户退出。 */
-export async function runInteractiveChat(home, values) {
-  const state = await runningState(home);
+export async function runInteractiveChat(home, workerPath, values) {
+  const state = await runningState(home, workerPath);
   if (values.agent && !AGENTS.includes(values.agent))
     throw new Error(`--agent 可选值：${AGENTS.join(", ")}`);
   const theme = resolveAccessibility({

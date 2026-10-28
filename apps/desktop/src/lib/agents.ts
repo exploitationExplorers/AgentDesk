@@ -1,5 +1,13 @@
 import type { AgentName } from "@agentdesk/shared";
-import { Bot, Code2, FolderGit2, Rocket, Telescope, type LucideIcon } from "lucide-react";
+import {
+  Bot,
+  ClipboardCheck,
+  Code2,
+  FolderGit2,
+  Rocket,
+  Telescope,
+  type LucideIcon,
+} from "lucide-react";
 
 export const AGENT_META: Record<
   AgentName,
@@ -10,6 +18,11 @@ export const AGENT_META: Record<
   deploy: { label: "部署", icon: Rocket, description: "宝塔一键部署与排障" },
   research: { label: "研究", icon: Telescope, description: "热榜与前沿技术讲解" },
   code: { label: "编码", icon: Code2, description: "浏览器 / 改文件 / Cursor / 终端" },
+  reviewer: {
+    label: "审查",
+    icon: ClipboardCheck,
+    description: "只读审阅方案、变更与测试结果，给出验收结论",
+  },
 };
 
 export const TOOL_LABELS: Record<string, string> = {

@@ -12,6 +12,7 @@ import { memoryRoutes } from "./routes/memory";
 import { projectRoutes } from "./routes/projects";
 import { providerRoutes } from "./routes/providers";
 import { systemRoutes } from "./routes/system";
+import { taskRoutes } from "./routes/tasks";
 import { wechatRoutes } from "./routes/wechat";
 import { workflowRoutes } from "./routes/workflows";
 
@@ -58,6 +59,7 @@ export function createApp(container: Container): Hono {
   app.route("/api", browserRoutes(container));
   app.route("/api", chatRoutes(container));
   app.route("/api", workflowRoutes(container));
+  app.route("/api", taskRoutes(container));
   app.route("/api", wechatRoutes(container));
 
   app.notFound((c) =>
