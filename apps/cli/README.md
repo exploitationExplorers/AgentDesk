@@ -173,7 +173,7 @@ pnpm --filter ./apps/cli test:dist
 pnpm --filter ./apps/cli test:package
 ```
 
-先检查 tarball 文件列表，在仓库外安装并验证 help、start、认证、重复启动、init、chat、status、logs、restart 与 stop，再配置正式版本和公开发布。当前不提供已发布的 npm 安装命令。
+先检查 tarball 文件列表，在仓库外安装并验证 help、start、认证、重复启动、init、chat、status、logs、restart 与 stop，再发布。已发布版本可用 `npm install -g chuxin-agentdesk` 安装。
 
 ## TypeScript 开发入口
 
