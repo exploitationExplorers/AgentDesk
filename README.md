@@ -6,7 +6,7 @@
 
 <p align="center">本地优先的个人 Agent 工作台。管理项目、改代码、跑任务，数据和密钥留在本机。</p>
 
-桌面应用与 CLI 共用同一套引擎。模型、Git 平台和服务器由使用者自行配置。当前桌面安装包面向 Windows，CLI 通过源码构建使用，尚未公开发布。
+桌面应用与 CLI 共用同一套引擎。模型、Git 平台和服务器由使用者自行配置。当前桌面安装包面向 Windows。CLI 包名为 `chuxin-agentdesk`，安装后命令仍是 `agentdesk`。
 
 ## 界面
 
@@ -46,9 +46,15 @@ pnpm dev:web       # http://localhost:1420
 ```
 
 ```powershell
+# 源码构建
 pnpm build:cli
 pnpm cli
 pnpm cli run "梳理还没提交的项目"
+
+# 或从 npm 安装
+npm install -g chuxin-agentdesk
+agentdesk init
+agentdesk
 ```
 
 首次打开后，在设置里添加模型、Git 平台 Token 和项目扫描目录。CLI 与桌面使用不同的数据目录和端口，需要分别初始化模型。

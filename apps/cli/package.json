@@ -1,5 +1,5 @@
 {
-  "name": "@agentdesk/cli",
+  "name": "chuxin-agentdesk",
   "version": "0.1.0",
   "description": "AgentDesk CLI: local agent runtime, service management and terminal chat",
   "type": "module",
@@ -16,7 +16,8 @@
     "node": ">=22.12.0"
   },
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   },
   "scripts": {
     "build": "tsx scripts/build.ts",
@@ -46,5 +47,14 @@
     "ink-testing-library": "^4.0.0",
     "tsx": "4.20.6",
     "typescript": "^5.9.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/exploitationExplorers/AgentDesk.git",
+    "directory": "apps/cli"
+  },
+  "homepage": "https://github.com/exploitationExplorers/AgentDesk#readme",
+  "bugs": {
+    "url": "https://github.com/exploitationExplorers/AgentDesk/issues"
   }
 }

@@ -2,18 +2,29 @@
 
 复用 AgentDesk 引擎的独立本地 CLI。支持后台服务、模型配置、流式聊天、持久化任务、工具审批与诊断。
 
-当前包名为 `@agentdesk/cli`，尚未公开发布。正式发布前需确定拥有发布权限的 npm scope、许可证和仓库元数据。远程机器、团队账号和 Web 工作台尚未提供。
+npm 包名为 `chuxin-agentdesk`，安装后命令是 `agentdesk`。许可证目前为 `UNLICENSED`（保留权利，不是开源许可）。远程机器、团队账号和 Web 工作台尚未提供。
 
-## 本地构建与安装
+## 安装
 
-需要 Node.js 22.12+、Git；源码构建还需要项目的 pnpm 开发环境。
+需要 Node.js 22.12+、Git。
+
+```powershell
+npm install -g chuxin-agentdesk
+agentdesk --help
+agentdesk init
+agentdesk
+```
+
+## 本地构建
+
+源码构建还需要项目的 pnpm 开发环境。
 
 ```powershell
 pnpm install
 pnpm build:cli
 
 # 生成 tarball，随后在仓库外安装它；无需全局安装即可试运行。
-pnpm --filter @agentdesk/cli pack --pack-destination ../../release
+pnpm --filter ./apps/cli pack --pack-destination ../../release
 npm install --prefix <安装目录> <tarball路径>
 <安装目录>/node_modules/.bin/agentdesk --help
 ```
@@ -155,11 +166,11 @@ agentdesk resume <任务ID> --message "从失败的测试继续"
 更新本地预览版时，先执行 `agentdesk stop`，在原安装目录重新安装新 tarball，再执行 `agentdesk start`。指定相同的 `--data-dir` 即继续使用已有配置和数据库；替换安装包不会自动删除用户数据。源码方式重新运行 `pnpm build:cli` 后重启服务。正式 npm 发布后的升级与版本兼容策略将在相应版本提供。
 
 ```powershell
-pnpm --filter @agentdesk/cli test
-pnpm --filter @agentdesk/cli typecheck
+pnpm --filter ./apps/cli test
+pnpm --filter ./apps/cli typecheck
 pnpm build:cli
-pnpm --filter @agentdesk/cli test:dist
-pnpm --filter @agentdesk/cli test:package
+pnpm --filter ./apps/cli test:dist
+pnpm --filter ./apps/cli test:package
 ```
 
 先检查 tarball 文件列表，在仓库外安装并验证 help、start、认证、重复启动、init、chat、status、logs、restart 与 stop，再配置正式版本和公开发布。当前不提供已发布的 npm 安装命令。
