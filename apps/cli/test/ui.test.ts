@@ -75,16 +75,32 @@ test("Vite+ 菜单响应方向键，完成后收起选项，取消恢复终端",
       ],
       { input: input.asInput(), output: output.asOutput(), env: { TERM: "xterm" } },
     );
-    setImmediate(() => {
-      input.write("\x1b[B");
-      input.write(cancel ? "\x03" : "\r");
+    // 等提示真正挂上键盘监听后再发方向键，否则 Ctrl+C/Enter 会被吞掉。
+    await new Promise((resolve, reject) => {
+      const started = Date.now();
+      const check = () => {
+        if (transcript.includes("API 协议")) resolve(undefined);
+        else if (Date.now() - started > 2000) reject(new Error("菜单未在超时内出现"));
+        else setTimeout(check, 5);
+      };
+      check();
     });
-    if (cancel) await assert.rejects(result, /已取消/);
-    else assert.equal(await result, "anthropic-messages");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    input.write("\x1b[B");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    input.write(cancel ? "\x03" : "\r");
+    if (cancel) {
+      await assert.rejects(result, /已取消/);
+      // vite-plus-prompts 取消收起后用 x 标记；旧版是 ■/◇。
+      assert.match(transcript, /x API 协议/);
+    } else {
+      assert.equal(await result, "anthropic-messages");
+      assert.match(transcript, /o API 协议/);
+      assert.ok(transcript.includes("Claude"));
+    }
     assert.equal(input.isRaw, false);
     assert.equal(input.listenerCount("keypress"), 0);
     assert.ok(transcript.includes("API 协议"));
-    assert.ok(transcript.includes(cancel ? "■" : "◇"));
     input.destroy();
     output.destroy();
   }

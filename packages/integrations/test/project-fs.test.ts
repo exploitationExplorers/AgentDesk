@@ -45,7 +45,11 @@ describe("原生编码文件工具", () => {
       fsPatch(root, "concurrent.ts", "second", "overwritten", { expectedHash: hash }),
     ]);
     expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
-    expect(await readFile(join(root, "concurrent.ts"), "utf8")).toBe("updated\nsecond\n");
+    expect(results.filter((r) => r.status === "rejected")).toHaveLength(1);
+    // 串行锁保证只有一个成功，但不保证数组顺序谁先执行。
+    expect(["updated\nsecond\n", "first\noverwritten\n"]).toContain(
+      await readFile(join(root, "concurrent.ts"), "utf8"),
+    );
   });
   it("重复匹配默认拒绝，显式 replaceAll 才替换全部", async () => {
     await writeFile(join(root, "repeat.ts"), "same\nsame\n");
