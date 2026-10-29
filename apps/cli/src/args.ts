@@ -98,7 +98,7 @@ export const HELP = `AgentDesk — 本地 Agent 工作台命令行
   doctor [--json]        检查 Node、Git、发行文件和模型配置
 
 模型与对话
-  init                   初始化模型（先启动服务，密钥隐藏输入）
+  init                   初始化模型（交互终端完成后进入对话；密钥隐藏输入）
   chat                   打开持久化交互式会话（需交互终端，--agent code，--conversation ID 续接历史）
   chat "消息"            一次性流式对话并退出（--agent code，--conversation ID，--json）
   

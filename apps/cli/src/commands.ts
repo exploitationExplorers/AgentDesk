@@ -14,13 +14,16 @@ import { registerWorkspace } from "./workspace.js";
 
 export const AGENTS = ["orchestrator", "project", "deploy", "research", "code"];
 
+/** 配置完成且当前是交互终端时返回 true，调用方应接着打开对话界面。 */
 export async function initialize(
   home: string,
   workerPath: string,
   values: CliValues,
   { version = "" } = {},
-) {
+): Promise<boolean> {
   const ui = createUi();
+  const openChat =
+    Boolean(process.stdin.isTTY) && Boolean(process.stdout.isTTY) && Boolean(process.stderr.isTTY);
   await ui.welcome("连接模型，开启你的 Agent 之旅", version);
   const state = await runningState(home, workerPath);
   const providers = await (await apiRequest<Provider[]>(state, "/providers")).json();
@@ -33,9 +36,10 @@ export async function initialize(
         ])
       : "keep";
     if (action === "keep") {
+      if (openChat) return true;
       ui.note(nextCommand('chat "你好"', home));
       ui.outro("配置已保留");
-      return;
+      return false;
     }
   }
   ui.note(`数据目录  ${home}`);
@@ -119,8 +123,10 @@ export async function initialize(
     ["协议", api],
     ["凭据", "已加密保存；尚未调用模型验证连接"],
   ]);
+  if (openChat) return true;
   ui.note(`开始对话：${nextCommand('chat "你好"', home)}`);
   ui.outro("配置完成，开始创造吧。");
+  return false;
 }
 
 export async function chat(home: string, workerPath: string, message: string, values: CliValues) {

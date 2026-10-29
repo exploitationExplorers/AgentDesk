@@ -114,8 +114,13 @@ async function main() {
   } else if (command === "logs") await logs(home, values);
   else if (command === "doctor") {
     if (!(await doctor(home, workerPath, values.json))) process.exitCode = 1;
-  } else if (command === "init") await initialize(home, workerPath, values, { version: VERSION });
-  else if (command === "chat") {
+  } else if (command === "init") {
+    const openChat = await initialize(home, workerPath, values, { version: VERSION });
+    if (openChat) {
+      const { runInteractiveChat } = await import("./interactive/session.js");
+      await runInteractiveChat(home, workerPath, values, VERSION);
+    }
+  } else if (command === "chat") {
     const message = positionals.join(" ").trim();
     const interactive =
       !message &&

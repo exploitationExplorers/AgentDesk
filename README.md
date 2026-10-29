@@ -54,7 +54,6 @@ pnpm cli run "梳理还没提交的项目"
 # 或从 npm 安装
 npm install -g chuxin-agentdesk
 agentdesk init
-agentdesk
 ```
 
 首次打开后，在设置里添加模型、Git 平台 Token 和项目扫描目录。CLI 与桌面使用不同的数据目录和端口，需要分别初始化模型。
