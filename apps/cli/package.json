@@ -1,6 +1,6 @@
 {
   "name": "chuxin-agentdesk",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "AgentDesk CLI: local agent runtime, service management and terminal chat",
   "type": "module",
   "license": "UNLICENSED",

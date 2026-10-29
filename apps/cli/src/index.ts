@@ -16,12 +16,13 @@ import {
 } from "./commands.js";
 import { runningState, serviceStatus, startService, stopService } from "./lifecycle.js";
 import { cliHome } from "./state.js";
+import { offerCliUpdate } from "./update.js";
 import { configureUi, createUi, nextCommand } from "./ui.js";
 import type { Provider, Approval } from "@agentdesk/shared";
 
-const VERSION = JSON.parse(
-  readFileSync(new URL("../package.json", import.meta.url), "utf8"),
-).version;
+const MANIFEST = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+const VERSION = MANIFEST.version as string;
+const PACKAGE_NAME = MANIFEST.name as string;
 const workerPath = fileURLToPath(new URL("./runtime.mjs", import.meta.url));
 
 async function main() {
@@ -40,6 +41,17 @@ async function main() {
     process.stdin.isTTY &&
     process.stderr.isTTY &&
     process.stdout.isTTY;
+  if (
+    await offerCliUpdate({
+      current: VERSION,
+      name: PACKAGE_NAME,
+      home,
+      command,
+      bare: bareInteractive,
+      json: values.json,
+    })
+  )
+    return;
   if (bareInteractive) {
     const state = await runningState(home, workerPath);
     const providers = await (await apiRequest<Provider[]>(state, "/providers")).json();
