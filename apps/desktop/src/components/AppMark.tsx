@@ -8,13 +8,21 @@ export function useAppAvatar(): string {
   return settings.data?.avatar ?? "";
 }
 
-export function AppMark({ src, className }: { src?: string; className?: string }) {
+export function AppMark({
+  src,
+  className,
+  alt = "",
+}: {
+  src?: string;
+  className?: string;
+  alt?: string;
+}) {
   const [broken, setBroken] = useState(false);
   const custom = src && !broken ? src : "";
   return (
     <img
-      src={custom || "/logo.svg"}
-      alt=""
+      src={custom || "/agentdesk.svg"}
+      alt={alt}
       onError={() => setBroken(true)}
       className={cn("object-cover", className)}
     />

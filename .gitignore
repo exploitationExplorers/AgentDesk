@@ -1,4 +1,7 @@
 node_modules
+# 根目录 Markdown 仅公开 README，其余文档保留在本机。
+/*.[mM][dD]
+!/README.md
 dist
 bin
 .turbo

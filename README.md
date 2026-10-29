@@ -1,12 +1,38 @@
-# AgentDesk · 个人 Agent 工作台
+<p align="center">
+  <img src="apps/desktop/public/agentdesk.svg" alt="AgentDesk" width="80" height="80" />
+</p>
+
+<h1 align="center">AgentDesk</h1>
+
+<p align="center">个人 Agent 工作台 · 本地编码 · 可视化执行</p>
+
+让 Agent 读取和修改项目代码，在编码现场查看每一步工具调用、文件差异与验证结果。
 
 一个运行在本机的 Agent 桌面应用：统一管理 GitHub / Gitee / GitLab 项目，通过 AI 辅助提交代码、操作浏览器和执行部署，定时汇总技术热榜，并用可视化工作流串联日常开发任务。支持长期记忆、GitHub 已 Star 项目浏览、磁盘清理和自定义 Skills。
 
-当前桌面打包流程面向 Windows。AI 模型、Git 平台账号和服务器由使用者自行配置。
+当前桌面打包流程面向 Windows，同时提供复用同一引擎的独立本地 CLI。AI 模型、Git 平台账号和服务器由使用者自行配置；CLI 包尚未公开发布，当前通过源码构建使用。
+
+## 文档导航
+
+- [功能与常用操作](#功能)：项目管理、原生编码、审批、部署与工作流
+- [快速开始](#快速开始)：桌面开发、浏览器调试与独立 CLI
+- [本地配置与数据](#本地配置与数据)：环境变量、数据目录与密钥保护
+- [扩展 Skills](#扩展-skills)：公开内置技能与可选私有扩展
+- [架构](#架构) / [开发与检查](#开发与检查) / [打包 Windows 安装包](#打包-windows-安装包)
+- [常见问题](#常见问题) / [开源与私有内容](#开源与私有内容)
+- [CLI 完整说明](apps/cli/README.md) / [终端外观与动效](apps/cli/TERMINAL.md)
 
 ## 界面预览
 
-**Bot · 多 Agent 对话**
+截图来自当前前端，使用演示项目、任务、榜单与运行记录（2026-10-29）。
+
+**编码现场 · 从任务到代码差异**
+
+任务列表、执行时间线与文件差异并排展示，可切换查看命令输出，在同一页面完成审批、补充要求与验收。
+
+![编码现场：任务执行过程与文件差异](docs/screenshots/code.png)
+
+**Bot · 多 Agent 对话入口**
 
 ![Bot 对话首页](docs/screenshots/bot.png)
 
@@ -18,14 +44,26 @@
 | :--------------------------------------------: | :--------------------------------------: |
 | ![工作流编辑器](docs/screenshots/workflow.png) | ![自动部署](docs/screenshots/deploy.png) |
 
-截图展示主要页面，近期新增功能以以下说明为准。
+<details>
+<summary>更新界面截图</summary>
+
+安装依赖及 Microsoft Edge 后，在仓库根目录运行：
+
+```bash
+pnpm --filter @agentdesk/desktop screenshots
+```
+
+脚本启动当前 Vite 前端，用固定演示数据生成以上 6 张截图，输出到 `docs/screenshots/`。无需启动 sidecar 或配置模型；使用 Chrome 时设置环境变量 `E2E_BROWSER_CHANNEL=chrome`。
+
+</details>
 
 ## 功能
 
 | 模块           | 能力                                                                                                                       |
 | -------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | Bot            | 总控 + 项目 / 部署 / 研究 / 编码 Agent，流式回答、工具调用、操作审批、相关长期记忆召回                                     |
-| 任务           | CLI 创建并跟随持久化任务，可查看、断线补看、显式取消和失败后续跑。关闭终端不会取消任务。桌面任务看板尚未提供               |
+| 编码现场与任务 | 桌面创建编码任务，查看执行时间线、实际文件差异与工具输出，处理审批、停止、续跑与验收；CLI 支持持久化任务与断线补看         |
+| 原生编码       | 直接读取、搜索、精确修改项目文件并执行验证；保留真实编辑差异，按需使用本机 Claude Code                                     |
 | 项目中心       | 扫描本地仓库，查看分支、未提交、未推送、PR/MR、提交记录和 Star 数；打开 Cursor / Claude Code / 终端，查看 Claude Code 会话 |
 | AI 提交        | 根据仓库改动生成 Conventional Commits 提交说明，支持编辑说明、暂存全部改动、仅提交或提交并推送；后台任务展示执行结果       |
 | 仓库导入与收藏 | 从 GitHub / Gitee 选择远程仓库并关联本地克隆或克隆到扫描目录；浏览 GitHub 已 Star 项目、搜索、克隆并交给研究 Agent 讲解    |
@@ -38,6 +76,18 @@
 | 设置           | 导入 CC Switch / `.env` 中的模型配置、拉取模型列表、Agent 模型绑定与备用模型、Git Token、代理、扫描目录、头像和主题        |
 
 ### 常用操作
+
+**在编码现场完成任务**
+
+1. 进入「编码现场」，选择任务来源和已登记的本地项目；尚未登记的仓库可通过「添加本地项目」填写路径。
+2. 描述目标与验证要求，例如「完善 README，核对启动命令并检查文档链接」，然后开始编码。
+3. 在执行时间线查看读取、搜索、编辑和命令步骤；在右侧查看每次实际写入的文件差异或工具输出。
+4. 出现审批或补充问题时，检查详情后批准、拒绝或填写回答；执行中可显式停止任务。
+5. 任务结束后检查改动和验证结果。处于待验收状态时可「确认完成」，需要调整时补充要求；失败或停止后可继续任务。
+
+文件差异展示的是各次实际写入记录，增删统计为累计编辑量，不等同于最终 `git diff`。提交和推送仍需另行确认，不会因为任务完成而自动进行。
+
+原生编码直接使用文件工具读取、搜索和修改源码，并通过命令运行测试或构建，不要求安装 Claude Code。只有需要使用本机 Claude Code 时才需准备对应 CLI 与认证。普通 Bot 对话与持久化任务的生命周期不同；需要离开页面后继续执行的工作，优先使用编码任务或 CLI 的 `run`。
 
 **管理与提交项目**
 
@@ -69,7 +119,7 @@ AI 生成提交说明需要可用模型。实际的 `git commit` / `git push` �
 
 ### 独立 CLI
 
-独立 CLI 可在本机构建运行，提供本地服务、模型配置、交互聊天和持久化任务。包名 `@agentdesk/cli` 尚未公开发布。范围与进度见 [开发任务](开发任务.md)，安装和命令见 [CLI 说明](apps/cli/README.md)。
+独立 CLI 可在本机构建运行，提供本地服务、模型配置、交互聊天和持久化任务。包名 `@agentdesk/cli` 尚未公开发布。安装和命令见 [CLI 说明](apps/cli/README.md)。
 
 ```powershell
 pnpm build:cli
@@ -192,6 +242,7 @@ apps/
     src/          TanStack Router/Query、Zustand、React Flow 与功能界面
     src-tauri/    系统钥匙串、sidecar 生命周期、托盘、通知、自动更新
   sidecar/        Node + Hono 本地服务、SQLite、任务与运行、项目与部署、记忆、磁盘、调度
+  cli/            独立 CLI、交互终端、本地服务管理与持久化任务入口
 packages/
   agent-core/     pi-ai Agent 循环、Orchestrator、工具注册与审批、Skills、模型故障切换
   workflow/       工作流 DSL（zod）、执行器与模板
@@ -201,7 +252,7 @@ packages/
 ```
 
 - UI 通过 HTTP/SSE 与 sidecar 通信，sidecar 仅监听 `127.0.0.1`。完整桌面模式校验每次启动生成的会话令牌；独立调试时可通过 `AGENTDESK_TOKEN` 配置。
-- 持久化任务和实时聊天分开。任务运行不依赖页面或 SSE 连接，取消必须调用取消接口。桌面端任务看板尚未接入，当前从 CLI 使用。
+- 持久化任务和实时聊天分开。任务运行不依赖页面或 SSE 连接，关闭查看页面不会取消任务；停止需要在编码现场点击「停止」或使用 CLI 的 `cancel`。编码现场支持工作台与本机 CLI 两种任务来源，但不代表两端数据库和模型配置自动同步。
 - Agent 工具按 `safe` / `confirm` / `dangerous` 分级，需要确认的工具操作会生成审批卡片。
 - 长期记忆保存在本地 SQLite，通过全文检索召回相关内容，再提供给总控与被委派的 Agent。
 - 模型调用对过载、限流、5xx 等瞬时错误退避重试，再按绑定顺序切换备用模型。
@@ -236,6 +287,32 @@ pnpm --filter @agentdesk/desktop app:bundle
 构建前，将 [`tauri.conf.json`](apps/desktop/src-tauri/tauri.conf.json) 中的 `plugins.updater.pubkey` 和 `plugins.updater.endpoints` 改为自己的公钥与发布地址；使用加密私钥时还需配置相应的签名密码。
 
 sidecar 构建目录为 `apps/sidecar/dist/`，包含 bundle、构建时使用的 Node 运行时、运行依赖、公开技能和 AI 提交 worker。安装包生成在 `apps/desktop/src-tauri/target/release/bundle/nsis/`。自动更新需要将安装包、签名及相应的 `latest.json` 发布到配置的更新地址。
+
+## 常见问题
+
+### 只想调试界面，需要安装 Rust 吗？
+
+不需要。安装 Node.js、pnpm 与项目依赖后，分别运行 `pnpm dev:sidecar` 和 `pnpm dev:web`，在浏览器中访问 `http://localhost:1420`。只有运行 Tauri 桌面外壳或生成安装包时才需要 Rust 与对应系统工具链。首次使用 CLI 前也要先在仓库根目录执行 `pnpm install`，然后运行 `pnpm build:cli`。
+
+### 页面能打开，但模型无法回答怎么办？
+
+先在「设置 → 模型 Provider」测试地址、协议、模型名称与 API Key，再检查 Agent 模型绑定和网络代理。CLI 与桌面默认不共用配置：桌面配置好模型后，CLI 仍需使用 `pnpm cli init` 单独初始化。CLI 服务异常时可运行 `pnpm cli doctor` 和 `pnpm cli logs --follow` 排查。
+
+### 配置了平台 Token，为什么 Git 推送仍然失败？
+
+平台 Token 用于仓库列表等 API 请求，不会自动替换本机 Git 的推送凭据。请检查远程地址、SSH Key 或 HTTPS 凭据、仓库权限，以及本机 Git 用户信息和提交钩子的报错。
+
+### 关闭终端或页面后，任务会停止吗？
+
+持久化任务依赖本地服务而非查看连接，关闭终端或编码现场不会取消任务；显式点击「停止」或执行 `pnpm cli cancel <任务ID>` 才会取消。实时 `chat` 断开则会取消当前轮次。退出应用或停止服务不是后台保活方式；CLI 服务重启后，中断的运行会标为失败，可用 `pnpm cli resume <任务ID>` 继续。
+
+### 切换 Node.js 版本后，数据库模块无法加载怎么办？
+
+`better-sqlite3` 是原生依赖，必须与运行时 Node.js 的 ABI 和目标平台匹配。请在当前 Node.js 版本下重新安装或重建该依赖，再重新构建对应的 sidecar 或 CLI；不要直接跨平台复制 `node_modules` 或复用其他 Node 版本生成的原生模块。
+
+### 开启微信日报开关后，为什么仍然不能使用？
+
+开关只启用扩展入口，不会下载私有技能或准备微信数据。还需自行安装私有 `wechat-daily-report` 包、按包内说明配置运行环境，并重启应用。公开仓库与安装包不包含这部分私有内容。
 
 ## 开源与私有内容
 

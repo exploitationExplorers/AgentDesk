@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import type { Approval, Run, Task } from "@agentdesk/shared";
 import { Button, cn } from "@agentdesk/ui";
-import { AgentMascot } from "../../components/AgentMascot";
+import { AppMark } from "../../components/AppMark";
 import { Markdown } from "../../components/Markdown";
 import { TOOL_LABELS } from "../../lib/agents";
 import { codeRoute } from "../../router";
@@ -643,7 +643,7 @@ export function CodePage() {
   return (
     <div className="flex h-full flex-col bg-bg">
       <header className="flex shrink-0 flex-wrap items-center gap-4 border-b px-6 py-5">
-        <AgentMascot className="h-10 w-10 shrink-0" />
+        <AppMark alt="AgentDesk" className="h-10 w-10 shrink-0" />
         <div>
           <h1 className="text-lg font-semibold tracking-tight">编码现场</h1>
           <p className="mt-0.5 text-xs text-muted">从读文件到验证，每一步都在这里。</p>
@@ -756,7 +756,7 @@ export function CodePage() {
           <TaskDetail key={`${source}:${selected.id}`} task={selected} source={source} />
         ) : (
           <div className="flex min-w-0 flex-1 flex-col items-center justify-center p-8">
-            <AgentMascot className="mb-7 h-20 w-20" />
+            <AppMark alt="AgentDesk" className="mb-7 h-20 w-20" />
             <p className="mb-3 font-mono text-[10px] tracking-[0.24em] text-emerald-500">
               AGENTDESK / CODE
             </p>

@@ -11,7 +11,8 @@
     "tauri": "tauri",
     "app:dev": "tauri dev",
     "app:bundle": "pnpm --filter @agentdesk/sidecar build && tauri build --config src-tauri/tauri.release.conf.json",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "screenshots": "tsx scripts/capture-readme.ts"
   },
   "dependencies": {
     "@agentdesk/shared": "workspace:*",
