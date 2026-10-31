@@ -9,6 +9,7 @@ const COMMAND_OPTIONS = {
   logs: ["follow", "lines"],
   doctor: ["json"],
   init: ["base-url", "model", "api", "api-key-env"],
+  web: ["no-open", "json"],
   chat: ["agent", "conversation", "json"],
   approvals: ["json"],
   approve: [],
@@ -39,6 +40,7 @@ export function parseCommand(argv: string[]) {
       follow: { type: "boolean" },
       lines: { type: "string" },
       json: { type: "boolean" },
+      "no-open": { type: "boolean" },
       "base-url": { type: "string" },
       model: { type: "string" },
       api: { type: "string" },
@@ -87,7 +89,11 @@ export const HELP = `AgentDesk — 本地 Agent 工作台命令行
 用法：agentdesk <命令> [参数]
 
 开始使用
-  start → init → chat "你好"
+  agentdesk              配置模型并选择浏览器工作台或终端对话
+  web                    打开浏览器工作台（与 CLI 共用模型、任务和数据）
+  web --no-open          输出一次性连接地址，不自动打开浏览器
+  web --json             输出连接地址与有效期 JSON，不自动打开浏览器
+  chat                   直接进入终端对话
 
 服务管理
   start                  在后台启动独立本地服务
@@ -98,7 +104,7 @@ export const HELP = `AgentDesk — 本地 Agent 工作台命令行
   doctor [--json]        检查 Node、Git、发行文件和模型配置
 
 模型与对话
-  init                   初始化模型（交互终端完成后进入对话；密钥隐藏输入）
+  init                   初始化模型并选择工作台或终端入口（密钥隐藏输入）
   chat                   打开持久化交互式会话（需交互终端，--agent code，--conversation ID 续接历史）
   chat "消息"            一次性流式对话并退出（--agent code，--conversation ID，--json）
   
@@ -131,5 +137,5 @@ export const HELP = `AgentDesk — 本地 Agent 工作台命令行
 协议：openai-completions（默认）或 anthropic-messages。
 非交互初始化从指定环境变量读取密钥，不接受命令行明文密钥。
 
-CLI 与桌面默认使用独立实例和数据库。远程机器接入仍在后续里程碑开发。
+浏览器工作台包含在 npm 包中，无需克隆源码。桌面应用需单独安装，默认使用独立实例和数据库。
 `;

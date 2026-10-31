@@ -1,5 +1,6 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
+import { execFileSync } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build, type BuildOptions } from "esbuild";
@@ -107,4 +108,17 @@ for (const [name, license] of [
     join(dist, "licenses", `${name.replaceAll(/[@/]/g, "-")}-LICENSE.txt`),
   );
 }
-console.info("CLI 发行文件已生成；Node 与原生依赖由安装目标提供。");
+// 在桌面包的依赖上下文中构建同一套工作台，不附带 Vite 开发服务器。
+const desktop = resolve(root, "../desktop");
+const requireDesktop = createRequire(join(desktop, "package.json"));
+const viteCli = join(dirname(requireDesktop.resolve("vite/package.json")), "bin/vite.js");
+execFileSync(
+  process.execPath,
+  [viteCli, "build", "--mode", "cli", "--outDir", join(dist, "web"), "--emptyOutDir"],
+  {
+    cwd: desktop,
+    stdio: "inherit",
+    windowsHide: true,
+  },
+);
+console.info("CLI 与浏览器工作台已生成；Node 与原生依赖由安装目标提供。");

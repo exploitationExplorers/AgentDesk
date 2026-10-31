@@ -8,15 +8,17 @@ export interface WelcomeProps {
   version?: string;
   cwd?: string;
   theme?: AccessibilityTheme;
+  workbenchCommand?: string;
 }
 
-/** AgentDesk 的像素伙伴：桌面与终端共用薄荷绿机器人形象。 */
+/** 终端欢迎区保留随时打开浏览器工作台的入口。 */
 export default function Welcome({
   agent = "orchestrator",
   model,
   version = "0.1.0",
   cwd = process.cwd(),
   theme,
+  workbenchCommand,
 }: WelcomeProps) {
   return (
     <Box gap={2} marginTop={1} marginBottom={1} paddingX={1}>
@@ -38,6 +40,7 @@ export default function Welcome({
           {cwd}
         </Text>
         <Text color={theme?.color ? "#72D9BA" : undefined}>一起把想法写成代码。</Text>
+        {workbenchCommand ? <Text dimColor>浏览器工作台：{workbenchCommand}</Text> : null}
       </Box>
     </Box>
   );

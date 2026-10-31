@@ -1,5 +1,11 @@
 import type { ApprovalRequest, Orchestrator, ToolRegistry } from "@agentdesk/agent-core";
-import type { AgentName, ArtifactKind, TaskStreamEvent, ToolCallRecord } from "@agentdesk/shared";
+import type {
+  AgentName,
+  AgentStreamEvent,
+  ArtifactKind,
+  TaskStreamEvent,
+  ToolCallRecord,
+} from "@agentdesk/shared";
 import { errorMessage, newId, nowIso } from "../util";
 import type { ApprovalService } from "./approvals";
 import type { ConversationStore } from "./conversation-store";
@@ -52,11 +58,10 @@ function createRequestAnswer(
 
 /**
  * agents.delegate 每次委派都需要的三件事：转发事件、转发审批、落地子 Run 终态。
- * emit 接受 TaskStreamEvent（比 Orchestrator 要求的 AgentStreamEvent 更宽），
- * 因为这里除了转发 Orchestrator 自己产生的事件，还要补发 run_started/run_ended。
+ * 子 Run 的生命周期单独记录，不向聊天流发送任务级结束事件。
  */
 interface DelegateRouting {
-  emit: (event: TaskStreamEvent) => void;
+  emit: (event: AgentStreamEvent) => void;
   requestApproval: (request: ApprovalRequest) => Promise<boolean>;
   done: (result: { text: string; toolCalls: ToolCallRecord[] } | { error: string }) => void;
 }
@@ -72,6 +77,8 @@ export function createDelegateHandler(deps: {
   taskId: string;
   parentRunId: string;
   signal: AbortSignal;
+  /** 同步委派时，把子助手进度和审批送回发起请求的聊天界面。 */
+  onAgentEvent?: (event: AgentStreamEvent) => void;
 }): (info: { agent: AgentName; task: string }) => DelegateRouting {
   const { tasks, approvals, taskId, parentRunId, signal } = deps;
   return ({ agent, task }) => {
@@ -83,8 +90,12 @@ export function createDelegateHandler(deps: {
       trigger: "delegate",
       input: { userMessage: task },
     });
-    const emit = (event: TaskStreamEvent) =>
+    const append = (event: TaskStreamEvent) =>
       tasks.appendEvent({ taskId, runId: childRun.id, parentRunId, event });
+    const emit = (event: AgentStreamEvent) => {
+      append(event);
+      deps.onAgentEvent?.(event);
+    };
     tasks.startRunDirect(childRun.id);
 
     const requestApproval = (request: ApprovalRequest) =>
@@ -103,7 +114,7 @@ export function createDelegateHandler(deps: {
           ? { status: signal.aborted ? "cancelled" : "failed", resultError: result.error }
           : { status: "succeeded", resultText: result.text, toolCalls: result.toolCalls };
       tasks.finalizeRunDirect(childRun.id, outcome);
-      emit({
+      append({
         type: "run_ended",
         runId: childRun.id,
         status: outcome.status,

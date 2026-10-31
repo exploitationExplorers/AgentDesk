@@ -16,6 +16,8 @@ export type ChatAction =
   | { type: "APPROVAL_ANSWERED"; approvalId: string; approved: boolean }
   | { type: "TURN_SETTLED" | "ABORT_TURN" }
   | { type: "APPROVALS_POLLED"; approvals: Approval[] }
+  | { type: "LOCAL_RESULT"; command: string; text: string }
+  | { type: "RESET"; conversationId?: string; messages?: HistoryMessage[] }
   | { type: "RESUME"; conversationId: string | null; messages: HistoryMessage[] };
 
 /**
@@ -72,6 +74,17 @@ export function turnsFromMessages(messages: HistoryMessage[]): Turn[] {
 
 export function sessionReducer(session: ChatSession, action: ChatAction): ChatSession {
   switch (action.type) {
+    case "LOCAL_RESULT":
+      return {
+        ...session,
+        turns: [...session.turns, { ...emptyLiveTurn(action.command), text: action.text }],
+      };
+    case "RESET":
+      return {
+        ...createInitialSession(),
+        conversationId: action.conversationId ?? null,
+        turns: turnsFromMessages(action.messages ?? []),
+      };
     case "SUBMIT":
       return { ...session, status: "streaming", error: null, live: emptyLiveTurn(action.message) };
 
@@ -134,6 +147,21 @@ export function sessionReducer(session: ChatSession, action: ChatAction): ChatSe
           steps: session.live.steps.map((step) =>
             step.kind === "tool" && step.id === action.toolCallId
               ? { ...step, output: ((step.output ?? "") + action.delta).slice(-8000) }
+              : step,
+          ),
+        },
+      };
+    }
+
+    case "file_change": {
+      if (!session.live) return session;
+      return {
+        ...session,
+        live: {
+          ...session.live,
+          steps: session.live.steps.map((step) =>
+            step.kind === "tool" && step.id === action.toolCallId
+              ? { ...step, change: action.change }
               : step,
           ),
         },

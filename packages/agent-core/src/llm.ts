@@ -1,5 +1,5 @@
 import type { Api, Model } from "@mariozechner/pi-ai";
-import type { AgentName, ProviderApi } from "@agentdesk/shared";
+import type { AgentName, ModelSelection, ProviderApi } from "@agentdesk/shared";
 
 export interface ProviderEndpoint {
   id: string;
@@ -18,7 +18,7 @@ export interface ResolvedModel {
 
 /** 按 Agent 解析出"主模型 + 备用模型"列表，主模型失败时依次切换。 */
 export interface ModelResolver {
-  resolve(agent: AgentName): Promise<ResolvedModel[]>;
+  resolve(agent: AgentName, selection?: ModelSelection): Promise<ResolvedModel[]>;
 }
 
 export function buildModel(endpoint: ProviderEndpoint, modelId: string): Model<Api> {

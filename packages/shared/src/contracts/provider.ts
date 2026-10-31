@@ -61,3 +61,10 @@ export const AgentModelBinding = z.object({
   fallbackProviderIds: z.array(z.string()).default([]),
 });
 export type AgentModelBinding = z.infer<typeof AgentModelBinding>;
+
+/** 单次会话请求的模型选择，不修改全局 Agent 绑定。 */
+export const ModelSelection = z.object({
+  providerId: z.string().min(1),
+  model: z.string().trim().min(1).max(256),
+});
+export type ModelSelection = z.infer<typeof ModelSelection>;

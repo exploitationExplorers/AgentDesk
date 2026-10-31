@@ -1,12 +1,14 @@
 export const isTauri = (): boolean =>
   typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
+export const isCliWorkbench = (): boolean => import.meta.env.VITE_AGENTDESK_MODE === "cli";
+
 export interface SidecarInfo {
   url: string;
   token: string | null;
 }
 
-/** Tauri 中由 Rust 提供 sidecar 地址和令牌；浏览器开发模式读环境变量。 */
+/** CLI 工作台同源访问，使用浏览器会话；Tauri 由 Rust 提供服务地址。 */
 export async function getSidecarInfo(): Promise<SidecarInfo> {
   if (isTauri()) {
     const { invoke } = await import("@tauri-apps/api/core");
@@ -16,6 +18,9 @@ export async function getSidecarInfo(): Promise<SidecarInfo> {
       await new Promise((r) => setTimeout(r, 250));
     }
     throw new Error("sidecar 启动超时");
+  }
+  if (isCliWorkbench()) {
+    return { url: window.location.origin, token: null };
   }
   return {
     url: import.meta.env.VITE_SIDECAR_URL ?? "http://127.0.0.1:17890",

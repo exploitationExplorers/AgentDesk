@@ -1,5 +1,10 @@
 import { Type, type Message } from "@mariozechner/pi-ai";
-import type { AgentName, AgentStreamEvent, ToolCallRecord } from "@agentdesk/shared";
+import type {
+  AgentName,
+  AgentStreamEvent,
+  ModelSelection,
+  ToolCallRecord,
+} from "@agentdesk/shared";
 import { runAgent, type AgentDefinition } from "./agent";
 import type { ModelResolver } from "./llm";
 import type { SkillRegistry } from "./skills";
@@ -23,6 +28,7 @@ export interface OrchestratorRunOptions {
   userMessage: string;
   /** 用户显式指定 Agent 时跳过路由 */
   agent?: AgentName;
+  modelSelection?: ModelSelection;
   emit: (event: AgentStreamEvent) => void;
   requestApproval: (request: ApprovalRequest) => Promise<boolean>;
   /** 可选：向用户追问并拿到回答文本的能力，透传给 tasks.ask_user 等工具的 ToolContext。 */
@@ -125,10 +131,11 @@ export class Orchestrator {
       | "context"
       | "allowedTools"
       | "recordArtifact"
+      | "modelSelection"
     >,
   ) {
     const def = this.definition(name);
-    const models = await this.deps.resolver.resolve(name);
+    const models = await this.deps.resolver.resolve(name, opts.modelSelection);
     const tools = opts.allowedTools
       ? this.deps.registry.select(opts.allowedTools)
       : this.toolsFor(def);
@@ -185,6 +192,7 @@ export class Orchestrator {
               requestApproval: subApproval,
               signal: opts.signal,
               context: opts.context,
+              modelSelection: opts.modelSelection,
             },
           );
           delegated.push(...sub.toolCalls);
@@ -198,7 +206,7 @@ export class Orchestrator {
     });
 
     const def = this.definition("orchestrator");
-    const models = await this.deps.resolver.resolve("orchestrator");
+    const models = await this.deps.resolver.resolve("orchestrator", opts.modelSelection);
     const hint = routeByKeywords(opts.userMessage);
     const tools = opts.allowedTools
       ? this.deps.registry.select(opts.allowedTools)

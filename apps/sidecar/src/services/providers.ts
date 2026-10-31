@@ -19,6 +19,7 @@ import {
   type AgentName,
   type Provider,
   type ProviderCandidate,
+  type ModelSelection,
 } from "@agentdesk/shared";
 import type { Db } from "../db/client";
 import { readExternalSqlite } from "../db/client";
@@ -242,11 +243,21 @@ export class ProviderService implements ModelResolver {
     };
   }
 
-  /**
-   * 解析顺序：Agent 专属绑定 → 绑定中的备用 Provider → 其余已启用 Provider（按创建顺序）。
-   * 返回的列表即模型调用时的故障切换顺序。
-   */
-  async resolve(agent: AgentName): Promise<ResolvedModel[]> {
+  validateSelection(selection: ModelSelection): Provider {
+    const provider = this.get(selection.providerId);
+    if (!provider.enabled) throw new AppError(ErrorCode.BadRequest, "所选 Provider 已停用");
+    if (!provider.hasKey) throw new AppError(ErrorCode.BadRequest, "所选 Provider 未配置 API Key");
+    return provider;
+  }
+
+  /** 显式选择只使用指定模型；默认按 Agent 绑定、备用 Provider、其余 Provider 依次回退。 */
+  async resolve(agent: AgentName, selection?: ModelSelection): Promise<ResolvedModel[]> {
+    if (selection) {
+      const provider = this.validateSelection(selection);
+      const resolved = this.toResolved(provider, selection.model);
+      if (!resolved) throw new AppError(ErrorCode.ProviderUnavailable, "所选模型不可用");
+      return [resolved];
+    }
     const providers = this.list();
     const byId = new Map(providers.map((p) => [p.id, p]));
     const binding = this.bindings.get(agent) ?? this.bindings.get("orchestrator");

@@ -52,6 +52,12 @@ export class ChatService {
     this.conversations.delete(id);
   }
 
+  renameConversation(id: string, title: string): Conversation {
+    const current = this.conversations.get(id);
+    if (!current) throw new AppError(ErrorCode.NotFound, "会话不存在");
+    return this.conversations.put({ ...current, title, updatedAt: nowIso() });
+  }
+
   traces(conversationId: string, limit = 500) {
     return this.db
       .select()
@@ -217,6 +223,7 @@ export class ChatService {
         history: this.conversationStore.toPiMessages(history),
         userMessage: req.message,
         agent: req.agent,
+        modelSelection: req.modelSelection,
         context,
         signal,
         emit: forwardToShadow,
@@ -237,6 +244,7 @@ export class ChatService {
               taskId: shadow.taskId,
               parentRunId: shadow.runId,
               signal,
+              onAgentEvent: traced,
             })
           : undefined,
       });
@@ -302,7 +310,10 @@ export class ChatService {
         }
       }
     }
-    this.conversations.put({ ...conversation, updatedAt: nowIso() });
+    this.conversations.put({
+      ...(this.conversations.get(conversationId) ?? conversation),
+      updatedAt: nowIso(),
+    });
     traced({ type: "done", messageId: assistantId });
     return conversationId;
   }

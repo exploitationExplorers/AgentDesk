@@ -18,13 +18,14 @@ export async function startSidecar(
   options: {
     configureApp?: (app: Hono, container: Container) => void;
     schedule?: boolean;
+    webRoot?: string;
   } = {},
 ): Promise<SidecarRuntime> {
   const container = await createContainer(config);
   let server: Server | undefined;
   try {
     applyProxy(resolveProxy(container.settings.get().proxy));
-    const app = createApp(container);
+    const app = createApp(container, { webRoot: options.webRoot });
     options.configureApp?.(app, container);
     const port = await new Promise<number>((resolve, reject) => {
       server = serve(

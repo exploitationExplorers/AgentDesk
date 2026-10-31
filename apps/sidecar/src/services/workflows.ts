@@ -1,5 +1,5 @@
 import { completeText, type Orchestrator, type ToolRegistry } from "@agentdesk/agent-core";
-import { gitLog, gitStatus, runShell } from "@agentdesk/integrations";
+import { gitLog, gitStatus } from "@agentdesk/integrations";
 import { AgentName, AppError, ErrorCode } from "@agentdesk/shared";
 import {
   WORKFLOW_TEMPLATES,
@@ -13,7 +13,7 @@ import {
   type WorkflowRun,
   type WorkflowRunEvent,
 } from "@agentdesk/workflow";
-import { shellRisk } from "../agents/tools";
+import { runCheckedShell, shellRisk } from "../agents/shell-policy";
 import type { Db } from "../db/client";
 import { Collection } from "../db/collection";
 import { GLOBAL_CHANNEL, type EventHub, type GlobalEvent } from "../events";
@@ -313,7 +313,7 @@ export class WorkflowService {
         const command = String(config.command ?? "");
         if (shellRisk(command) !== "safe")
           await approve(`执行命令：${command}`, `工作目录：${config.cwd ?? "(默认)"}`, signal);
-        const result = await runShell(command, {
+        const result = await runCheckedShell(command, {
           cwd: config.cwd ? String(config.cwd) : undefined,
           signal,
           onOutput: (chunk) => log(chunk.trimEnd()),

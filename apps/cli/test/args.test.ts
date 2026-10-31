@@ -29,6 +29,17 @@ test("chat 不带消息不再强制报错，交由交互式会话或一次性路
   assert.deepEqual(positionals, []);
 });
 
+test("web 支持手动打开和 JSON，拒绝无关参数", () => {
+  assert.equal(
+    parseCommand(["web", "--no-open", "--data-dir", "D:/Agent data"]).values["no-open"],
+    true,
+  );
+  assert.equal(parseCommand(["web", "--json"]).values.json, true);
+  assert.throws(() => parseCommand(["web", "--port", "1234"]));
+  assert.throws(() => parseCommand(["chat", "--no-open"]));
+  assert.throws(() => parseCommand(["web", "extra"]));
+});
+
 test("run/tasks/inspect/cancel/resume 的参数解析与位置参数校验", () => {
   assert.equal(parseCommand(["run", "修复登录页报错"]).positionals[0], "修复登录页报错");
   assert.equal(

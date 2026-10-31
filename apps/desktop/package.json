@@ -12,6 +12,7 @@
     "app:dev": "tauri dev",
     "app:bundle": "pnpm --filter @agentdesk/sidecar build && tauri build --config src-tauri/tauri.release.conf.json",
     "e2e": "playwright test",
+    "test:cli-workbench": "tsx scripts/test-cli-workbench.ts",
     "screenshots": "tsx scripts/capture-readme.ts"
   },
   "dependencies": {

@@ -244,6 +244,7 @@ export class WechatReportService {
 
     this.patch(id, { status: "analyzing" });
     this.log(id, `分析群聊「${job.chatroom}」· ${job.date}`);
+    this.log(id, "若解密库未覆盖该日期，会先重新解密（通常需要几分钟）");
     await this.runPython(
       "analyze_chat.py",
       [
@@ -251,7 +252,6 @@ export class WechatReportService {
         job.chatroom,
         "--date",
         job.date,
-        "--skip-refresh",
         "--output-stats",
         statsPath,
         "--output-text",

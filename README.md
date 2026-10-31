@@ -6,7 +6,7 @@
 
 <p align="center">本地优先的个人 Agent 工作台。管理项目、改代码、跑任务，数据和密钥留在本机。</p>
 
-桌面应用与 CLI 共用同一套引擎。模型、Git 平台和服务器由使用者自行配置。当前桌面安装包面向 Windows。CLI 包名为 `chuxin-agentdesk`，安装后命令仍是 `agentdesk`。
+桌面应用、浏览器工作台与 CLI 共用同一套引擎。模型、Git 平台和服务器由使用者自行配置。当前桌面安装包面向 Windows。CLI 包名为 `chuxin-agentdesk`，安装后命令是 `agentdesk`，内置浏览器工作台。
 
 ## 界面
 
@@ -31,7 +31,18 @@
 
 ## 快速开始
 
-需要 Node.js 22+、pnpm 10 和 Git。完整桌面应用另需 Rust 与 Windows MSVC 工具链。
+npm 安装需要 Node.js 22.12+ 和 Git，无需源码或桌面安装包：
+
+```powershell
+npm install -g chuxin-agentdesk
+agentdesk             # 配置模型，再选择浏览器工作台或终端对话
+agentdesk web         # 随时打开自己的工作台
+agentdesk chat        # 直接进入终端对话
+```
+
+浏览器与当前 CLI 共用模型、对话和任务，在「编码现场」查看执行过程和文件差异。可以用 `agentdesk web --no-open` 获取手动连接地址；自定义数据目录时，所有命令使用相同的 `--data-dir`。升级后先运行 `agentdesk restart`，再打开工作台。
+
+源码开发还需要 pnpm 10；构建完整桌面应用另需 Rust 与 Windows MSVC 工具链。
 
 ```powershell
 pnpm install
@@ -50,13 +61,10 @@ pnpm dev:web       # http://localhost:1420
 pnpm build:cli
 pnpm cli
 pnpm cli run "梳理还没提交的项目"
-
-# 或从 npm 安装
-npm install -g chuxin-agentdesk
-agentdesk init
+pnpm cli web
 ```
 
-首次打开后，在设置里添加模型、Git 平台 Token 和项目扫描目录。CLI 与桌面使用不同的数据目录和端口，需要分别初始化模型。
+首次打开后，在设置里添加模型、Git 平台 Token 和项目扫描目录。桌面模式需独立安装 AgentDesk，从系统应用入口打开；它与 CLI 使用不同的数据目录和端口，需要分别初始化模型。npm 安装提供终端和浏览器工作台。
 
 ## 配置
 

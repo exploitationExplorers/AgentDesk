@@ -1,6 +1,8 @@
-import { useEffect, useState } from "react";
-import { Box, Text } from "ink";
+import { useEffect, useState, type Ref } from "react";
+import { Box, Text, type DOMElement } from "ink";
 import { SPINNER_FRAMES } from "./theme.js";
+import { toolLabel } from "./tool-label.js";
+import FileDiff, { resultFileChange } from "./FileDiff.js";
 import type { RouteStep, StepViewProps, ToolStep } from "./types.js";
 
 function useSpinner(active: boolean, motion: boolean) {
@@ -19,66 +21,41 @@ function preview(value: unknown) {
   return text.length > 200 ? `${text.slice(0, 200)}…` : text;
 }
 
-function fileChangeSummary(result: unknown): { additions: number; deletions: number } | null {
-  if (typeof result !== "object" || result === null || !("change" in result)) return null;
-  const change = result.change;
-  if (
-    typeof change !== "object" ||
-    change === null ||
-    !("additions" in change) ||
-    !("deletions" in change)
-  )
-    return null;
-  return typeof change.additions === "number" && typeof change.deletions === "number"
-    ? { additions: change.additions, deletions: change.deletions }
-    : null;
-}
-
-function pathFromArgs(args: unknown): string {
-  return typeof args === "object" &&
-    args !== null &&
-    "path" in args &&
-    typeof args.path === "string"
-    ? args.path
-    : "";
-}
-
 export default function StepRow({
   step,
   expanded,
   theme,
   focused = false,
-}: StepViewProps & { step: ToolStep | RouteStep; focused?: boolean }) {
-  const pending = step.kind === "tool" && !step.done;
+  ref,
+}: StepViewProps & { step: ToolStep | RouteStep; focused?: boolean; ref?: Ref<DOMElement> }) {
+  const pending = step.kind === "tool" && !step.done && !step.change;
   const spinner = useSpinner(pending, theme.motion);
   if (step.kind === "route") {
     return (
-      <Box>
-        <Text color="magenta">↳ </Text>
-        <Text bold>{step.agent}</Text>
-        <Text dimColor> {step.reason}</Text>
+      <Box flexDirection="column">
+        <Text wrap={expanded ? "wrap" : "truncate-end"}>
+          <Text color="magenta">↳ </Text>
+          <Text bold>{step.agent}</Text>
+          <Text dimColor> {step.reason}</Text>
+        </Text>
       </Box>
     );
   }
   const mark = pending ? spinner : step.isError ? "✗" : "✓";
-  const change = fileChangeSummary(step.result);
+  const change = step.change ?? resultFileChange(step.result);
+  const label = toolLabel(step.name, step.args);
   return (
-    <Box flexDirection="column">
+    <Box ref={ref} flexDirection="column">
       <Box>
         <Text color="cyan">{focused ? "▌" : " "}</Text>
         <Text color={pending ? "cyan" : step.isError ? "red" : "green"}>{mark} </Text>
-        <Text bold inverse={focused}>
-          {step.name}
+        <Text bold inverse={focused} wrap="truncate-end">
+          {label.action}
+          {label.target ? ` ${label.target}` : ""}
         </Text>
       </Box>
-      {step.done && !step.isError && change ? (
-        <Box paddingLeft={3}>
-          <Text dimColor>{pathFromArgs(step.args)} </Text>
-          <Text color="green">+{change.additions}</Text>
-          <Text color="red"> −{change.deletions}</Text>
-        </Box>
-      ) : null}
-      {expanded ? (
+      {!step.isError && change ? <FileDiff change={change} theme={theme} /> : null}
+      {expanded && !change ? (
         <Box flexDirection="column" paddingLeft={2}>
           <Text dimColor>{preview(step.args)}</Text>
           {step.output ? <Text dimColor>{step.output.slice(-1600)}</Text> : null}

@@ -249,7 +249,7 @@ test("工具调用卡片与审批卡片：批准后继续流式输出并落入�
     }),
   );
   await typeAndSubmit(instance, "部署一下");
-  await waitFor(instance, (frame) => frame.includes("deploy.run"));
+  await waitFor(instance, (frame) => frame.includes("执行部署"));
   await waitFor(instance, (frame) => frame.includes("需要审批"));
   instance.stdin.write("y");
   await waitFor(instance, (frame) => frame.includes("部署完成"));
@@ -459,17 +459,17 @@ test("Tab 切换到步骤焦点后上下移动高亮", async () => {
     }),
   );
   await typeAndSubmit(instance, "读取并写入文件");
-  await waitFor(instance, (frame) => frame.includes("fs.write"));
+  await waitFor(instance, (frame) => frame.includes("b.ts"));
   instance.stdin.write("\t");
   await delay(30);
   let frame = required(instance.lastFrame());
-  assert.ok(lineWith(frame, "fs.read").includes("▌"));
-  assert.ok(!lineWith(frame, "fs.write").includes("▌"));
+  assert.ok(lineWith(frame, "a.ts").includes("▌"));
+  assert.ok(!lineWith(frame, "b.ts").includes("▌"));
   instance.stdin.write("\x1B[B");
   await delay(30);
   frame = required(instance.lastFrame());
-  assert.ok(!lineWith(frame, "fs.read").includes("▌"));
-  assert.ok(lineWith(frame, "fs.write").includes("▌"));
+  assert.ok(!lineWith(frame, "a.ts").includes("▌"));
+  assert.ok(lineWith(frame, "b.ts").includes("▌"));
   settle();
   instance.unmount();
 });
@@ -505,14 +505,14 @@ test("Enter 单独展开聚焦行而其他行保持折叠", async () => {
     }),
   );
   await typeAndSubmit(instance, "读取并写入文件");
-  await waitFor(instance, (frame) => frame.includes("fs.write"));
+  await waitFor(instance, (frame) => frame.includes("b.ts"));
   instance.stdin.write("\t");
   await delay(30);
   instance.stdin.write("\r");
   await delay(30);
   const frame = required(instance.lastFrame());
-  assert.ok(frame.includes("a.ts"));
-  assert.ok(!frame.includes("b.ts"));
+  assert.ok(frame.includes('{"path":"a.ts"}'));
+  assert.ok(!frame.includes('{"path":"b.ts"}'));
   settle();
   instance.unmount();
 });

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import type { AgentStreamEvent, Conversation } from "@agentdesk/shared";
-import { Box, Static, useApp, useInput, useStdout } from "ink";
+import { Box, Static, Text, useApp, useInput, useStdout } from "ink";
 import {
   apiRequest as defaultApiRequest,
   consumeSse as defaultConsumeSse,
@@ -11,10 +11,16 @@ import { createInitialSession, sessionReducer } from "./chat-reducer.js";
 import InputBar from "./InputBar.js";
 import LiveTurnView from "./LiveTurnView.js";
 import StatusBar from "./StatusBar.js";
-import TurnView from "./TurnView.js";
+import { transcriptItems, visibleLiveTurn } from "./transcript.js";
 import Welcome, { type WelcomeProps } from "./Welcome.js";
+import StepRow from "./StepRow.js";
+import ApprovalCard from "./ApprovalCard.js";
+import { renderMarkdown } from "./markdown.js";
 import type { HistoryMessage, Turn } from "./types.js";
 import { useApprovalWaiter } from "./useApprovalWaiter.js";
+import CommandPanel from "./CommandPanel.js";
+import { commandSuggestions } from "./slash-commands.js";
+import { useSlashCommands } from "./useSlashCommands.js";
 
 export interface AppProps extends WelcomeProps {
   state: ApiState;
@@ -53,14 +59,15 @@ function initSession({
 
 export default function App({
   state,
-  agent,
+  agent: initialAgent,
   conversationId,
   initialMessages,
-  theme,
+  theme: initialTheme,
   model,
-  version,
-  cwd,
+  version = "0.1.0",
+  cwd = process.cwd(),
   workspace,
+  workbenchCommand,
   apiRequest = defaultApiRequest,
   consumeSse = defaultConsumeSse,
 }: AppProps) {
@@ -81,6 +88,13 @@ export default function App({
   );
   const [input, setInput] = useState("");
   const [expanded, setExpanded] = useState(false);
+  const [transcriptVersion, setTranscriptVersion] = useState(0);
+  const [menuIndex, setMenuIndex] = useState(0);
+  const [dismissedInput, setDismissedInput] = useState<string | null>(null);
+  const [inputHistory, setInputHistory] = useState<string[]>([]);
+  const [historyIndex, setHistoryIndex] = useState<number | null>(null);
+  const draftRef = useRef("");
+  const inputTouched = useRef(false);
   const controllerRef = useRef<AbortController | null>(null);
   const { pendingCount, waitForApproval, answerLocally } = useApprovalWaiter(state, apiRequest);
   useEffect(() => () => controllerRef.current?.abort(), []);
@@ -96,8 +110,61 @@ export default function App({
   const [focusedStepIndex, setFocusedStepIndex] = useState(0);
   const [focusOverrides, setFocusOverrides] = useState(() => new Set<string>());
 
+  const resetConversation = (id?: string, messages?: HistoryMessage[]) => {
+    controllerRef.current?.abort();
+    controllerRef.current = null;
+    dispatch({ type: "RESET", conversationId: id, messages });
+    setTranscriptVersion((value) => value + 1);
+    setUiMode("chat");
+    if ("isTTY" in stdout && stdout.isTTY) stdout.write("\x1b[2J\x1b[H");
+  };
+  const commands = useSlashCommands({
+    state,
+    apiRequest,
+    initialAgent,
+    initialModel: model,
+    initialTheme,
+    conversationId: session.conversationId,
+    cwd,
+    version,
+    expanded,
+    setExpanded,
+    onNew: () => resetConversation(),
+    onResume: resetConversation,
+    onResult: (command, text) => dispatch({ type: "LOCAL_RESULT", command, text }),
+    onExit: exit,
+  });
+  const { agent, theme } = commands;
+  const suggestions =
+    !commands.panel && !commands.loading && dismissedInput !== input
+      ? commandSuggestions(input)
+      : [];
+  const filteredItems = commands.panel?.items?.filter((item) =>
+    `${item.label} ${item.detail ?? ""}`.toLowerCase().includes(input.toLowerCase()),
+  );
+  const menuCount = commands.panel
+    ? (filteredItems?.length ?? commands.panel.lines?.length ?? 0)
+    : suggestions.length;
+  const activeMenuIndex = Math.min(menuIndex, Math.max(0, menuCount - 1));
+  const changeInput = (value: string) => {
+    inputTouched.current = true;
+    setInput(value);
+    setMenuIndex(0);
+    setDismissedInput(null);
+    setHistoryIndex(null);
+  };
+  const closePanel = () => {
+    commands.cancel();
+    setInput("");
+    setMenuIndex(0);
+  };
+  useEffect(() => {
+    setMenuIndex(0);
+  }, [commands.panel]);
+
   const busy = session.status !== "idle";
-  const toolSteps = session.live ? session.live.steps.filter((step) => step.kind === "tool") : [];
+  const live = session.live ? visibleLiveTurn(session.live) : null;
+  const toolSteps = live ? live.steps.filter((step) => step.kind === "tool") : [];
   const focusedStepId = toolSteps[focusedStepIndex]?.id ?? null;
   const liveActive = session.live !== null;
 
@@ -114,6 +181,7 @@ export default function App({
           body: JSON.stringify({
             message: trimmed,
             agent,
+            modelSelection: commands.selection,
             workspace,
             conversationId: session.conversationId ?? undefined,
           }),
@@ -156,6 +224,7 @@ export default function App({
     [
       state,
       agent,
+      commands.selection,
       workspace,
       session.conversationId,
       busy,
@@ -172,7 +241,7 @@ export default function App({
     (async () => {
       try {
         const list = await (await apiRequest<Conversation[]>(state, "/conversations")).json();
-        if (!active || !list.length) return;
+        if (!active || !list.length || inputTouched.current) return;
         setConversations(list);
         setUiMode("picker");
       } catch (error) {
@@ -218,9 +287,16 @@ export default function App({
     [state, apiRequest],
   );
 
-  // 单一 useInput：选择器与聊天界面共用同一个 raw-mode 监听，避免在多个 useInput 之间切换 isActive
-  // 导致 raw mode 交接出现竞态（选择器曾因此完全收不到按键）。
+  // 选择器和聊天快捷键共用稳定的监听；InputBar 也保持订阅，只在回调内判断焦点，避免切换时丢键。
   useInput((character, key) => {
+    if (commands.panel || commands.loading) {
+      if (key.escape || (key.ctrl && character === "c")) closePanel();
+      else if (!commands.loading && key.upArrow) setMenuIndex(Math.max(0, activeMenuIndex - 1));
+      else if (!commands.loading && key.downArrow)
+        setMenuIndex(Math.min(menuCount - 1, activeMenuIndex + 1));
+      else if (!commands.loading && key.return && !commands.panel?.items) closePanel();
+      return;
+    }
     if (uiMode === "picker") {
       const itemCount = conversations.length + 1;
       if (key.upArrow || character === "k") setPickerIndex((index) => Math.max(0, index - 1));
@@ -232,7 +308,7 @@ export default function App({
           const selected = conversations[pickerIndex - 1];
           if (selected) void selectExistingConversation(selected.id);
         }
-      } else if (key.escape) exit();
+      } else if (key.escape || (key.ctrl && character === "c")) exit();
       return;
     }
     const pendingApproval = findPendingApproval(session.live);
@@ -250,7 +326,15 @@ export default function App({
       if (busy) {
         controllerRef.current?.abort();
         dispatch({ type: "ABORT_TURN" });
-      } else exit();
+      } else if (input) changeInput("");
+      else exit();
+      return;
+    }
+    if (key.escape && !stepFocusActive) {
+      if (busy) {
+        controllerRef.current?.abort();
+        dispatch({ type: "ABORT_TURN" });
+      } else if (suggestions.length) setDismissedInput(input);
       return;
     }
     if (key.ctrl && character === "o") {
@@ -259,10 +343,33 @@ export default function App({
       return;
     }
     if (key.tab) {
+      if (suggestions.length && !busy) {
+        const selected = suggestions[activeMenuIndex];
+        if (selected) changeInput(`/${selected.name} `);
+        return;
+      }
       if (stepFocusActive) setStepFocusActive(false);
       else if (toolSteps.length > 0) {
         setStepFocusActive(true);
         setFocusedStepIndex(0);
+      }
+      return;
+    }
+    if (!busy && !stepFocusActive && (key.upArrow || key.downArrow)) {
+      if (suggestions.length) {
+        setMenuIndex(
+          (activeMenuIndex + (key.upArrow ? -1 : 1) + suggestions.length) % suggestions.length,
+        );
+      } else if (inputHistory.length) {
+        if (historyIndex === null) draftRef.current = input;
+        const next = key.upArrow
+          ? Math.max(0, (historyIndex ?? inputHistory.length) - 1)
+          : Math.min(inputHistory.length, (historyIndex ?? inputHistory.length) + 1);
+        setHistoryIndex(next === inputHistory.length ? null : next);
+        setInput(next === inputHistory.length ? draftRef.current : (inputHistory[next] ?? ""));
+        setDismissedInput(
+          next === inputHistory.length ? draftRef.current : (inputHistory[next] ?? ""),
+        );
       }
       return;
     }
@@ -292,16 +399,37 @@ export default function App({
     }
   });
 
+  const history = transcriptItems(session.turns, session.live);
   return (
     <Box flexDirection="column">
-      <Static items={[null, ...session.turns]}>
-        {(turn, index) =>
-          turn ? (
-            <TurnView key={index} turn={turn} expanded={expanded} theme={theme} />
-          ) : (
-            <Welcome key="welcome" {...{ agent, model, version, cwd, theme }} />
-          )
-        }
+      <Static key={transcriptVersion} items={history}>
+        {(item, index) => {
+          if (item.kind === "welcome")
+            return (
+              <Welcome
+                key="welcome"
+                {...{ agent, version, cwd, theme, workbenchCommand }}
+                model={commands.modelLabel}
+              />
+            );
+          if (item.kind === "user")
+            return (
+              <Text key={index} color="blue">
+                {"› "}
+                {item.text}
+              </Text>
+            );
+          if (item.kind === "step")
+            return <StepRow key={index} step={item.step} expanded={expanded} theme={theme} />;
+          if (item.kind === "approval") return <ApprovalCard key={index} {...item.step} />;
+          if (item.kind === "answer")
+            return <Text key={index}>{renderMarkdown(item.text, theme)}</Text>;
+          return (
+            <Text key={index} color="red">
+              {item.text}
+            </Text>
+          );
+        }}
       </Static>
       {uiMode === "picker" ? (
         <ConversationPicker conversations={conversations} selectedIndex={pickerIndex} />
@@ -313,31 +441,79 @@ export default function App({
           }
         >
           {!session.live && session.turns.length === 0 ? <Box flexGrow={1} /> : null}
-          {session.live ? (
+          {live ? (
             <LiveTurnView
-              live={session.live}
+              live={live}
               expanded={expanded}
               theme={theme}
               stepFocusActive={stepFocusActive}
               focusedStepId={focusedStepId}
               focusOverrides={focusOverrides}
+              maxRows={Math.max(6, rows - 7)}
             />
           ) : null}
+          {commands.panel ? (
+            <CommandPanel
+              panel={{ ...commands.panel, items: filteredItems }}
+              index={activeMenuIndex}
+              limit={Math.max(3, rows - 12)}
+              color={theme.color}
+            />
+          ) : null}
+          {suggestions.length > 0 && !busy ? (
+            <CommandPanel
+              panel={{
+                title: "指令",
+                items: suggestions.map((item) => ({
+                  id: item.name,
+                  label: `/${item.name}`,
+                  detail: item.description,
+                })),
+              }}
+              index={activeMenuIndex}
+              limit={Math.max(3, Math.min(7, rows - 12))}
+              color={theme.color}
+            />
+          ) : null}
+          {commands.loading ? <Text dimColor>正在执行指令… Esc 取消</Text> : null}
           <InputBar
             value={input}
-            onChange={setInput}
+            onChange={changeInput}
             onSubmit={(value) => {
+              if (commands.loading || busy) return;
+              if (commands.panel) {
+                const item = filteredItems?.[activeMenuIndex];
+                if (item) {
+                  setInput("");
+                  void commands.panel.onSelect?.(item.id);
+                }
+                return;
+              }
+              const selected = suggestions[activeMenuIndex];
+              const message = selected ? `/${selected.name}` : value;
+              if (!message.trim()) return;
+              inputTouched.current = true;
               setInput("");
-              void submit(value);
+              setMenuIndex(0);
+              setHistoryIndex(null);
+              setInputHistory((items) =>
+                items.at(-1) === message ? items : [...items.slice(-199), message],
+              );
+              if (message.trim().startsWith("/")) void commands.execute(message);
+              else void submit(message);
             }}
-            disabled={busy}
-            focused={!stepFocusActive}
+            disabled={busy || commands.loading}
+            focused={!stepFocusActive && (!commands.panel || Boolean(commands.panel.items))}
+            placeholder={commands.panel?.items ? "输入关键词筛选…" : "输入消息，或 / 查看指令"}
+            color={theme.color}
           />
           <StatusBar
             conversationId={session.conversationId}
             pendingApprovals={pendingCount}
             busy={busy}
             stepFocusActive={stepFocusActive}
+            model={commands.modelLabel}
+            agent={commands.agent}
           />
         </Box>
       )}

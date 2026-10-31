@@ -91,11 +91,11 @@ test("Vite+ 菜单响应方向键，完成后收起选项，取消恢复终端",
     input.write(cancel ? "\x03" : "\r");
     if (cancel) {
       await assert.rejects(result, /已取消/);
-      // vite-plus-prompts 取消收起后用 x 标记；旧版是 ■/◇。
-      assert.match(transcript, /x API 协议/);
+      // 提示组件按终端 Unicode 能力选择符号，验证取消和完成后的收起状态。
+      assert.match(transcript, /[x■] API 协议/);
     } else {
       assert.equal(await result, "anthropic-messages");
-      assert.match(transcript, /o API 协议/);
+      assert.match(transcript, /[o◇] API 协议/);
       assert.ok(transcript.includes("Claude"));
     }
     assert.equal(input.isRaw, false);

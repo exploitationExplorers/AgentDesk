@@ -56,6 +56,7 @@ export async function runCliRuntime(options: RuntimeOptions): Promise<void> {
         }
       })());
     runtime = await startSidecar(config, {
+      webRoot: fileURLToPath(new URL("./web", import.meta.url)),
       configureApp(app) {
         app.get("/api/cli/instance", (c) =>
           c.json({

@@ -5,7 +5,7 @@ import {
   registerFauxProvider,
   type FauxProviderRegistration,
 } from "@mariozechner/pi-ai";
-import type { AgentStreamEvent } from "@agentdesk/shared";
+import type { AgentName, AgentStreamEvent, ModelSelection } from "@agentdesk/shared";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   Orchestrator,
@@ -155,6 +155,59 @@ describe("runAgent", () => {
 });
 
 describe("Orchestrator", () => {
+  it("会话模型传递到总控与委派 Agent，后续默认运行不继承覆盖", async () => {
+    const models = setup();
+    faux!.setResponses([
+      fauxAssistantMessage(
+        fauxToolCall(toWireName("agents.delegate"), { agent: "project", task: "查询" }),
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage(fauxText("子任务完成")),
+      fauxAssistantMessage(fauxText("汇总完成")),
+      fauxAssistantMessage(fauxText("默认运行")),
+    ]);
+    const calls: { agent: AgentName; selection?: ModelSelection }[] = [];
+    const orchestrator = new Orchestrator({
+      agents: [
+        {
+          name: "orchestrator",
+          title: "总控",
+          description: "总控",
+          systemPrompt: "总控",
+          tools: [],
+        },
+        projectAgent,
+      ],
+      registry: new ToolRegistry(),
+      resolver: {
+        resolve: async (agent, selection) => {
+          calls.push({ agent, selection });
+          return models;
+        },
+      },
+    });
+    const selection = { providerId: "chosen", model: "chosen-model" };
+    await orchestrator.run({
+      history: [],
+      userMessage: "委派查询",
+      modelSelection: selection,
+      emit: () => {},
+      requestApproval: async () => true,
+    });
+    await orchestrator.run({
+      history: [],
+      userMessage: "直接查询",
+      agent: "project",
+      emit: () => {},
+      requestApproval: async () => true,
+    });
+    expect(calls).toEqual([
+      { agent: "orchestrator", selection },
+      { agent: "project", selection },
+      { agent: "project", selection: undefined },
+    ]);
+  });
+
   it("通过 agents.delegate 委派给专用 Agent", async () => {
     const models = setup();
     faux!.setResponses([

@@ -16,10 +16,13 @@ import { systemRoutes } from "./routes/system";
 import { taskRoutes } from "./routes/tasks";
 import { wechatRoutes } from "./routes/wechat";
 import { workflowRoutes } from "./routes/workflows";
+import { createWorkbench } from "./workbench";
 
-export function createApp(container: Container): Hono {
+export function createApp(container: Container, options: { webRoot?: string } = {}): Hono {
   const app = new Hono();
   const { config } = container;
+  const workbench = options.webRoot ? createWorkbench(options.webRoot) : undefined;
+  workbench?.register(app);
 
   app.use(
     "/api/*",
@@ -34,7 +37,11 @@ export function createApp(container: Container): Hono {
   app.use("/api/*", async (c, next) => {
     if (!config.token || c.req.method === "OPTIONS") return next();
     const token = c.req.header("x-agentdesk-token") ?? c.req.query("token");
-    if (token !== config.token) throw new AppError(ErrorCode.Unauthorized, "无效的会话令牌");
+    if (token !== config.token && !workbench?.authorize(c))
+      throw new AppError(
+        ErrorCode.Unauthorized,
+        workbench ? "工作台连接已失效，请在终端重新运行 agentdesk web。" : "无效的会话令牌",
+      );
     return next();
   });
 
@@ -63,6 +70,7 @@ export function createApp(container: Container): Hono {
   app.route("/api", taskRoutes(container));
   app.route("/api", cliMonitorRoutes());
   app.route("/api", wechatRoutes(container));
+  workbench?.routes(app);
 
   app.notFound((c) =>
     c.json(new AppError(ErrorCode.NotFound, `接口不存在：${c.req.path}`).toBody(), 404),

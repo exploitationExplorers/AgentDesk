@@ -8,9 +8,7 @@ import {
   fsWrite,
   gitChangedFiles,
   runClaudePrint,
-  runShell,
 } from "@agentdesk/integrations";
-import type { RiskLevel } from "@agentdesk/shared";
 import { GLOBAL_CHANNEL, type EventHub, type GlobalEvent } from "../events";
 import type { BrowserService } from "../services/browser";
 import type { DeployService } from "../services/deploy";
@@ -21,6 +19,8 @@ import type { ProjectService } from "../services/projects";
 import type { SettingsService } from "../services/settings";
 import type { WorkflowService } from "../services/workflows";
 import { localDate } from "../util";
+import { runCheckedShell, shellRisk } from "./shell-policy";
+export { shellRisk } from "./shell-policy";
 
 export interface ToolDeps {
   projects: ProjectService;
@@ -33,128 +33,6 @@ export interface ToolDeps {
   hub: EventHub;
   /** 工作流服务依赖工具注册表，这里延迟获取以打破循环依赖 */
   workflows: () => WorkflowService;
-}
-
-/** 仅放行明确的参数组合；未知参数继续使用已有审批路径。 */
-const GIT_READONLY_FLAGS: Record<string, ReadonlySet<string>> = {
-  status: new Set([
-    "--short",
-    "-s",
-    "--branch",
-    "-b",
-    "--porcelain",
-    "--porcelain=v1",
-    "--porcelain=v2",
-    "--untracked-files=no",
-    "-uno",
-  ]),
-  branch: new Set([
-    "--list",
-    "-l",
-    "--all",
-    "-a",
-    "--remotes",
-    "-r",
-    "--verbose",
-    "-v",
-    "-vv",
-    "--show-current",
-    "--no-color",
-  ]),
-  diff: new Set([
-    "--stat",
-    "--numstat",
-    "--shortstat",
-    "--name-only",
-    "--name-status",
-    "--cached",
-    "--staged",
-    "--check",
-    "--summary",
-    "--no-color",
-    "--no-ext-diff",
-    "--no-textconv",
-  ]),
-  log: new Set([
-    "--oneline",
-    "--all",
-    "--graph",
-    "--decorate",
-    "--no-decorate",
-    "--stat",
-    "--name-only",
-    "--name-status",
-    "--no-color",
-    "--no-ext-diff",
-    "--no-textconv",
-  ]),
-  show: new Set([
-    "--stat",
-    "--numstat",
-    "--shortstat",
-    "--name-only",
-    "--name-status",
-    "--summary",
-    "--oneline",
-    "--no-patch",
-    "-s",
-    "--no-color",
-    "--no-ext-diff",
-    "--no-textconv",
-  ]),
-};
-
-function isReadOnlyGit(args: string[]): boolean {
-  const [command, ...rest] = args;
-  if (command === "remote") return rest.length === 1 && rest[0] === "-v";
-  if (!command) return false;
-  const flags = GIT_READONLY_FLAGS[command];
-  if (!flags) return false;
-  for (let index = 0; index < rest.length; index++) {
-    const argument = rest[index]!;
-    if (flags.has(argument)) continue;
-    if ((command === "log" || command === "show") && argument === "-n") {
-      if (!/^\d{1,5}$/.test(rest[++index] ?? "")) return false;
-      continue;
-    }
-    if (
-      (command === "log" || command === "show") &&
-      /^(?:-\d{1,5}|--max-count=\d{1,5})$/.test(argument)
-    )
-      continue;
-    // branch 的位置参数可创建分支，不能按普通 revision 放行。
-    if (
-      (command === "diff" || command === "log" || command === "show") &&
-      /^[a-zA-Z0-9_./:@~-]+$/.test(argument) &&
-      !argument.startsWith("-")
-    )
-      continue;
-    return false;
-  }
-  return true;
-}
-
-export function shellRisk(command: string): RiskLevel {
-  const trimmed = command.trim();
-  // 同时防止 POSIX/cmd/PowerShell 的分隔、转义与变量展开改变已检查的命令。
-  if (
-    /[;&|`$><%^!(){}"']/.test(trimmed) ||
-    [...trimmed].some((character) => character.charCodeAt(0) < 32 && character !== "\t")
-  )
-    return "dangerous";
-  const [executable, ...args] = trimmed.split(/\s+/);
-  if (executable === "git") return isReadOnlyGit(args) ? "safe" : "dangerous";
-  if (
-    /^(node|npm|pnpm|yarn|bun|python|go|java|cargo|rustc)$/.test(executable ?? "") &&
-    args.length === 1 &&
-    (args[0] === "-v" || args[0] === "--version")
-  )
-    return "safe";
-  if (executable === "echo") return "safe";
-  if ((executable === "pwd" || executable === "whoami") && args.length === 0) return "safe";
-  if (executable === "ls" && args.every((arg) => /^-(?:[alh]+)$/.test(arg))) return "safe";
-  if (executable === "dir" && args.every((arg) => /^\/(?:a|b|s)$/i.test(arg))) return "safe";
-  return "dangerous";
 }
 
 function htmlToText(html: string): string {
@@ -567,17 +445,18 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
             dir = cwd;
           }
         }
-        const result = await runShell(command, {
+        const onOutput = (delta: string) =>
+          ctx.emit({
+            type: "tool_output",
+            agent: ctx.agent,
+            toolCallId: ctx.toolCallId ?? "shell",
+            delta: delta.slice(-16_000),
+          });
+        const result = await runCheckedShell(command, {
           cwd: dir,
           timeoutMs: 5 * 60_000,
           signal: ctx.signal,
-          onOutput: (delta) =>
-            ctx.emit({
-              type: "tool_output",
-              agent: ctx.agent,
-              toolCallId: ctx.toolCallId ?? "shell",
-              delta: delta.slice(-16_000),
-            }),
+          onOutput,
         });
         return { exitCode: result.code, output: (result.stdout + result.stderr).slice(-8000) };
       },

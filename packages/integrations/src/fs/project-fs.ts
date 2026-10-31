@@ -55,7 +55,7 @@ async function mutate<T>(path: string, operation: () => Promise<T>): Promise<T> 
 
 function checkVersion(content: string | null, expectedHash?: string): void {
   if (expectedHash !== undefined && (content === null ? "" : contentHash(content)) !== expectedHash)
-    throw new ProjectFsError("文件在读取后已改变，请重新 fs.read 后再修改");
+    throw new ProjectFsError("文件在读取后已改变，请重新读取后再修改");
 }
 
 export async function fsRead(

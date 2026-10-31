@@ -24,6 +24,7 @@ import { Button, cn } from "@agentdesk/ui";
 import { AppMark } from "../../components/AppMark";
 import { Markdown } from "../../components/Markdown";
 import { TOOL_LABELS } from "../../lib/agents";
+import { isCliWorkbench } from "../../lib/tauri";
 import { codeRoute } from "../../router";
 import { codeApi, type CodeSource } from "./api";
 import { outputText, projectActivity, stepHint, type CodeStep } from "./activity";
@@ -618,7 +619,9 @@ function TaskDetail({ task, source }: { task: Task; source: CodeSource }) {
 
 export function CodePage() {
   const search = codeRoute.useSearch();
-  const source = search.source ?? "workbench";
+  // CLI 内置工作台已经连接当前实例，不能再发现另一个默认数据目录。
+  const cliWorkbench = isCliWorkbench();
+  const source = cliWorkbench ? "workbench" : (search.source ?? "workbench");
   const navigate = useNavigate();
   const [creating, setCreating] = useState(false);
   const client = useQueryClient();
@@ -649,25 +652,31 @@ export function CodePage() {
           <p className="mt-0.5 text-xs text-muted">从读文件到验证，每一步都在这里。</p>
         </div>
         <div className="ml-auto flex items-center gap-3">
-          <div className="flex rounded-lg border bg-surface p-0.5">
-            {(["workbench", "cli"] as const).map((value) => (
-              <button
-                type="button"
-                key={value}
-                onClick={() => {
-                  setCreating(false);
-                  void navigate({ to: "/code", search: { source: value } });
-                }}
-                aria-pressed={source === value}
-                className={cn(
-                  "rounded-md px-3 py-1.5 text-xs",
-                  source === value ? "bg-surface-2 font-medium text-fg" : "text-muted",
-                )}
-              >
-                {value === "cli" ? "CLI 会话" : "工作台"}
-              </button>
-            ))}
-          </div>
+          {cliWorkbench ? (
+            <span className="flex items-center gap-1.5 text-xs text-muted">
+              <Terminal className="h-3.5 w-3.5" /> 与 CLI 同步
+            </span>
+          ) : (
+            <div className="flex rounded-lg border bg-surface p-0.5">
+              {(["workbench", "cli"] as const).map((value) => (
+                <button
+                  type="button"
+                  key={value}
+                  onClick={() => {
+                    setCreating(false);
+                    void navigate({ to: "/code", search: { source: value } });
+                  }}
+                  aria-pressed={source === value}
+                  className={cn(
+                    "rounded-md px-3 py-1.5 text-xs",
+                    source === value ? "bg-surface-2 font-medium text-fg" : "text-muted",
+                  )}
+                >
+                  {value === "cli" ? "CLI 会话" : "工作台"}
+                </button>
+              ))}
+            </div>
+          )}
           <Button size="sm" variant="primary" onClick={() => setCreating(true)}>
             <Plus className="mr-1.5 h-3.5 w-3.5" />
             新任务

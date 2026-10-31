@@ -31,6 +31,7 @@ async function renderTaskView(
   const theme = buildTheme(values);
   const { waitUntilExit } = render(
     createElement(TaskView, { state, task, theme, afterSeq: 0, ...extra }),
+    { exitOnCtrlC: false },
   );
   await waitUntilExit();
   const finalTask = await (

@@ -18,6 +18,7 @@ import { runningState, serviceStatus, startService, stopService } from "./lifecy
 import { cliHome } from "./state.js";
 import { offerCliUpdate } from "./update.js";
 import { configureUi, createUi, nextCommand } from "./ui.js";
+import { chooseWorkspace, openWorkbench } from "./workbench.js";
 import type { Provider, Approval } from "@agentdesk/shared";
 
 const MANIFEST = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
@@ -34,8 +35,7 @@ async function main() {
     return;
   }
   const home = cliHome(values["data-dir"]);
-  // 裸执行（无子命令、真实交互终端）：已配置模型直接进对话，否则先走配置向导再无缝接续，
-  // 跳过 HELP。非 TTY/管道场景不满足三流 TTY 条件，原样回落到下面的 help 分支打印 HELP。
+  // 裸执行时完成模型配置，再选择浏览器或终端；非 TTY 仍只打印帮助。
   const bareInteractive =
     process.argv.length === 2 &&
     process.stdin.isTTY &&
@@ -57,6 +57,7 @@ async function main() {
     const providers = await (await apiRequest<Provider[]>(state, "/providers")).json();
     if (!providers.some((p) => p.enabled))
       await initialize(home, workerPath, values, { version: VERSION });
+    if ((await chooseWorkspace(home, workerPath)) === "web") return;
     const { runInteractiveChat } = await import("./interactive/session.js");
     await runInteractiveChat(home, workerPath, values, VERSION);
     return;
@@ -90,6 +91,7 @@ async function main() {
       ]);
       ui.note(`配置模型：${nextCommand("init", home)}`);
       ui.note(`开始对话：${nextCommand('chat "你好"', home)}`);
+      ui.note(`浏览器工作台：${nextCommand("web", home)}`);
       ui.outro("本地引擎已就绪");
     }
   } else if (command === "stop") {
@@ -123,12 +125,15 @@ async function main() {
       ui.outro(result.status === "running" ? "本地引擎已就绪" : "执行上方命令继续");
     }
     if (result.status !== "running") process.exitCode = 1;
+  } else if (command === "web") {
+    await openWorkbench(home, workerPath, { noOpen: values["no-open"], json: values.json });
   } else if (command === "logs") await logs(home, values);
   else if (command === "doctor") {
     if (!(await doctor(home, workerPath, values.json))) process.exitCode = 1;
   } else if (command === "init") {
     const openChat = await initialize(home, workerPath, values, { version: VERSION });
     if (openChat) {
+      if ((await chooseWorkspace(home, workerPath)) === "web") return;
       const { runInteractiveChat } = await import("./interactive/session.js");
       await runInteractiveChat(home, workerPath, values, VERSION);
     }
@@ -205,7 +210,7 @@ async function main() {
 
 await main().catch((error) => {
   if (error instanceof Error && error.message === "已取消配置。")
-    createUi().outro("配置已取消，未保存本次输入。", { cancelled: true });
+    createUi().outro("已退出向导，已保存的配置会保留。", { cancelled: true });
   else createUi().error(`AgentDesk：${error instanceof Error ? error.message : String(error)}`);
   process.exitCode = 1;
 });

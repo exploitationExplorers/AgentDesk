@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { AgentName } from "./provider";
+import { AgentName, ModelSelection } from "./provider";
 import type { FileChange } from "./code";
 
 export const ToolCallRecord = z.object({
@@ -51,5 +51,6 @@ export const ChatRequest = z.object({
   message: z.string().min(1),
   agent: AgentName.optional(),
   workspace: z.string().max(4096).optional(),
+  modelSelection: ModelSelection.optional(),
 });
 export type ChatRequest = z.infer<typeof ChatRequest>;

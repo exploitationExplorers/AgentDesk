@@ -156,6 +156,16 @@ function applyRecord(session: TaskSession, record: RunEventRecord): TaskSession 
         done: false,
       });
 
+    case "file_change":
+      return updateRun(next, runId, (node) => ({
+        ...node,
+        steps: node.steps.map((step) =>
+          step.kind === "tool" && step.id === event.toolCallId
+            ? { ...step, change: event.change }
+            : step,
+        ),
+      }));
+
     case "tool_result":
       return updateRun(next, runId, (node) => ({
         ...node,

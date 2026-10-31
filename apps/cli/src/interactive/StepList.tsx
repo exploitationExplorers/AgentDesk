@@ -1,4 +1,5 @@
-import { Box, Text } from "ink";
+import type { Ref } from "react";
+import { Box, Text, type DOMElement } from "ink";
 import ApprovalCard from "./ApprovalCard.js";
 import StepRow from "./StepRow.js";
 import type { DelegateStep, RunNode, Step, StepViewProps } from "./types.js";
@@ -61,7 +62,8 @@ export default function StepList({
   focusedStepId = null,
   focusOverrides,
   runsById,
-}: StepViewProps & { steps: Step[] }) {
+  focusedRef,
+}: StepViewProps & { steps: Step[]; focusedRef?: Ref<DOMElement> }) {
   if (!steps.length) return null;
   return (
     <Box flexDirection="column" marginTop={1}>
@@ -87,7 +89,14 @@ export default function StepList({
           step.kind === "tool" && focusOverrides?.has(step.id) ? !expanded : expanded;
         const focused = stepFocusActive && step.kind === "tool" && step.id === focusedStepId;
         return (
-          <StepRow key={key} step={step} expanded={rowExpanded} focused={focused} theme={theme} />
+          <StepRow
+            key={key}
+            step={step}
+            expanded={rowExpanded}
+            focused={focused}
+            theme={theme}
+            ref={focused ? focusedRef : undefined}
+          />
         );
       })}
     </Box>

@@ -14,7 +14,7 @@ import { registerWorkspace } from "./workspace.js";
 
 export const AGENTS = ["orchestrator", "project", "deploy", "research", "code"];
 
-/** 配置完成且当前是交互终端时返回 true，调用方应接着打开对话界面。 */
+/** 配置完成且当前是交互终端时返回 true，调用方继续展示工作台入口。 */
 export async function initialize(
   home: string,
   workerPath: string,
@@ -31,7 +31,7 @@ export async function initialize(
   if (providers.some((p) => p.enabled) && !values["base-url"] && !values.model) {
     const action = interactive
       ? await select(`${ui.icon("⚙️")}已有模型配置，你想做什么？`, [
-          { label: "保留当前配置", value: "keep", hint: "直接开始对话" },
+          { label: "保留当前配置", value: "keep", hint: "继续选择浏览器工作台或终端对话" },
           { label: "重新配置模型", value: "configure", hint: "修改协议、地址或密钥" },
         ])
       : "keep";
@@ -124,6 +124,7 @@ export async function initialize(
     ["凭据", "已加密保存；尚未调用模型验证连接"],
   ]);
   if (openChat) return true;
+  ui.note(`浏览器工作台：${nextCommand("web", home)}`);
   ui.note(`开始对话：${nextCommand('chat "你好"', home)}`);
   ui.outro("配置完成，开始创造吧。");
   return false;

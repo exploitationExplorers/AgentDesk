@@ -1,6 +1,7 @@
 import type {
   AgentName,
   ChatMessage,
+  FileChange,
   RunStatus,
   RunTrigger,
   ToolCallRecord,
@@ -15,6 +16,7 @@ export interface ToolStep extends Pick<
   agent: AgentName | null;
   done: boolean;
   output?: string;
+  change?: FileChange;
 }
 
 export interface RouteStep {

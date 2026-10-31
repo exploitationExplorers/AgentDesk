@@ -35,7 +35,7 @@ describe("原生编码文件工具", () => {
     expect(result.change.diff).toContain("-const value = 1;\n+const value = 2;");
     await expect(
       fsWrite(root, "main.ts", "stale", { expectedHash: original.hash }),
-    ).rejects.toThrow("重新 fs.read");
+    ).rejects.toThrow("重新读取");
   });
   it("同一版本的并发编辑不会互相覆盖", async () => {
     await writeFile(join(root, "concurrent.ts"), "first\nsecond\n");

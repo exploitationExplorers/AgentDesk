@@ -13,6 +13,8 @@ import { runningState } from "../lifecycle.js";
 import App from "./App.js";
 import { resolveAccessibility } from "./theme.js";
 import { registerWorkspace } from "../workspace.js";
+import { nextCommand } from "../ui.js";
+import { defaultModelOption } from "./slash-commands.js";
 
 /** 打开持久化交互式会话：校验 Agent、可选回放历史、渲染 Ink 组件树直到用户退出。 */
 export async function runInteractiveChat(
@@ -35,14 +37,11 @@ export async function runInteractiveChat(
     apiRequest<Provider[]>(state, "/providers").then((r) => r.json()),
     apiRequest<AgentModelBinding[]>(state, "/agent-bindings").then((r) => r.json()),
   ]);
-  const binding =
-    bindings.status === "fulfilled"
-      ? bindings.value.find((b) => b.agent === (values.agent ?? "orchestrator"))
-      : undefined;
-  const provider =
-    providers.status === "fulfilled"
-      ? providers.value.find((p) => (binding ? p.id === binding.providerId : p.enabled))
-      : undefined;
+  const selected = defaultModelOption(
+    providers.status === "fulfilled" ? providers.value : [],
+    bindings.status === "fulfilled" ? bindings.value : [],
+    values.agent ? AgentName.parse(values.agent) : "orchestrator",
+  );
   if (values.conversation) {
     const response = await apiRequest<ChatMessage[]>(
       state,
@@ -57,11 +56,13 @@ export async function runInteractiveChat(
       conversationId: values.conversation,
       initialMessages,
       theme,
-      model: binding?.model ?? provider?.defaultModel,
+      model: selected?.model,
       version,
       cwd: process.cwd(),
       workspace,
+      workbenchCommand: nextCommand("web", home),
     }),
+    { exitOnCtrlC: false, incrementalRendering: true },
   );
   await waitUntilExit();
 }

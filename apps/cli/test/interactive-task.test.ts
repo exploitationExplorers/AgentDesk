@@ -209,7 +209,7 @@ test("历史审批不遮蔽当前审批，处理后 Ctrl+O 仍可展开工具", 
     assert.match(frame, /已处理或已结束/);
     assert.doesNotMatch(frame, /已拒绝/);
     instance.stdin.write("y");
-    await waitFor(instance, (current) => current.includes("fs.read"));
+    await waitFor(instance, (current) => current.includes("读取"));
     assert.deepEqual(posts, ["/approvals/current-approval"]);
     assert.doesNotMatch(required(instance.lastFrame()), /需要审批/);
     instance.stdin.write("\x0f");
@@ -463,12 +463,13 @@ test("任务使用 Ctrl+O 展开工具，普通 o 不触发", async () => {
     }),
   );
   try {
-    await waitFor(instance, (frame) => frame.includes("shell.run"));
+    await waitFor(instance, (frame) => frame.includes("运行命令"));
     instance.stdin.write("o");
     await delay(30);
-    assert.ok(!required(instance.lastFrame()).includes("unique-command-detail"));
+    assert.ok(required(instance.lastFrame()).includes("unique-command-detail"));
+    assert.ok(!required(instance.lastFrame()).includes("编译进度已更新"));
     instance.stdin.write("\x0f");
-    await waitFor(instance, (frame) => frame.includes("unique-command-detail"));
+    await waitFor(instance, (frame) => frame.includes("编译进度已更新"));
     assert.ok(required(instance.lastFrame()).includes("编译进度已更新"));
   } finally {
     settle();

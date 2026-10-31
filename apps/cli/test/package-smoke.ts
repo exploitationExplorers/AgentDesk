@@ -111,6 +111,27 @@ try {
   const initial = readState(home);
   assert.ok(initial);
   assert.ok(initial.port > 0);
+  assert.ok(
+    existsSync(join(installedPackage, "dist/web/index.html")),
+    "npm 包必须包含工作台页面。",
+  );
+  const webLink = JSON.parse((await command(["web", "--json"])).stdout) as { url: string };
+  assert.ok(!webLink.url.includes(initial.token), "浏览器连接不能暴露 CLI 主令牌。");
+  const webUrl = new URL(webLink.url);
+  assert.equal(webUrl.origin, `http://127.0.0.1:${initial.port}`);
+  const connected = await fetch(`${webUrl.origin}/auth/exchange`, {
+    method: "POST",
+    headers: { origin: webUrl.origin, "Content-Type": "application/json" },
+    body: JSON.stringify({ ticket: new URLSearchParams(webUrl.hash.slice(1)).get("ticket") }),
+  });
+  assert.equal(connected.status, 200);
+  const cookie = connected.headers.get("set-cookie")!.split(";")[0]!;
+  const webPage = await fetch(webUrl.origin, { headers: { cookie } });
+  assert.equal(webPage.status, 200);
+  assert.match(await webPage.text(), /<div id="root"><\/div>/);
+  assert.equal((await fetch(`${webUrl.origin}/api/health`, { headers: { cookie } })).status, 200);
+  const noOpen = (await command(["web", "--no-open"])).stdout.trim();
+  assert.match(noOpen, /\/connect#ticket=[a-f0-9]{64}$/);
   const unauthorized = await fetch(`http://127.0.0.1:${initial.port}/api/health`);
   assert.equal(unauthorized.status, 401);
   const skills = await (await apiRequest<Array<{ name: string }>>(initial, "/skills")).json();
@@ -204,6 +225,7 @@ try {
         modelCalls: observations.modelCalls,
         checks: [
           "help",
+          "browser-workbench",
           "auth",
           "skills",
           "background",
