@@ -183,6 +183,20 @@ export function sessionReducer(session: ChatSession, action: ChatAction): ChatSe
       };
     }
 
+    case "auto_approved": {
+      if (!session.live) return session;
+      return {
+        ...session,
+        live: {
+          ...session.live,
+          steps: [
+            ...session.live.steps,
+            { kind: "note", text: `${action.name}：${action.reason}`, source: action.source },
+          ],
+        },
+      };
+    }
+
     case "approval_required": {
       if (!session.live) return session;
       return {
@@ -197,6 +211,9 @@ export function sessionReducer(session: ChatSession, action: ChatAction): ChatSe
               approvalId: action.approvalId,
               title: action.title,
               detail: action.detail,
+              risk: action.risk,
+              payload: action.payload,
+              reason: action.reason,
               resolved: false,
             },
           ],

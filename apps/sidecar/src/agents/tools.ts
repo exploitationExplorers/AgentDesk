@@ -1,6 +1,7 @@
 import { parse } from "node-html-parser";
 import { ToolRegistry, Type, defineTool } from "@agentdesk/agent-core";
 import {
+  fileChange,
   fsGlob,
   fsPatch,
   fsRead,
@@ -563,10 +564,20 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
         ),
       }),
       risk: "confirm",
-      describeApproval: ({ project, path, content }) => ({
-        title: `写入文件 ${path}`,
-        detail: `项目：${project}\n长度：${content.length} 字符\n预览：\n${content.slice(0, 800)}`,
-      }),
+      describeApproval: async ({ project, path, content }) => {
+        let before: string | null = null;
+        try {
+          before = (await fsRead(projectRoot(project), path)).content;
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+            return {
+              title: `写入文件 ${path}`,
+              detail: `项目：${project}\n长度：${content.length} 字符\n预览：\n${content.slice(0, 800)}`,
+            };
+          }
+        }
+        return { title: `写入文件 ${path}`, detail: fileChange(path, before, content).diff };
+      },
       execute: async ({ project, path, content, expectedHash }, ctx) => {
         const result = await fsWrite(projectRoot(project), path, content, {
           expectedHash,
@@ -594,9 +605,9 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
         replaceAll: Type.Optional(Type.Boolean()),
       }),
       risk: "confirm",
-      describeApproval: ({ project, path, oldText, newText }) => ({
+      describeApproval: ({ path, oldText, newText }) => ({
         title: `修补文件 ${path}`,
-        detail: `项目：${project}\n- 旧：\n${oldText.slice(0, 400)}\n+ 新：\n${newText.slice(0, 400)}`,
+        detail: fileChange(path, oldText, newText).diff,
       }),
       execute: async ({ project, path, oldText, newText, expectedHash, replaceAll }, ctx) => {
         const result = await fsPatch(projectRoot(project), path, oldText, newText, {

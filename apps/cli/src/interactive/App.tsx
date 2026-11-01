@@ -15,8 +15,9 @@ import { transcriptItems, visibleLiveTurn } from "./transcript.js";
 import Welcome, { type WelcomeProps } from "./Welcome.js";
 import StepRow from "./StepRow.js";
 import ApprovalCard from "./ApprovalCard.js";
+import { approvalOptionsFor } from "./approval/payload.js";
 import { renderMarkdown } from "./markdown.js";
-import type { HistoryMessage, Turn } from "./types.js";
+import type { ApprovalStep, HistoryMessage, Turn } from "./types.js";
 import { useApprovalWaiter } from "./useApprovalWaiter.js";
 import CommandPanel from "./CommandPanel.js";
 import { commandSuggestions } from "./slash-commands.js";
@@ -24,6 +25,8 @@ import { useSlashCommands } from "./useSlashCommands.js";
 
 export interface AppProps extends WelcomeProps {
   state: ApiState;
+  /** CLI 数据根目录，/theme 持久化偏好时写到这里（见 preferences.ts）。 */
+  home: string;
   conversationId?: string;
   initialMessages?: HistoryMessage[];
   workspace?: string;
@@ -35,9 +38,13 @@ export interface AppProps extends WelcomeProps {
   ) => Promise<void>;
 }
 
-function findPendingApproval(live: Turn | null) {
+function findPendingApproval(live: Turn | null): ApprovalStep | null {
   if (!live) return null;
-  return live.steps.find((step) => step.kind === "approval" && !step.resolved) ?? null;
+  return (
+    live.steps.find(
+      (step): step is ApprovalStep => step.kind === "approval" && !step.resolved,
+    ) ?? null
+  );
 }
 
 function terminalRows(stdout: NodeJS.WritableStream): number {
@@ -59,6 +66,7 @@ function initSession({
 
 export default function App({
   state,
+  home,
   agent: initialAgent,
   conversationId,
   initialMessages,
@@ -90,6 +98,8 @@ export default function App({
   const [expanded, setExpanded] = useState(false);
   const [transcriptVersion, setTranscriptVersion] = useState(0);
   const [menuIndex, setMenuIndex] = useState(0);
+  const [approvalMenuIndex, setApprovalMenuIndex] = useState(0);
+  const [approvalDebugExpanded, setApprovalDebugExpanded] = useState(false);
   const [dismissedInput, setDismissedInput] = useState<string | null>(null);
   const [inputHistory, setInputHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState<number | null>(null);
@@ -120,6 +130,7 @@ export default function App({
   };
   const commands = useSlashCommands({
     state,
+    home,
     apiRequest,
     initialAgent,
     initialModel: model,
@@ -167,6 +178,11 @@ export default function App({
   const toolSteps = live ? live.steps.filter((step) => step.kind === "tool") : [];
   const focusedStepId = toolSteps[focusedStepIndex]?.id ?? null;
   const liveActive = session.live !== null;
+  const pendingApproval = findPendingApproval(session.live);
+  useEffect(() => {
+    setApprovalMenuIndex(0);
+    setApprovalDebugExpanded(false);
+  }, [pendingApproval?.approvalId]);
 
   const submit = useCallback(
     async (message: string) => {
@@ -197,7 +213,7 @@ export default function App({
             if (decision.source === "local") {
               await apiRequest(state, `/approvals/${encodeURIComponent(event.approvalId)}`, {
                 method: "POST",
-                body: JSON.stringify({ approved: decision.approved }),
+                body: JSON.stringify({ approved: decision.approved, remember: decision.remember }),
                 signal: controller.signal,
               });
             }
@@ -311,14 +327,23 @@ export default function App({
       } else if (key.escape || (key.ctrl && character === "c")) exit();
       return;
     }
-    const pendingApproval = findPendingApproval(session.live);
     if (key.ctrl && character === "c" && pendingApproval) {
       controllerRef.current?.abort();
       dispatch({ type: "ABORT_TURN" });
       return;
     }
     if (pendingApproval) {
-      if (/^y$/i.test(character)) answerLocally(true);
+      if (key.ctrl && character === "d") setApprovalDebugExpanded((value) => !value);
+      else if (key.upArrow)
+        setApprovalMenuIndex((index) => Math.max(0, index - 1));
+      else if (key.downArrow) {
+        const count = approvalOptionsFor(pendingApproval.payload).length;
+        setApprovalMenuIndex((index) => Math.min(count - 1, index + 1));
+      } else if (key.return) {
+        const options = approvalOptionsFor(pendingApproval.payload);
+        const choice = options[approvalMenuIndex] ?? options[0] ?? { id: "no" as const };
+        answerLocally(choice.id !== "no", choice.id === "yes_remember");
+      } else if (/^y$/i.test(character)) answerLocally(true);
       else if (/^n$/i.test(character) || key.escape) answerLocally(false);
       return;
     }
@@ -421,7 +446,15 @@ export default function App({
             );
           if (item.kind === "step")
             return <StepRow key={index} step={item.step} expanded={expanded} theme={theme} />;
-          if (item.kind === "approval") return <ApprovalCard key={index} {...item.step} />;
+          if (item.kind === "approval")
+            return <ApprovalCard key={index} {...item.step} theme={theme} />;
+          if (item.kind === "note")
+            return (
+              <Text key={index} dimColor>
+                {item.step.source === "classifier" ? "✦ " : "· "}
+                {item.step.text}
+              </Text>
+            );
           if (item.kind === "answer")
             return <Text key={index}>{renderMarkdown(item.text, theme)}</Text>;
           return (
@@ -450,6 +483,8 @@ export default function App({
               focusedStepId={focusedStepId}
               focusOverrides={focusOverrides}
               maxRows={Math.max(6, rows - 7)}
+              approvalFocusedIndex={approvalMenuIndex}
+              approvalDebugExpanded={approvalDebugExpanded}
             />
           ) : null}
           {commands.panel ? (
@@ -457,7 +492,7 @@ export default function App({
               panel={{ ...commands.panel, items: filteredItems }}
               index={activeMenuIndex}
               limit={Math.max(3, rows - 12)}
-              color={theme.color}
+              theme={theme}
             />
           ) : null}
           {suggestions.length > 0 && !busy ? (
@@ -472,7 +507,7 @@ export default function App({
               }}
               index={activeMenuIndex}
               limit={Math.max(3, Math.min(7, rows - 12))}
-              color={theme.color}
+              theme={theme}
             />
           ) : null}
           {commands.loading ? <Text dimColor>正在执行指令… Esc 取消</Text> : null}

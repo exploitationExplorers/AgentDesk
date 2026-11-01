@@ -186,6 +186,13 @@ function applyRecord(session: TaskSession, record: RunEventRecord): TaskSession 
         ),
       }));
 
+    case "auto_approved":
+      return appendStep(next, runId, {
+        kind: "note",
+        text: `${event.name}：${event.reason}`,
+        source: event.source,
+      });
+
     case "approval_required":
       if (
         next.runsById[runId]?.steps.some(
@@ -200,6 +207,9 @@ function applyRecord(session: TaskSession, record: RunEventRecord): TaskSession 
         approvalId: event.approvalId,
         title: event.title,
         detail: event.detail,
+        risk: event.risk,
+        payload: event.payload,
+        reason: event.reason,
         resolved: false,
       });
 

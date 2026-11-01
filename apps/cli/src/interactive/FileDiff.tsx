@@ -1,6 +1,7 @@
 import { Box, Text } from "ink";
 import { stripVTControlCharacters } from "node:util";
 import { FileChange } from "@agentdesk/shared";
+import { pick } from "./colors.js";
 import type { AccessibilityTheme } from "./theme.js";
 
 export function resultFileChange(result: unknown): FileChange | undefined {
@@ -38,22 +39,11 @@ export function diffRows(diff: string): DiffRow[] {
   return rows;
 }
 
-export default function FileDiff({
-  change,
-  theme,
-}: {
-  change: FileChange;
-  theme: AccessibilityTheme;
-}) {
-  const rows = diffRows(change.diff);
+/** 单纯渲染已解析的 diff 行；FileDiff（执行后真实差异）和审批预览（执行前)共用。 */
+export function DiffLines({ rows, theme }: { rows: DiffRow[]; theme: AccessibilityTheme }) {
   const digits = rows.reduce((width, row) => Math.max(width, String(row.number ?? "").length), 1);
   return (
-    <Box flexDirection="column" paddingLeft={3} flexShrink={0}>
-      <Text>
-        <Text color={theme.color ? "green" : undefined}>+{change.additions}</Text>{" "}
-        <Text color={theme.color ? "red" : undefined}>−{change.deletions}</Text>
-        <Text dimColor> 行{change.additions || change.deletions ? "" : " · 内容未变化"}</Text>
-      </Text>
+    <>
       {rows.map((row, index) => {
         const added = row.kind === "add";
         const deleted = row.kind === "delete";
@@ -62,11 +52,9 @@ export default function FileDiff({
             <Text
               wrap="truncate-end"
               dimColor={row.kind === "note"}
-              color={
-                theme.color ? (added ? "#b6f0cc" : deleted ? "#ffd1d1" : undefined) : undefined
-              }
+              color={added ? pick("diffAdded", theme) : deleted ? pick("diffRemoved", theme) : undefined}
               backgroundColor={
-                theme.color ? (added ? "#153f2c" : deleted ? "#4a2025" : undefined) : undefined
+                added ? pick("diffAddedBg", theme) : deleted ? pick("diffRemovedBg", theme) : undefined
               }
             >
               {`${String(row.number ?? "").padStart(digits)} ${added ? "+" : deleted ? "-" : " "} ${row.text.replace(/\t/g, "  ")}`}
@@ -74,6 +62,26 @@ export default function FileDiff({
           </Box>
         );
       })}
+    </>
+  );
+}
+
+export default function FileDiff({
+  change,
+  theme,
+}: {
+  change: FileChange;
+  theme: AccessibilityTheme;
+}) {
+  const rows = diffRows(change.diff);
+  return (
+    <Box flexDirection="column" paddingLeft={3} flexShrink={0}>
+      <Text>
+        <Text color={pick("success", theme)}>+{change.additions}</Text>{" "}
+        <Text color={pick("error", theme)}>−{change.deletions}</Text>
+        <Text dimColor> 行{change.additions || change.deletions ? "" : " · 内容未变化"}</Text>
+      </Text>
+      <DiffLines rows={rows} theme={theme} />
       {change.truncated ? (
         <Text dimColor>差异较长，以上显示部分内容；增删统计包含全部改动。</Text>
       ) : null}

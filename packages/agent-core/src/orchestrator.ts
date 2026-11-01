@@ -11,6 +11,7 @@ import type { SkillRegistry } from "./skills";
 import {
   defineTool,
   type ApprovalRequest,
+  type AutoApprove,
   type RecordArtifactInput,
   type RecordedArtifact,
   type ToolRegistry,
@@ -44,6 +45,8 @@ export interface OrchestratorRunOptions {
   allowedTools?: string[];
   /** 可选：记录任务产物的能力，透传给 ToolContext，供 tasks.submit_plan 等工具使用。 */
   recordArtifact?: (input: RecordArtifactInput) => RecordedArtifact;
+  /** 可选：审批前先问一次能不能自动放行（规则匹配/分类器等）。不传时行为与现状完全一致。 */
+  autoApprove?: AutoApprove;
   /**
    * 每次 agents.delegate 委派开始时触发，用于把这次子任务的事件流、审批请求和最终结果
    * 接到独立的追踪通道（例如 Task 引擎里的子 Run）。不传时委派行为与现状完全一致：
@@ -132,6 +135,7 @@ export class Orchestrator {
       | "allowedTools"
       | "recordArtifact"
       | "modelSelection"
+      | "autoApprove"
     >,
   ) {
     const def = this.definition(name);
@@ -151,6 +155,7 @@ export class Orchestrator {
       requestApproval: opts.requestApproval,
       requestAnswer: opts.requestAnswer,
       recordArtifact: opts.recordArtifact,
+      autoApprove: opts.autoApprove,
       signal: opts.signal,
     });
   }
@@ -193,6 +198,7 @@ export class Orchestrator {
               signal: opts.signal,
               context: opts.context,
               modelSelection: opts.modelSelection,
+              autoApprove: opts.autoApprove,
             },
           );
           delegated.push(...sub.toolCalls);
@@ -227,6 +233,7 @@ export class Orchestrator {
       requestApproval: opts.requestApproval,
       requestAnswer: opts.requestAnswer,
       recordArtifact: opts.recordArtifact,
+      autoApprove: opts.autoApprove,
       signal: opts.signal,
     });
     return {

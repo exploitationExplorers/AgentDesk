@@ -1,8 +1,9 @@
-import type { ApprovalRequest, Orchestrator, ToolRegistry } from "@agentdesk/agent-core";
+import type { ApprovalRequest, AutoApprove, Orchestrator, ToolRegistry } from "@agentdesk/agent-core";
 import type {
   AgentName,
   AgentStreamEvent,
   ArtifactKind,
+  Approval,
   TaskStreamEvent,
   ToolCallRecord,
 } from "@agentdesk/shared";
@@ -36,7 +37,7 @@ function summarizeToolCalls(records: ToolCallRecord[]): string {
 function createRequestAnswer(
   approvals: ApprovalService,
   signal: AbortSignal,
-  onCreated: (approval: { id: string; title: string; detail: string }) => void,
+  onCreated: (approval: Approval) => void,
 ): (request: ApprovalRequest) => Promise<string> {
   return async (request: ApprovalRequest) => {
     let approvalId = "";
@@ -105,6 +106,9 @@ export function createDelegateHandler(deps: {
           approvalId: approval.id,
           title: approval.title,
           detail: approval.detail,
+          risk: approval.risk,
+          payload: approval.payload,
+          reason: approval.reason,
         }),
       );
 
@@ -135,6 +139,7 @@ export interface RealExecutorDeps {
   /** 用于在方案关口场景下，把可用工具收紧到"只读工具 + tasks.submit_plan"。 */
   registry: ToolRegistry;
   projectInstructions: ProjectInstructionService;
+  autoApprove: AutoApprove;
 }
 
 /** 阶段 D 的真实 RunExecutor：真正调用 orchestrator，把结果写回会话消息和 run_events。 */
@@ -144,7 +149,7 @@ export function createOrchestratorExecutor(deps: RealExecutorDeps): RunExecutor 
     // 这一行保证外层把 TaskService 自身引用写回 deps 之后，getTasks() 才会被真正调用。
     await Promise.resolve();
     const tasks = deps.getTasks();
-    const { orchestrator, approvals, conversationStore, registry } = deps;
+    const { orchestrator, approvals, conversationStore, registry, autoApprove } = deps;
 
     // 方案关口：requiresPlanApproval 的任务首条根 Run 只允许产出方案，不允许执行任何
     // 有副作用的操作——把可用工具收紧到"只读工具 + tasks.submit_plan"，不传给模型
@@ -198,6 +203,9 @@ export function createOrchestratorExecutor(deps: RealExecutorDeps): RunExecutor 
           approvalId: approval.id,
           title: approval.title,
           detail: approval.detail,
+          risk: approval.risk,
+          payload: approval.payload,
+          reason: approval.reason,
         }),
       );
     const requestAnswer = createRequestAnswer(approvals, signal, (approval) =>
@@ -206,6 +214,9 @@ export function createOrchestratorExecutor(deps: RealExecutorDeps): RunExecutor 
         approvalId: approval.id,
         title: approval.title,
         detail: approval.detail,
+        risk: approval.risk,
+        payload: approval.payload,
+        reason: approval.reason,
       }),
     );
     const onDelegate = createDelegateHandler({
@@ -273,6 +284,7 @@ export function createOrchestratorExecutor(deps: RealExecutorDeps): RunExecutor 
         onDelegate,
         allowedTools,
         recordArtifact,
+        autoApprove,
       });
       conversationStore.insertMessage({
         id: newId(),
@@ -306,6 +318,9 @@ export function createOrchestratorExecutor(deps: RealExecutorDeps): RunExecutor 
                   approvalId: approval.id,
                   title: approval.title,
                   detail: approval.detail,
+                  risk: approval.risk,
+                  payload: approval.payload,
+                  reason: approval.reason,
                 }),
             )
             .then((approved) => {

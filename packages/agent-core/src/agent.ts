@@ -13,6 +13,7 @@ import {
   toPiTool,
   type AnyAgentTool,
   type ApprovalRequest,
+  type AutoApprove,
   type RecordArtifactInput,
   type RecordedArtifact,
   type ToolContext,
@@ -38,6 +39,8 @@ export interface RunAgentOptions {
   requestApproval: (request: ApprovalRequest) => Promise<boolean>;
   requestAnswer?: (request: ApprovalRequest) => Promise<string>;
   recordArtifact?: (input: RecordArtifactInput) => RecordedArtifact;
+  /** 可选：审批前先问一次能不能自动放行（规则匹配/分类器等）。不传时行为与现状完全一致。 */
+  autoApprove?: AutoApprove;
   signal?: AbortSignal;
 }
 
@@ -250,16 +253,32 @@ async function executeToolCall(
 
     const risk = tool.riskFor?.(args) ?? tool.risk;
     if (risk !== "safe") {
-      const described = tool.describeApproval?.(args) ?? {
-        title: `执行 ${name}`,
-        detail: JSON.stringify(args, null, 2),
+      // autoApprove 失败时必须等价于 { approved: false }，不能让规则/分类器故障导致误放行。
+      const auto = (await options.autoApprove?.(name, args, risk).catch(() => undefined)) ?? {
+        approved: false as const,
       };
-      const approved = await options.requestApproval({
-        ...described,
-        risk,
-        payload: { tool: name, args },
-      });
-      if (!approved) throw new Error("用户拒绝了该操作");
+      if (auto.approved) {
+        options.emit({
+          type: "auto_approved",
+          agent,
+          id: call.id,
+          name,
+          reason: auto.reason,
+          source: auto.source,
+        });
+      } else {
+        const described = (await tool.describeApproval?.(args)) ?? {
+          title: `执行 ${name}`,
+          detail: JSON.stringify(args, null, 2),
+        };
+        const approved = await options.requestApproval({
+          ...described,
+          risk,
+          payload: { tool: name, args },
+          reason: auto.note ? { type: "classifier_declined", note: auto.note } : { type: "default" },
+        });
+        if (!approved) throw new Error("用户拒绝了该操作");
+      }
     }
 
     const ctx: ToolContext = {

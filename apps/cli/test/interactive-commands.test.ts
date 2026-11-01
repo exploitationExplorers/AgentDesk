@@ -31,7 +31,13 @@ const providers: Provider[] = [
     createdAt: "2026-01-01",
   },
 ];
-const theme = { interactive: true, color: false, motion: false, emoji: false };
+const theme = {
+  interactive: true,
+  color: false,
+  motion: false,
+  emoji: false,
+  palette: "dark" as const,
+};
 
 async function waitFor(instance: TestInstance, predicate: (frame: string) => boolean) {
   const deadline = Date.now() + 2500;
@@ -60,6 +66,7 @@ async function setup(
   const instance = render(
     createElement(App, {
       state: testState,
+      home: "test-home",
       theme,
       model: "model-a",
       version: "1.2.3",

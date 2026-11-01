@@ -1,12 +1,33 @@
 import type { Static, TSchema, Tool } from "@mariozechner/pi-ai";
-import type { AgentName, AgentStreamEvent, ArtifactKind, RiskLevel } from "@agentdesk/shared";
+import type {
+  AgentName,
+  AgentStreamEvent,
+  ApprovalReason,
+  ArtifactKind,
+  RiskLevel,
+} from "@agentdesk/shared";
 
 export interface ApprovalRequest {
   title: string;
   detail: string;
   risk: RiskLevel;
   payload: unknown;
+  reason?: ApprovalReason;
 }
+
+/**
+ * 审批前先问一次能不能自动放行（命中已保存的规则 / 分类器判定安全等）。
+ * `approved: false` 覆盖"没有规则可查"和"分类器明确判定仍需确认"两种情况，
+ * 调用失败时必须等价于 `{ approved: false }`，绝不能默认放行。
+ */
+export type AutoApprove = (
+  tool: string,
+  args: unknown,
+  risk: RiskLevel,
+) => Promise<
+  | { approved: true; reason: string; source: "rule" | "classifier" }
+  | { approved: false; note?: string }
+>;
 
 export interface RecordArtifactInput {
   kind: ArtifactKind;
@@ -50,7 +71,9 @@ export interface AgentTool<TParams extends TSchema = TSchema> {
   /** 仅明确互不干扰的只读工具设为 true；审批风险低不代表可并发。默认按调用顺序执行。 */
   isConcurrencySafe?: boolean;
   execute: (args: Static<TParams>, ctx: ToolContext) => Promise<unknown>;
-  describeApproval?: (args: Static<TParams>) => { title: string; detail: string };
+  describeApproval?: (
+    args: Static<TParams>,
+  ) => { title: string; detail: string } | Promise<{ title: string; detail: string }>;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

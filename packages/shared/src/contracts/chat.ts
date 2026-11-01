@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { AgentName, ModelSelection } from "./provider";
 import type { FileChange } from "./code";
+import type { ApprovalReason, RiskLevel } from "./approval";
 
 export const ToolCallRecord = z.object({
   id: z.string(),
@@ -41,7 +42,23 @@ export type AgentStreamEvent =
   | { type: "tool_result"; agent: AgentName; id: string; result: unknown; isError: boolean }
   | { type: "file_change"; agent: AgentName; toolCallId: string; change: FileChange }
   | { type: "tool_output"; agent: AgentName; toolCallId: string; delta: string }
-  | { type: "approval_required"; approvalId: string; title: string; detail: string }
+  | {
+      type: "approval_required";
+      approvalId: string;
+      title: string;
+      detail: string;
+      risk?: RiskLevel;
+      payload?: unknown;
+      reason?: ApprovalReason;
+    }
+  | {
+      type: "auto_approved";
+      agent: AgentName;
+      id: string;
+      name: string;
+      reason: string;
+      source: "rule" | "classifier";
+    }
   | { type: "agent_end"; agent: AgentName }
   | { type: "error"; message: string }
   | { type: "done"; messageId: string };

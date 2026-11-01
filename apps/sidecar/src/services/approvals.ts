@@ -1,4 +1,10 @@
-import { AppError, ErrorCode, type Approval, type RiskLevel } from "@agentdesk/shared";
+import {
+  AppError,
+  ErrorCode,
+  type Approval,
+  type ApprovalReason,
+  type RiskLevel,
+} from "@agentdesk/shared";
 import type { Db } from "../db/client";
 import { Collection } from "../db/collection";
 import { GLOBAL_CHANNEL, type EventHub, type GlobalEvent } from "../events";
@@ -10,6 +16,7 @@ export interface ApprovalDraft {
   detail: string;
   risk: RiskLevel;
   payload: unknown;
+  reason?: ApprovalReason;
 }
 
 /** ActionDraft 审批中心：所有危险操作先落库，等待用户在 UI 上确认。 */
@@ -31,6 +38,10 @@ export class ApprovalService {
   list(status?: Approval["status"]): Approval[] {
     const all = this.store.list();
     return status ? all.filter((a) => a.status === status) : all.slice(0, 100);
+  }
+
+  get(id: string): Approval | undefined {
+    return this.store.get(id);
   }
 
   create(draft: ApprovalDraft): {

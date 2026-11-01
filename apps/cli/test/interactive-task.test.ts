@@ -96,7 +96,7 @@ for (const source of ["local", "remote"] as const) {
       else remoteApproved = true;
       await waitFor(instance, (frame) => frame.includes("重复事件已处理"), { timeout: 4000 });
       assert.equal(posts, source === "local" ? 1 : 0);
-      assert.ok(!required(instance.lastFrame()).includes("需要审批"));
+      assert.ok(!required(instance.lastFrame()).includes("↑↓ 选择"));
     } finally {
       settle();
       instance.unmount();
@@ -203,15 +203,15 @@ test("历史审批不遮蔽当前审批，处理后 Ctrl+O 仍可展开工具", 
     }),
   );
   try {
-    await waitFor(instance, (frame) => frame.includes("需要审批"));
+    await waitFor(instance, (frame) => frame.includes("↑↓ 选择"));
     const frame = required(instance.lastFrame());
-    assert.equal(frame.match(/需要审批/g)?.length, 1);
+    assert.equal(frame.match(/↑↓ 选择/g)?.length, 1);
     assert.match(frame, /已处理或已结束/);
     assert.doesNotMatch(frame, /已拒绝/);
     instance.stdin.write("y");
     await waitFor(instance, (current) => current.includes("读取"));
     assert.deepEqual(posts, ["/approvals/current-approval"]);
-    assert.doesNotMatch(required(instance.lastFrame()), /需要审批/);
+    assert.doesNotMatch(required(instance.lastFrame()), /↑↓ 选择/);
     instance.stdin.write("\x0f");
     await waitFor(instance, (current) => current.includes("审批后工具输出"));
   } finally {
@@ -360,7 +360,7 @@ for (const remoteStatus of ["approved", "rejected"]) {
       }),
     );
     try {
-      await waitFor(instance, (frame) => frame.includes("需要审批"));
+      await waitFor(instance, (frame) => frame.includes("↑↓ 选择"));
       remoteDecision = remoteStatus;
       await waitFor(instance, (frame) => frame.includes("审批结果已同步"), { timeout: 4000 });
       assert.ok(
@@ -413,7 +413,7 @@ test("待审批时 Ctrl+C 解除等待并断开，不批准或取消任务", asy
     }),
   );
   try {
-    await waitFor(instance, (frame) => frame.includes("需要审批"));
+    await waitFor(instance, (frame) => frame.includes("↑↓ 选择"));
     instance.stdin.write("\x03");
     await waitFor(instance, () => waitReleased);
     assert.equal(required(streamSignal).aborted, true);
@@ -587,7 +587,7 @@ test("审批卡片：按 y 批准后继续流式输出", async () => {
       consumeSse,
     }),
   );
-  await waitFor(instance, (frame) => frame.includes("需要审批"));
+  await waitFor(instance, (frame) => frame.includes("↑↓ 选择"));
   instance.stdin.write("y");
   await waitFor(instance, (frame) => frame.includes("部署完成"));
   assert.equal(approved, true);

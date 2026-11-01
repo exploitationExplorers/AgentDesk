@@ -11,6 +11,7 @@ import { apiRequest } from "../client.js";
 import { AGENTS } from "../commands.js";
 import { runningState } from "../lifecycle.js";
 import App from "./App.js";
+import { readPreferences } from "../preferences.js";
 import { resolveAccessibility } from "./theme.js";
 import { registerWorkspace } from "../workspace.js";
 import { nextCommand } from "../ui.js";
@@ -30,6 +31,7 @@ export async function runInteractiveChat(
     tty: Boolean(process.stdout.isTTY),
     env: process.env,
     settings: values,
+    storedTheme: readPreferences(home).theme,
   });
   let initialMessages: ChatMessage[] | undefined;
   const workspace = await registerWorkspace(state);
@@ -52,6 +54,7 @@ export async function runInteractiveChat(
   const { waitUntilExit } = render(
     createElement(App, {
       state,
+      home,
       agent: values.agent ? AgentName.parse(values.agent) : undefined,
       conversationId: values.conversation,
       initialMessages,

@@ -24,6 +24,7 @@ export * from "./feed/classify";
 export * from "./browser/session";
 export * from "./browser/actions";
 export * from "./fs/project-fs";
+export * from "./fs/file-change";
 export * from "./baota/browser";
 export * from "./baota/runner";
 export * from "./baota/presets";

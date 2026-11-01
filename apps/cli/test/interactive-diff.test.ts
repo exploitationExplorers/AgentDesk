@@ -119,6 +119,7 @@ test("已处理审批收为一行，不重复大段命令详情", () => {
       detail: "工作目录：example\n".repeat(30),
       resolved: true,
       approved: true,
+      theme,
     }),
   );
   const frame = instance.lastFrame() ?? "";

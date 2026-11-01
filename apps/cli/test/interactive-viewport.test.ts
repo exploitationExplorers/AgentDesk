@@ -142,7 +142,7 @@ for (const [columns, rows] of [
         assert.ok(first.includes("执行中"));
         if (approval) {
           assert.match(first, /修改详情[\s│]*1：/);
-          assert.ok(first.includes("按 y 批准"));
+          assert.ok(first.includes("↑↓ 选择"));
         } else assert.match(first, /120\s+\+ const line120/, first);
         stdin.write(approval ? "\x1b[6~" : "\x1b[5~");
         await delay(80);
@@ -150,7 +150,7 @@ for (const [columns, rows] of [
         assert.notEqual(scrolled, first, "翻页应移动可见内容");
         if (approval) {
           assert.doesNotMatch(scrolled, /修改详情[\s│]*1：/);
-          assert.ok(scrolled.includes("按 y 批准"), "翻页时审批操作固定可见");
+          assert.ok(scrolled.includes("↑↓ 选择"), "翻页时审批操作固定可见");
         }
         stdout.columns = 36;
         stdout.rows = 16;

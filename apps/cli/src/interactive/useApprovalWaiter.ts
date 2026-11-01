@@ -4,6 +4,7 @@ import { apiRequest as defaultApiRequest, type ApiState } from "../client.js";
 
 interface ApprovalDecision {
   approved: boolean;
+  remember?: boolean;
   source: "local" | "remote";
 }
 
@@ -36,8 +37,8 @@ export function useApprovalWaiter(state: ApiState, apiRequest = defaultApiReques
     });
   }, []);
 
-  const answerLocally = useCallback((approved: boolean) => {
-    waiterRef.current?.finish({ approved, source: "local" });
+  const answerLocally = useCallback((approved: boolean, remember?: boolean) => {
+    waiterRef.current?.finish({ approved, remember, source: "local" });
   }, []);
 
   useEffect(() => {

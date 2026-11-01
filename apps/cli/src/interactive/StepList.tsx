@@ -69,7 +69,14 @@ export default function StepList({
     <Box flexDirection="column" marginTop={1}>
       {steps.map((step, index) => {
         if (step.kind === "approval")
-          return <ApprovalCard key={`approval-${step.approvalId}`} {...step} />;
+          return <ApprovalCard key={`approval-${step.approvalId}`} {...step} theme={theme} />;
+        if (step.kind === "note")
+          return (
+            <Text key={`note-${index}`} dimColor>
+              {step.source === "classifier" ? "✦ " : "· "}
+              {step.text}
+            </Text>
+          );
         // Task 命令专用：委派步骤嵌套渲染对应子 Run 的完整内容，runsById 由 TaskView 提供，
         // chat 流程从不产生这种 step，runsById 始终为 undefined，这个分支不会被触及。
         if (step.kind === "delegate")

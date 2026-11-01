@@ -1,4 +1,4 @@
-import type { ApprovalStep, RouteStep, Step, ToolStep, Turn } from "./types.js";
+import type { ApprovalStep, NoteStep, RouteStep, Step, ToolStep, Turn } from "./types.js";
 import { splitLiveSteps } from "./tool-label.js";
 
 export type TranscriptItem =
@@ -6,6 +6,7 @@ export type TranscriptItem =
   | { kind: "user"; text: string }
   | { kind: "step"; step: ToolStep | RouteStep }
   | { kind: "approval"; step: ApprovalStep }
+  | { kind: "note"; step: NoteStep }
   | { kind: "answer"; text: string }
   | { kind: "error"; text: string };
 
@@ -19,6 +20,7 @@ function turnItems(turn: Turn, archiveAll: boolean): TranscriptItem[] {
   for (const step of steps) {
     if (isRow(step)) items.push({ kind: "step", step });
     else if (step.kind === "approval") items.push({ kind: "approval", step });
+    else if (step.kind === "note") items.push({ kind: "note", step });
   }
   if (!archiveAll) return items;
   if (turn.text) items.push({ kind: "answer", text: turn.text });

@@ -13,12 +13,28 @@ export default function LiveTurnView({
   focusedStepId,
   focusOverrides,
   maxRows = 17,
-}: StepViewProps & { live: Turn; maxRows?: number }) {
+  approvalFocusedIndex = 0,
+  approvalDebugExpanded = false,
+}: StepViewProps & {
+  live: Turn;
+  maxRows?: number;
+  approvalFocusedIndex?: number;
+  approvalDebugExpanded?: boolean;
+}) {
   const focusedRef = useRef<DOMElement>(null);
   const waiting = !live.text && !live.steps.some((step) => step.kind === "tool" && !step.done);
   const approval = live.steps.find((step) => step.kind === "approval" && !step.resolved);
   if (approval?.kind === "approval") {
-    return <ApprovalCard key={approval.approvalId} {...approval} maxRows={maxRows} />;
+    return (
+      <ApprovalCard
+        key={approval.approvalId}
+        {...approval}
+        maxRows={maxRows}
+        theme={theme}
+        focusedIndex={approvalFocusedIndex}
+        debugExpanded={approvalDebugExpanded}
+      />
+    );
   }
   return (
     <ScrollViewport

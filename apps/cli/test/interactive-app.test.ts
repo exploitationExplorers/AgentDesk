@@ -39,6 +39,7 @@ for (const selection of ["new", "resume"] as const) {
     const instance = render(
       createElement(App, {
         state: testState,
+        home: "test-home",
         theme,
         version: "0.1.0",
         cwd: "D:/agent/AgentDesk",
@@ -81,6 +82,7 @@ test("输入代码中的 o 不触发快捷键，显示新的 AgentDesk 启动区
   const instance = render(
     createElement(App, {
       state: testState,
+      home: "test-home",
       theme,
       apiRequest: mockApi(async (state, path, options) => {
         if (path === "/chat") sent = readBody(options).message;
@@ -104,6 +106,7 @@ test("工作台处理审批后终端自动继续读取事件", async () => {
   const instance = render(
     createElement(App, {
       state: testState,
+      home: "test-home",
       theme,
       apiRequest: mockApi(async (state, path, options) => {
         if (path.startsWith("/approvals/") && options?.method === "POST") approvalPosts += 1;
@@ -128,7 +131,7 @@ test("工作台处理审批后终端自动继续读取事件", async () => {
     }),
   );
   await typeAndSubmit(instance, "修改代码");
-  await waitFor(instance, (frame) => frame.includes("需要审批"));
+  await waitFor(instance, (frame) => frame.includes("写入文件"));
   remotelyApproved = true;
   await waitFor(instance, (frame) => frame.includes("跨端审批后完成"), { timeout: 4000 });
   assert.equal(approvalPosts, 0, "远端已处理的审批不应再次提交");
@@ -204,6 +207,7 @@ test("输入→提交→流式文本→落入历史", async () => {
   const instance = render(
     createElement(App, {
       state: testState,
+      home: "test-home",
       theme,
       apiRequest: makeApiRequest(),
       consumeSse: makeConsumeSse(events),
@@ -239,6 +243,7 @@ test("工具调用卡片与审批卡片：批准后继续流式输出并落入�
   const instance = render(
     createElement(App, {
       state: testState,
+      home: "test-home",
       theme,
       apiRequest: makeApiRequest({
         onApprovalResolved: (value) => {
@@ -250,7 +255,7 @@ test("工具调用卡片与审批卡片：批准后继续流式输出并落入�
   );
   await typeAndSubmit(instance, "部署一下");
   await waitFor(instance, (frame) => frame.includes("执行部署"));
-  await waitFor(instance, (frame) => frame.includes("需要审批"));
+  await waitFor(instance, (frame) => frame.includes("确认部署"));
   instance.stdin.write("y");
   await waitFor(instance, (frame) => frame.includes("部署完成"));
   await waitFor(instance, (frame) => frame.includes("空闲"));
@@ -268,6 +273,7 @@ test("拒绝审批记录为已拒绝", async () => {
   const instance = render(
     createElement(App, {
       state: testState,
+      home: "test-home",
       theme,
       apiRequest: makeApiRequest({
         onApprovalResolved: (value) => {
@@ -278,7 +284,7 @@ test("拒绝审批记录为已拒绝", async () => {
     }),
   );
   await typeAndSubmit(instance, "试一下");
-  await waitFor(instance, (frame) => frame.includes("需要审批"));
+  await waitFor(instance, (frame) => frame.includes("确认操作"));
   instance.stdin.write("n");
   await waitFor(instance, (frame) => frame.includes("空闲"));
   assert.equal(approved, false);
@@ -298,6 +304,7 @@ test("Ctrl+C 在流式阶段中断当前这一轮，不等待网络请求收尾"
   const instance = render(
     createElement(App, {
       state: testState,
+      home: "test-home",
       theme,
       apiRequest: makeApiRequest(),
       consumeSse,
@@ -330,6 +337,7 @@ test("有多个历史会话时启动显示选择器", async () => {
   const instance = render(
     createElement(App, {
       state: testState,
+      home: "test-home",
       theme,
       apiRequest: makeApiRequest({ conversations }),
       consumeSse: makeConsumeSse([]),
@@ -365,6 +373,7 @@ test("选择已有会话后正确回放历史", async () => {
   const instance = render(
     createElement(App, {
       state: testState,
+      home: "test-home",
       theme,
       apiRequest: makeApiRequest({ conversations, history }),
       consumeSse: makeConsumeSse([]),
@@ -396,6 +405,7 @@ test("选择新建对话后是空会话", async () => {
   const instance = render(
     createElement(App, {
       state: testState,
+      home: "test-home",
       theme,
       apiRequest: makeApiRequest({ conversations }),
       consumeSse: makeConsumeSse([]),
@@ -417,6 +427,7 @@ test("显式传入 --conversation 时跳过选择器", async () => {
   const instance = render(
     createElement(App, {
       state: testState,
+      home: "test-home",
       theme,
       conversationId: "conv-z",
       apiRequest: makeApiRequest(),
@@ -453,6 +464,7 @@ test("Tab 切换到步骤焦点后上下移动高亮", async () => {
   const instance = render(
     createElement(App, {
       state: testState,
+      home: "test-home",
       theme,
       apiRequest: makeApiRequest(),
       consumeSse,
@@ -499,6 +511,7 @@ test("Enter 单独展开聚焦行而其他行保持折叠", async () => {
   const instance = render(
     createElement(App, {
       state: testState,
+      home: "test-home",
       theme,
       apiRequest: makeApiRequest(),
       consumeSse,

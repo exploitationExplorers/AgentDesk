@@ -1,6 +1,7 @@
 import { parseArgs } from "node:util";
+import { THEME_PALETTES, type ThemePalette } from "./preferences.js";
 
-const COMMON = ["help", "data-dir", "plain", "no-color", "no-motion", "no-emoji"];
+const COMMON = ["help", "data-dir", "plain", "no-color", "no-motion", "no-emoji", "theme"];
 const COMMAND_OPTIONS = {
   start: ["foreground", "port"],
   restart: ["foreground", "port"],
@@ -35,6 +36,7 @@ export function parseCommand(argv: string[]) {
       "no-color": { type: "boolean" },
       "no-motion": { type: "boolean" },
       "no-emoji": { type: "boolean" },
+      theme: { type: "string" },
       port: { type: "string", short: "p" },
       foreground: { type: "boolean", short: "f" },
       follow: { type: "boolean" },
@@ -70,6 +72,9 @@ export function parseCommand(argv: string[]) {
     (!/^\d+$/.test(values.lines) || Number(values.lines) < 1 || Number(values.lines) > 1000)
   ) {
     throw new Error("--lines 必须为 1～1000 的整数。");
+  }
+  if (values.theme !== undefined && !THEME_PALETTES.includes(values.theme as ThemePalette)) {
+    throw new Error(`--theme 必须是 ${THEME_PALETTES.join(" / ")} 之一。`);
   }
   if (!values.help && !values.version) {
     if (["approve", "reject"].includes(command)) {
@@ -129,6 +134,8 @@ export const HELP = `AgentDesk — 本地 Agent 工作台命令行
   --no-color             禁用颜色（也支持 NO_COLOR 环境变量）
   --no-motion            关闭欢迎与步骤动画，保留方向键选择
   --no-emoji             使用简单符号代替表情图标
+  --theme <dark|light|colorblind>
+                         配色方案，默认跟随上次 /theme 选择或 dark（也支持 AGENTDESK_THEME 环境变量）
   --help, -h             显示帮助
   --version, -V          显示版本
 

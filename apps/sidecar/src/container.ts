@@ -8,6 +8,7 @@ import { openDatabase, type DbHandle } from "./db/client";
 import { EventHub } from "./events";
 import { SecretStore } from "./secrets";
 import { ApprovalService } from "./services/approvals";
+import { createAutoApprove } from "./services/auto-approve";
 import { BrowserService } from "./services/browser";
 import { ChatService } from "./services/chat";
 import { ConversationStore } from "./services/conversation-store";
@@ -17,6 +18,7 @@ import { FeedService } from "./services/feed";
 import { MemoryService } from "./services/memory";
 import { ProjectService } from "./services/projects";
 import { ProjectInstructionService } from "./services/project-instructions";
+import { PermissionRuleService } from "./services/permission-rules";
 import { ProviderService } from "./services/providers";
 import { Scheduler } from "./services/scheduler";
 import { SettingsService } from "./services/settings";
@@ -32,6 +34,7 @@ export interface Container {
   secrets: SecretStore;
   settings: SettingsService;
   approvals: ApprovalService;
+  permissionRules: PermissionRuleService;
   providers: ProviderService;
   projects: ProjectService;
   projectInstructions: ProjectInstructionService;
@@ -61,7 +64,9 @@ export async function createContainer(
   const secrets = new SecretStore(db, config.masterKey, config.dataDir);
   const settings = new SettingsService(db);
   const approvals = new ApprovalService(db, hub);
+  const permissionRules = new PermissionRuleService(db);
   const providers = new ProviderService(db, secrets, settings);
+  const autoApprove = createAutoApprove(permissionRules, providers, settings);
   const projects = new ProjectService(db, secrets, settings, providers, config.dataDir, hub);
   const projectInstructions = new ProjectInstructionService(projects);
   const feed = new FeedService(db, settings, providers, hub);
@@ -137,10 +142,19 @@ export async function createContainer(
     conversationStore,
     registry,
     projectInstructions,
+    autoApprove,
   });
   const tasks = new TaskService(db, hub, { executor: taskExecutor });
   lazyTasks.current = tasks;
-  const chat = new ChatService(db, orchestrator, approvals, memory, tasks, projectInstructions);
+  const chat = new ChatService(
+    db,
+    orchestrator,
+    approvals,
+    memory,
+    tasks,
+    projectInstructions,
+    autoApprove,
+  );
   const scheduler = new Scheduler(db, settings, feed, workflows);
 
   return {
@@ -150,6 +164,7 @@ export async function createContainer(
     secrets,
     settings,
     approvals,
+    permissionRules,
     providers,
     projects,
     projectInstructions,

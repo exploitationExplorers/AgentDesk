@@ -1,4 +1,6 @@
 import { Box, Text } from "ink";
+import { pick } from "./colors.js";
+import type { AccessibilityTheme } from "./theme.js";
 
 export interface MenuItem {
   id: string;
@@ -18,25 +20,26 @@ export default function CommandPanel({
   panel,
   index,
   limit = 8,
-  color = true,
+  theme,
 }: {
   panel: CommandPanelData;
   index: number;
   limit?: number;
-  color?: boolean;
+  theme: AccessibilityTheme;
 }) {
   const count = panel.items?.length ?? panel.lines?.length ?? 0;
   const start = Math.max(0, Math.min(index - Math.floor(limit / 2), count - limit));
+  const accent = pick("accent", theme);
   return (
     <Box flexDirection="column" paddingX={1} marginTop={1}>
-      <Text bold color={color ? "cyan" : undefined}>
+      <Text bold color={accent}>
         {panel.title}
       </Text>
       {panel.items
         ? panel.items.slice(start, start + limit).map((item, offset) => (
             <Text
               key={item.id}
-              color={color && index === start + offset ? "cyan" : undefined}
+              color={index === start + offset ? accent : undefined}
               wrap="truncate-end"
             >
               {index === start + offset ? "❯ " : "  "}

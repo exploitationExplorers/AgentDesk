@@ -1,7 +1,9 @@
 import type {
   AgentName,
+  ApprovalReason,
   ChatMessage,
   FileChange,
+  RiskLevel,
   RunStatus,
   RunTrigger,
   ToolCallRecord,
@@ -30,6 +32,9 @@ export interface ApprovalStep {
   approvalId: string;
   title: string;
   detail: string;
+  risk?: RiskLevel;
+  payload?: unknown;
+  reason?: ApprovalReason;
   resolved: boolean;
   approved?: boolean;
 }
@@ -41,7 +46,14 @@ export interface DelegateStep {
   trigger: RunTrigger;
 }
 
-export type Step = ToolStep | RouteStep | ApprovalStep | DelegateStep;
+/** 规则放行 / Bash 分类器自动放行留下的一行提示，不影响工具调用本身的展示。 */
+export interface NoteStep {
+  kind: "note";
+  text: string;
+  source: "rule" | "classifier";
+}
+
+export type Step = ToolStep | RouteStep | ApprovalStep | DelegateStep | NoteStep;
 
 export interface Turn {
   userMessage: string;

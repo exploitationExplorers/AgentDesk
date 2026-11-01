@@ -1,5 +1,6 @@
 import { Box, Text } from "ink";
 import type { AgentName } from "@agentdesk/shared";
+import { pick } from "./colors.js";
 import type { AccessibilityTheme } from "./theme.js";
 
 export interface WelcomeProps {
@@ -20,10 +21,11 @@ export default function Welcome({
   theme,
   workbenchCommand,
 }: WelcomeProps) {
+  const brand = theme ? pick("brand", theme) : undefined;
   return (
     <Box gap={2} marginTop={1} marginBottom={1} paddingX={1}>
       <Box flexDirection="column" flexShrink={0}>
-        <Text color={theme?.color ? "#72D9BA" : undefined}>
+        <Text color={brand}>
           {"    ▄▄    \n ▄██████▄ \n █ ▀  ▀ █ \n ▀██▄▄██▀ \n  ▀▀  ▀▀  "}
         </Text>
       </Box>
@@ -39,7 +41,7 @@ export default function Welcome({
         <Text dimColor wrap="truncate-middle">
           {cwd}
         </Text>
-        <Text color={theme?.color ? "#72D9BA" : undefined}>一起把想法写成代码。</Text>
+        <Text color={brand}>一起把想法写成代码。</Text>
         {workbenchCommand ? <Text dimColor>浏览器工作台：{workbenchCommand}</Text> : null}
       </Box>
     </Box>

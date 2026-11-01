@@ -3,10 +3,12 @@ import { AppError, AppSettings, ErrorCode, type HealthInfo } from "@agentdesk/sh
 import type { Container } from "../../container";
 import { GLOBAL_CHANNEL } from "../../events";
 import { applyProxy, resolveProxy } from "../../proxy";
+import { prefixFor } from "../../services/permission-rules";
 import { channelToSse } from "../sse";
 
 export function systemRoutes(container: Container) {
-  const { config, settings, approvals, skills, registry, hub, providers } = container;
+  const { config, settings, approvals, permissionRules, skills, registry, hub, providers } =
+    container;
   const app = new Hono();
 
   app.get("/health", (c) =>
@@ -32,8 +34,22 @@ export function systemRoutes(container: Container) {
     return c.json(approvals.list(status));
   });
   app.post("/approvals/:id", async (c) => {
-    const body = (await c.req.json()) as { approved?: boolean };
-    return c.json(approvals.resolve(c.req.param("id"), body.approved === true));
+    const body = (await c.req.json()) as { approved?: boolean; remember?: boolean };
+    const id = c.req.param("id");
+    const approved = body.approved === true;
+    if (approved && body.remember === true) {
+      const pending = approvals.get(id);
+      const payload = pending?.payload as { tool?: string; args?: unknown } | undefined;
+      const command =
+        payload?.tool === "shell.run" &&
+        typeof payload.args === "object" &&
+        payload.args !== null &&
+        typeof (payload.args as Record<string, unknown>).command === "string"
+          ? ((payload.args as Record<string, unknown>).command as string)
+          : undefined;
+      if (command) permissionRules.add(prefixFor(command));
+    }
+    return c.json(approvals.resolve(id, approved));
   });
   app.post("/approvals/:id/answer", async (c) => {
     const body = (await c.req.json()) as { text?: string };

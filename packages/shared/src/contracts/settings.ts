@@ -16,6 +16,8 @@ export const AppSettings = z.object({
   diskThresholdGB: z.number().min(1).max(2048).default(15),
   /** 需用户决定的项目：移到回收站，或直接删除 */
   diskOptionalAction: z.enum(["trash", "delete"]).default("trash"),
+  /** 默认关闭：开启后，被判定为 dangerous 的 shell 命令会先问一次模型是否安全变体，命中则自动放行。 */
+  bashClassifierEnabled: z.boolean().default(false),
 });
 export type AppSettings = z.infer<typeof AppSettings>;
 
