@@ -140,7 +140,9 @@ export function taskRoutes({ tasks, approvals, hub, dbHandle, projectInstruction
     const id = c.req.param("id");
     const task = tasks.get(id);
     if (!task) throw new AppError(ErrorCode.NotFound, "任务不存在");
-    const after = Number(c.req.query("after") ?? 0);
+    // EventSource 断线自动重连时会在请求头带上 Last-Event-ID（即上次收到的 seq），
+    // 优先用它续传，浏览器原生重连就不用再自己拼 ?after= 查询参数。
+    const after = Number(c.req.header("Last-Event-ID") ?? c.req.query("after") ?? 0);
     return taskChannelToSse(
       c,
       hub,
@@ -211,7 +213,7 @@ export function taskRoutes({ tasks, approvals, hub, dbHandle, projectInstruction
     const id = c.req.param("id");
     const run = tasks.getRun(id);
     if (!run) throw new AppError(ErrorCode.NotFound, "运行不存在");
-    const after = Number(c.req.query("after") ?? 0);
+    const after = Number(c.req.header("Last-Event-ID") ?? c.req.query("after") ?? 0);
     return taskChannelToSse(
       c,
       hub,

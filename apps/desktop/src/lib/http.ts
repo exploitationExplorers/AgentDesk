@@ -123,11 +123,15 @@ export async function postStream<E>(
 export function subscribe<E>(
   path: string,
   onEvent: (event: E) => void,
-  options: { onError?: () => void; isFinal?: (event: E) => boolean } = {},
+  options: {
+    onError?: () => void;
+    isFinal?: (event: E) => boolean;
+    query?: Record<string, string | undefined>;
+  } = {},
 ): () => void {
   let source: EventSource | null = null;
   let closed = false;
-  void apiUrl(path).then((u) => {
+  void apiUrl(path, options.query).then((u) => {
     if (closed) return;
     source = new EventSource(u);
     source.onmessage = (e) => {

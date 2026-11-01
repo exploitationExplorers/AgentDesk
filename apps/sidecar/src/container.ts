@@ -1,5 +1,10 @@
 import { join } from "node:path";
-import { Orchestrator, SkillRegistry } from "@agentdesk/agent-core";
+import {
+  createMaskStore,
+  Orchestrator,
+  SkillRegistry,
+  type MaskStore,
+} from "@agentdesk/agent-core";
 import { BrowserSessionManager } from "@agentdesk/integrations";
 import { createAgentDefinitions } from "./agents/definitions";
 import { buildToolRegistry } from "./agents/tools";
@@ -67,6 +72,10 @@ export async function createContainer(
   const permissionRules = new PermissionRuleService(db);
   const providers = new ProviderService(db, secrets, settings);
   const autoApprove = createAutoApprove(permissionRules, providers, settings);
+  // 每次调用给一个全新的 MaskStore（按一次 /chat 请求或一个 Run 的生命周期隔离占位符映射），
+  // 不开启时返回 undefined，agent-core 完全跳过脱敏逻辑。
+  const maskFactory = (): MaskStore | undefined =>
+    settings.get().contentMaskingEnabled ? createMaskStore() : undefined;
   const projects = new ProjectService(db, secrets, settings, providers, config.dataDir, hub);
   const projectInstructions = new ProjectInstructionService(projects);
   const feed = new FeedService(db, settings, providers, hub);
@@ -143,6 +152,7 @@ export async function createContainer(
     registry,
     projectInstructions,
     autoApprove,
+    maskFactory,
   });
   const tasks = new TaskService(db, hub, { executor: taskExecutor });
   lazyTasks.current = tasks;
@@ -154,6 +164,7 @@ export async function createContainer(
     tasks,
     projectInstructions,
     autoApprove,
+    maskFactory,
   );
   const scheduler = new Scheduler(db, settings, feed, workflows);
 

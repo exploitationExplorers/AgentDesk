@@ -1,4 +1,4 @@
-import type { Approval, Project, Run, RunEventRecord, Task } from "@agentdesk/shared";
+import type { Approval, Project, Run, Task } from "@agentdesk/shared";
 import { http } from "../../lib/http";
 
 export type CodeSource = "workbench" | "cli";
@@ -9,11 +9,7 @@ export const codeApi = (source: CodeSource) => {
     projects: () => http.get<Project[]>(`${prefix}/projects`),
     addProject: (path: string) => http.post<Project>(`${prefix}/projects`, { path }),
     runs: (id: string) => http.get<Run[]>(`${prefix}/tasks/${encodeURIComponent(id)}/runs`),
-    events: (id: string, after: number) =>
-      http.get<RunEventRecord[]>(`${prefix}/tasks/${encodeURIComponent(id)}/events`, {
-        after: String(after),
-        limit: "500",
-      }),
+    streamPath: (id: string) => `${prefix}/tasks/${encodeURIComponent(id)}/stream`,
     approvals: () => http.get<Approval[]>(`${prefix}/approvals`, { status: "pending" }),
     approve: (id: string, approved: boolean) =>
       http.post(`${prefix}/approvals/${encodeURIComponent(id)}`, { approved }),

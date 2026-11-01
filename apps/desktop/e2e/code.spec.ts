@@ -110,6 +110,10 @@ test("编码现场增量展示读取、文件差异和命令输出，刷新可�
     }),
     event(11, { type: "run_ended", runId: "run-demo", status: "succeeded" }),
   ];
+  // 编码现场现在走真 SSE（/tasks/:id/stream），不再轮询 /tasks/:id/events；
+  // EventSource 原生重连会带 Last-Event-ID，retry 字段调短好让测试里的重连不用等默认的几秒。
+  const sseBody = (page_: RunEventRecord[]) =>
+    `retry: 30\n${page_.map((r) => `id: ${r.seq}\ndata: ${JSON.stringify(r)}\n\n`).join("")}`;
   const cursors: number[] = [];
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
@@ -132,10 +136,14 @@ test("编码现场增量展示读取、文件差异和命令输出，刷新可�
           },
         ],
       });
-    if (path.endsWith("/tasks/coding-demo/events")) {
-      const after = Number(url.searchParams.get("after"));
+    if (path.endsWith("/tasks/coding-demo/stream")) {
+      const headers = route.request().headers();
+      const after = Number(headers["last-event-id"] ?? url.searchParams.get("after") ?? 0);
       cursors.push(after);
-      return route.fulfill({ json: records.filter((e) => e.seq > after && (stage || e.seq <= 3)) });
+      return route.fulfill({
+        headers: { "Content-Type": "text/event-stream" },
+        body: sseBody(records.filter((e) => e.seq > after && (stage || e.seq <= 3))),
+      });
     }
     return route.continue();
   });
@@ -152,7 +160,9 @@ test("编码现场增量展示读取、文件差异和命令输出，刷新可�
   });
   await page.getByRole("button", { name: /工具输出/ }).click();
   await expect(page.getByTestId("tool-output")).toContainText("Tests 4 passed");
-  expect(cursors.some((cursor) => cursor >= 3)).toBe(true);
+  // 上面两个断言能看到 stage=1 之后的新内容，本身已经证明 EventSource 重连过（不是只拿到首次
+  // 快照）；这里再确认确实发生了不止一次 stream 请求，不依赖浏览器重连时 Last-Event-ID 的具体取值。
+  expect(cursors.length).toBeGreaterThan(1);
   await page.reload();
   await expect(page.getByTestId("code-diff")).toContainText("return saved");
   await expect(

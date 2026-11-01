@@ -11,6 +11,7 @@ import {
   Orchestrator,
   ToolRegistry,
   Type,
+  createMaskStore,
   defineTool,
   parseSkill,
   routeByKeywords,
@@ -151,6 +152,32 @@ describe("runAgent", () => {
     });
     expect(executed).toBe(false);
     expect(result.toolCalls[0]?.isError).toBe(true);
+  });
+
+  it("传入 mask 后，发给模型的内容替换成占位符，最终结果换回真实值", async () => {
+    const models = setup();
+    let seenByModel = "";
+    faux!.setResponses([
+      (context) => {
+        const userMessage = context.messages.find((m) => m.role === "user");
+        seenByModel = typeof userMessage?.content === "string" ? userMessage.content : "";
+        return fauxAssistantMessage(fauxText(`收到：${seenByModel}`));
+      },
+    ]);
+    const mask = createMaskStore();
+    const result = await runAgent({
+      definition: projectAgent,
+      tools: [],
+      models,
+      messages: [{ role: "user", content: "我的 key 是 sk-ant-example004", timestamp: Date.now() }],
+      emit: () => {},
+      requestApproval: async () => true,
+      mask,
+    });
+    expect(seenByModel).not.toContain("sk-ant-example004");
+    expect(seenByModel).toMatch(/\{\{MASK_API_KEY_\d+\}\}/);
+    expect(result.text).toContain("sk-ant-example004");
+    expect(result.text).not.toContain("{{MASK_");
   });
 });
 

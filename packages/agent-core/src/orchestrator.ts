@@ -7,6 +7,7 @@ import type {
 } from "@agentdesk/shared";
 import { runAgent, type AgentDefinition } from "./agent";
 import type { ModelResolver } from "./llm";
+import type { MaskStore } from "./masking";
 import type { SkillRegistry } from "./skills";
 import {
   defineTool,
@@ -47,6 +48,8 @@ export interface OrchestratorRunOptions {
   recordArtifact?: (input: RecordArtifactInput) => RecordedArtifact;
   /** 可选：审批前先问一次能不能自动放行（规则匹配/分类器等）。不传时行为与现状完全一致。 */
   autoApprove?: AutoApprove;
+  /** 可选：发给模型前脱敏、拿到回复后换回真实值，整次对话（含所有委派 Agent）共用同一个 store。 */
+  mask?: MaskStore;
   /**
    * 每次 agents.delegate 委派开始时触发，用于把这次子任务的事件流、审批请求和最终结果
    * 接到独立的追踪通道（例如 Task 引擎里的子 Run）。不传时委派行为与现状完全一致：
@@ -136,6 +139,7 @@ export class Orchestrator {
       | "recordArtifact"
       | "modelSelection"
       | "autoApprove"
+      | "mask"
     >,
   ) {
     const def = this.definition(name);
@@ -156,6 +160,7 @@ export class Orchestrator {
       requestAnswer: opts.requestAnswer,
       recordArtifact: opts.recordArtifact,
       autoApprove: opts.autoApprove,
+      mask: opts.mask,
       signal: opts.signal,
     });
   }
@@ -199,6 +204,7 @@ export class Orchestrator {
               context: opts.context,
               modelSelection: opts.modelSelection,
               autoApprove: opts.autoApprove,
+              mask: opts.mask,
             },
           );
           delegated.push(...sub.toolCalls);
@@ -234,6 +240,7 @@ export class Orchestrator {
       requestAnswer: opts.requestAnswer,
       recordArtifact: opts.recordArtifact,
       autoApprove: opts.autoApprove,
+      mask: opts.mask,
       signal: opts.signal,
     });
     return {

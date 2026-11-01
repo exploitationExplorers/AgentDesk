@@ -20,8 +20,11 @@ export function cliMonitorRoutes(
   const app = new Hono();
   app.all("/cli-monitor/*", async (c) => {
     const path = c.req.path.replace(/^.*\/cli-monitor/, "");
+    const isStream = /^\/tasks\/[^/]+\/stream$/.test(path);
     const readable =
-      /^\/(tasks|projects|approvals)$|^\/tasks\/[^/]+(?:\/(events|runs|artifacts))?$/.test(path);
+      /^\/(tasks|projects|approvals)$|^\/tasks\/[^/]+(?:\/(events|runs|artifacts|stream))?$/.test(
+        path,
+      );
     const writable =
       /^\/(tasks|projects)$|^\/tasks\/[^/]+\/(cancel|runs|review)$|^\/approvals\/[^/]+(?:\/answer)?$/.test(
         path,
@@ -50,6 +53,25 @@ export function cliMonitorRoutes(
         throw new Error("CLI 实例不匹配");
       const url = new URL(c.req.url);
       url.searchParams.delete("token");
+      const lastEventId = c.req.header("Last-Event-ID");
+      if (lastEventId) url.searchParams.set("after", lastEventId);
+
+      // SSE 长连接：不能套用下面普通 JSON 请求的 10 秒超时（会把正常挂着的流掐断），
+      // abort 跟随客户端自己的请求 signal；响应头原样透传（text/event-stream 等），
+      // 不能像 JSON 分支那样硬编码 Content-Type，否则浏览器原生 EventSource 会直接报错。
+      if (isStream) {
+        const response = await fetch(`${base}${path}?${url.searchParams}`, {
+          method: "GET",
+          headers,
+          redirect: "error",
+          signal: c.req.raw.signal,
+        });
+        const forwarded = new Headers(response.headers);
+        forwarded.delete("content-encoding");
+        forwarded.delete("content-length");
+        return new Response(response.body, { status: response.status, headers: forwarded });
+      }
+
       const response = await fetch(`${base}${path}?${url.searchParams}`, {
         method: c.req.method,
         headers,

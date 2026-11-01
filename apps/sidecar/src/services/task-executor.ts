@@ -1,4 +1,10 @@
-import type { ApprovalRequest, AutoApprove, Orchestrator, ToolRegistry } from "@agentdesk/agent-core";
+import type {
+  ApprovalRequest,
+  AutoApprove,
+  MaskStore,
+  Orchestrator,
+  ToolRegistry,
+} from "@agentdesk/agent-core";
 import type {
   AgentName,
   AgentStreamEvent,
@@ -140,6 +146,7 @@ export interface RealExecutorDeps {
   registry: ToolRegistry;
   projectInstructions: ProjectInstructionService;
   autoApprove: AutoApprove;
+  maskFactory: () => MaskStore | undefined;
 }
 
 /** 阶段 D 的真实 RunExecutor：真正调用 orchestrator，把结果写回会话消息和 run_events。 */
@@ -149,7 +156,7 @@ export function createOrchestratorExecutor(deps: RealExecutorDeps): RunExecutor 
     // 这一行保证外层把 TaskService 自身引用写回 deps 之后，getTasks() 才会被真正调用。
     await Promise.resolve();
     const tasks = deps.getTasks();
-    const { orchestrator, approvals, conversationStore, registry, autoApprove } = deps;
+    const { orchestrator, approvals, conversationStore, registry, autoApprove, maskFactory } = deps;
 
     // 方案关口：requiresPlanApproval 的任务首条根 Run 只允许产出方案，不允许执行任何
     // 有副作用的操作——把可用工具收紧到"只读工具 + tasks.submit_plan"，不传给模型
@@ -285,6 +292,7 @@ export function createOrchestratorExecutor(deps: RealExecutorDeps): RunExecutor 
         allowedTools,
         recordArtifact,
         autoApprove,
+        mask: maskFactory(),
       });
       conversationStore.insertMessage({
         id: newId(),

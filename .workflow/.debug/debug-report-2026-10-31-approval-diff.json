@@ -1,0 +1,67 @@
+{
+  "status": "DONE",
+  "task": "CLI repeated Git approvals and inline file diffs",
+  "root_causes": [
+    "Read-only Git validation rejected rev-parse, ls-files, path separators, safe config overrides, and command chains.",
+    "CLI rendered only addition/deletion counts and ignored file_change events.",
+    "Resolved approvals repeated full detail cards."
+  ],
+  "changes": [
+    "Read-only Git validation and argv execution share one parser, also used by workflow shell nodes.",
+    "Actual file-change hunks render automatically with line numbers and colored additions/deletions.",
+    "Resolved approvals occupy one line."
+  ],
+  "verification": {
+    "sidecar_full_suite": 175,
+    "cli_full_suite": 102,
+    "after_extraction_focused_sidecar_tests": 77,
+    "typecheck": "CLI and sidecar passed",
+    "eslint": "passed",
+    "cli_build": "passed",
+    "dist_interactive": "passed",
+    "git_diff_check": "passed"
+  },
+  "real_terminal": {
+    "date": "2026-10-31T07:25:56.482Z",
+    "node": "v22.12.0",
+    "stdinTTY": true,
+    "stdoutTTY": true,
+    "columns": 80,
+    "rows": 24,
+    "fixture": "D:\\agent\\AgentDesk\\.workflow\\.scratchpad\\approval-diff-user-fixture",
+    "model": "gpt-6.1-sol",
+    "conversation": "6786e5cc-cd2b-4c1c-a133-3f952d5caf56",
+    "delegated_agent": "code",
+    "completed": true,
+    "git_commit": "cf2f6dc73c541fd5ff969578c93113eff81dd0e8",
+    "working_tree_clean": true,
+    "commands": [
+      "git status --short; git branch --show-current; git rev-parse HEAD; git diff --stat; git diff --cached --stat; git ls-files --others --exclude-standard",
+      "git -c core.safecrlf=false diff -- main.ts",
+      "git status --short; git branch --show-current; git rev-parse HEAD; git diff --stat; git diff --cached --stat; git ls-files --others --exclude-standard",
+      "git -c core.safecrlf=false diff -- main.ts",
+      "node -e \"const fs = require('node:fs'); const assert = require('node:assert/strict'); const source = fs.readFileSync('main.ts', 'utf8'); const js = source.replace('export function add(a: number, b: number): number', 'function add(a, b)'); const add = new Function(js + '; return add;')(); assert.equal(add(2, 3), 5); assert.equal(add(-2, 3), 1); assert.equal(add(0, 0), 0); assert.equal(add(-2, -3), -5); console.log('PASS: 4 add smoke tests');\"",
+      "git add -- main.ts && git commit -m \"fix: 修复加法实现\"",
+      "git rev-parse HEAD && git status --short"
+    ],
+    "approvals": [
+      "修补文件 main.ts",
+      "执行命令：node -e \"const fs = require('node:fs'); const assert = require('node:assert/strict'); const source = fs.readFileSync('main.ts', 'utf8'); const js = source.replace('export function add(a: number, b: number): number', 'function add(a, b)'); const add = new Function(js + '; return add;')(); assert.equal(add(2, 3), 5); assert.equal(add(-2, 3), 1); assert.equal(add(0, 0), 0); assert.equal(add(-2, -3), -5); console.log('PASS: 4 add smoke tests');\"",
+      "执行命令：git add -- main.ts && git commit -m \"fix: 修复加法实现\""
+    ],
+    "readonly_git_approvals": 0,
+    "commit_approvals": 1,
+    "total_approvals": 3,
+    "addition_with_line_number": true,
+    "deletion_with_line_number": true,
+    "addition_background": true,
+    "deletion_background": true,
+    "full_screen_resets": 0,
+    "capture": ".workflow/.scratchpad/approval-diff-terminal.ansi"
+  },
+  "limits": [
+    "Unrecognized commands and write operations retain approval.",
+    "Initial scratch repository had sandbox-user ownership; final test used a repository created by the runtime user.",
+    "Local build updated; npm publication not performed."
+  ]
+}

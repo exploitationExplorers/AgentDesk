@@ -1,5 +1,5 @@
 import { desc, eq } from "drizzle-orm";
-import type { ApprovalRequest, AutoApprove, Orchestrator } from "@agentdesk/agent-core";
+import type { ApprovalRequest, AutoApprove, MaskStore, Orchestrator } from "@agentdesk/agent-core";
 import {
   AppError,
   ChatRequest,
@@ -31,6 +31,7 @@ export class ChatService {
     private readonly tasks: TaskService,
     private readonly projectInstructions: ProjectInstructionService,
     private readonly autoApprove: AutoApprove,
+    private readonly maskFactory: () => MaskStore | undefined,
   ) {
     this.conversations = new Collection<Conversation>(db, "conversations");
     this.conversationStore = new ConversationStore(db);
@@ -245,6 +246,7 @@ export class ChatService {
           ),
         requestAnswer,
         autoApprove: this.autoApprove,
+        mask: this.maskFactory(),
         onDelegate: shadow
           ? createDelegateHandler({
               tasks: this.tasks,

@@ -20,7 +20,7 @@ import {
   XCircle,
 } from "lucide-react";
 import type { Approval, Run, Task } from "@agentdesk/shared";
-import { Button, cn } from "@agentdesk/ui";
+import { Button, Tabs, TabsContent, TabsList, TabsTrigger, cn } from "@agentdesk/ui";
 import { AppMark } from "../../components/AppMark";
 import { Markdown } from "../../components/Markdown";
 import { TOOL_LABELS } from "../../lib/agents";
@@ -29,6 +29,8 @@ import { codeRoute } from "../../router";
 import { codeApi, type CodeSource } from "./api";
 import { outputText, projectActivity, stepHint, type CodeStep } from "./activity";
 import { DiffView } from "./DiffView";
+import { FlowGraph } from "./FlowGraph";
+import { useRunTree } from "./useRunTree";
 import { useTaskEvents } from "./useTaskEvents";
 
 const STATUS: Record<Task["status"], string> = {
@@ -276,8 +278,11 @@ function TaskDetail({ task, source }: { task: Task; source: CodeSource }) {
   });
   const { records, error } = useTaskEvents(source, task.id);
   const activity = useMemo(() => projectActivity(records), [records]);
+  const runTree = useRunTree(records);
   const [selectedChange, setSelectedChange] = useState<string | null>(null);
   const [selectedStep, setSelectedStep] = useState<string | null>(null);
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [timelineView, setTimelineView] = useState<"timeline" | "flow">("timeline");
   const [tab, setTab] = useState<"diff" | "output">("diff");
   const [followup, setFollowup] = useState("");
   const change = activity.changes.find((c) => c.key === selectedChange) ?? activity.changes.at(-1);
@@ -322,6 +327,14 @@ function TaskDetail({ task, source }: { task: Task; source: CodeSource }) {
   );
   const files = new Set(activity.changes.map((c) => c.change.path)).size;
   const runList: Run[] = runs.data ?? [];
+  const selectRun = (runId: string) => {
+    setSelectedRunId(runId);
+    const last = activity.steps.filter((s) => s.runId === runId).at(-1);
+    if (last) {
+      setSelectedStep(last.key);
+      setTab("output");
+    }
+  };
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b px-6 py-4">
@@ -379,91 +392,114 @@ function TaskDetail({ task, source }: { task: Task; source: CodeSource }) {
       )}
       <div className="grid min-h-0 flex-1 grid-cols-1 xl:grid-cols-[minmax(300px,0.85fr)_minmax(360px,1.15fr)]">
         <section className="flex min-h-0 min-w-0 flex-col border-r" aria-label="执行时间线">
-          <div className="flex items-center justify-between px-5 py-3 text-xs">
-            <span className="font-medium">执行过程</span>
-            <span className="text-subtle">{activity.steps.length} 个步骤</span>
-          </div>
-          <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5">
-            <div className="mb-5 rounded-xl bg-surface-2/70 p-3.5">
-              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.15em] text-subtle">
-                任务目标
-              </p>
-              <p className="whitespace-pre-wrap text-[13px] leading-relaxed">{task.goal}</p>
+          <Tabs
+            value={timelineView}
+            onValueChange={(value) => setTimelineView(value as "timeline" | "flow")}
+            className="flex min-h-0 flex-1 flex-col"
+          >
+            <div className="flex items-center justify-between px-5 pt-2">
+              <TabsList className="w-auto">
+                <TabsTrigger value="timeline">执行过程</TabsTrigger>
+                <TabsTrigger value="flow">流程图</TabsTrigger>
+              </TabsList>
+              <span className="text-xs text-subtle">{activity.steps.length} 个步骤</span>
             </div>
-            {runList.map((run) => (
-              <div key={run.id} className="mb-5">
-                <div className="mb-3 flex items-center gap-2 text-xs">
-                  <span className="flex h-6 w-6 items-center justify-center rounded-lg border bg-surface">
-                    <Code2 className="h-3.5 w-3.5 text-emerald-500" />
-                  </span>
-                  <span className="font-medium">
-                    {run.agent === "code" ? "编码助手" : run.agent}
-                  </span>
-                  {run.parentRunId && <span className="text-subtle">委派任务</span>}
-                  <span className="ml-auto font-mono text-[10px] text-subtle">
-                    {time(run.createdAt)}
-                  </span>
-                </div>
-                <div className="ml-3 border-l pl-4">
-                  {activity.steps
-                    .filter((s) => s.runId === run.id)
-                    .map((s) => (
-                      <button
-                        key={s.key}
-                        type="button"
-                        onClick={() => {
-                          setSelectedStep(s.key);
-                          setTab("output");
-                        }}
-                        className={cn(
-                          "mb-1.5 flex w-full items-start gap-2.5 rounded-lg px-2 py-2.5 text-left transition-colors hover:bg-surface-2",
-                          selectedStep === s.key && tab === "output" && "bg-surface-2",
-                        )}
-                      >
-                        <span className="mt-0.5 shrink-0">
-                          <StepIcon
-                            status={
-                              s.status === "running" && ["failed", "cancelled"].includes(run.status)
-                                ? "error"
-                                : s.status
-                            }
-                          />
-                        </span>
-                        <span className="min-w-0">
-                          <span className="block text-xs font-medium">
-                            {TOOL_LABELS[s.name] ?? s.name}
-                          </span>
-                          <span
-                            className="mt-1 block truncate font-mono text-[11px] text-subtle"
-                            title={stepHint(s)}
-                          >
-                            {stepHint(s)}
-                          </span>
-                        </span>
-                      </button>
-                    ))}
-                  {(activity.textByRun.get(run.id) || run.resultText) && (
-                    <div className="mt-3 text-[13px]">
-                      <Markdown>{activity.textByRun.get(run.id) || run.resultText || ""}</Markdown>
-                    </div>
-                  )}
-                  {run.resultError && <p className="mt-2 text-xs text-danger">{run.resultError}</p>}
-                  {run.status === "running" && !activity.steps.some((s) => s.runId === run.id) && (
-                    <p className="py-3 text-xs text-subtle">正在理解任务、读取项目上下文…</p>
-                  )}
-                </div>
+            <TabsContent value="timeline" className="min-h-0 flex-1 overflow-y-auto px-5 pb-5 pt-3">
+              <div className="mb-5 rounded-xl bg-surface-2/70 p-3.5">
+                <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.15em] text-subtle">
+                  任务目标
+                </p>
+                <p className="whitespace-pre-wrap text-[13px] leading-relaxed">{task.goal}</p>
               </div>
-            ))}
-            {runs.isLoading && <p className="py-4 text-xs text-subtle">正在加载执行记录…</p>}
-            {pending.map((approval) => (
-              <div className="mb-3" key={approval.id}>
-                <ApprovalCard approval={approval} source={source} refresh={refresh} />
-              </div>
-            ))}
-            {approvals.error && (
-              <p className="text-xs text-danger">无法同步审批：{approvals.error.message}</p>
-            )}
-          </div>
+              {runList.map((run) => (
+                <div key={run.id} className="mb-5">
+                  <div className="mb-3 flex items-center gap-2 text-xs">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-lg border bg-surface">
+                      <Code2 className="h-3.5 w-3.5 text-emerald-500" />
+                    </span>
+                    <span className="font-medium">
+                      {run.agent === "code" ? "编码助手" : run.agent}
+                    </span>
+                    {run.parentRunId && <span className="text-subtle">委派任务</span>}
+                    <span className="ml-auto font-mono text-[10px] text-subtle">
+                      {time(run.createdAt)}
+                    </span>
+                  </div>
+                  <div className="ml-3 border-l pl-4">
+                    {activity.steps
+                      .filter((s) => s.runId === run.id)
+                      .map((s) => (
+                        <button
+                          key={s.key}
+                          type="button"
+                          onClick={() => {
+                            setSelectedStep(s.key);
+                            setTab("output");
+                          }}
+                          className={cn(
+                            "mb-1.5 flex w-full items-start gap-2.5 rounded-lg px-2 py-2.5 text-left transition-colors hover:bg-surface-2",
+                            selectedStep === s.key && tab === "output" && "bg-surface-2",
+                          )}
+                        >
+                          <span className="mt-0.5 shrink-0">
+                            <StepIcon
+                              status={
+                                s.status === "running" &&
+                                ["failed", "cancelled"].includes(run.status)
+                                  ? "error"
+                                  : s.status
+                              }
+                            />
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block text-xs font-medium">
+                              {TOOL_LABELS[s.name] ?? s.name}
+                            </span>
+                            <span
+                              className="mt-1 block truncate font-mono text-[11px] text-subtle"
+                              title={stepHint(s)}
+                            >
+                              {stepHint(s)}
+                            </span>
+                          </span>
+                        </button>
+                      ))}
+                    {(activity.textByRun.get(run.id) || run.resultText) && (
+                      <div className="mt-3 text-[13px]">
+                        <Markdown>
+                          {activity.textByRun.get(run.id) || run.resultText || ""}
+                        </Markdown>
+                      </div>
+                    )}
+                    {run.resultError && (
+                      <p className="mt-2 text-xs text-danger">{run.resultError}</p>
+                    )}
+                    {run.status === "running" &&
+                      !activity.steps.some((s) => s.runId === run.id) && (
+                        <p className="py-3 text-xs text-subtle">正在理解任务、读取项目上下文…</p>
+                      )}
+                  </div>
+                </div>
+              ))}
+              {runs.isLoading && <p className="py-4 text-xs text-subtle">正在加载执行记录…</p>}
+              {pending.map((approval) => (
+                <div className="mb-3" key={approval.id}>
+                  <ApprovalCard approval={approval} source={source} refresh={refresh} />
+                </div>
+              ))}
+              {approvals.error && (
+                <p className="text-xs text-danger">无法同步审批：{approvals.error.message}</p>
+              )}
+            </TabsContent>
+            <TabsContent value="flow" className="relative min-h-0 flex-1 pt-2">
+              <FlowGraph
+                runsById={runTree.runsById}
+                rootOrder={runTree.rootOrder}
+                selectedRunId={selectedRunId}
+                onSelectRun={selectRun}
+              />
+            </TabsContent>
+          </Tabs>
           {!["closed", "completed"].includes(task.status) && (
             <form
               onSubmit={(e) => {

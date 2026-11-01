@@ -8,6 +8,7 @@ import {
 } from "@mariozechner/pi-ai";
 import type { AgentName, AgentStreamEvent, ToolCallRecord } from "@agentdesk/shared";
 import type { ResolvedModel } from "./llm";
+import { createStreamUnmasker, maskJson, maskText, unmaskJson, type MaskStore } from "./masking";
 import {
   fromWireName,
   toPiTool,
@@ -41,6 +42,8 @@ export interface RunAgentOptions {
   recordArtifact?: (input: RecordArtifactInput) => RecordedArtifact;
   /** 可选：审批前先问一次能不能自动放行（规则匹配/分类器等）。不传时行为与现状完全一致。 */
   autoApprove?: AutoApprove;
+  /** 可选：发给模型前脱敏、拿到回复后换回真实值。同一次对话/任务的多轮、多委派 Agent 共用同一个 store。 */
+  mask?: MaskStore;
   signal?: AbortSignal;
 }
 
@@ -93,23 +96,40 @@ async function callModel(
   agent: AgentName,
   emit: RunAgentOptions["emit"],
   signal?: AbortSignal,
+  mask?: MaskStore,
 ): Promise<{ message: AssistantMessage; providerId: string }> {
+  const outboundContext = mask
+    ? {
+        ...context,
+        systemPrompt: context.systemPrompt
+          ? maskText(context.systemPrompt, mask)
+          : context.systemPrompt,
+        messages: maskJson(context.messages, mask),
+      }
+    : context;
   let lastError = "unknown error";
   for (const candidate of models) {
     for (let attempt = 0; attempt <= TRANSIENT_RETRIES; attempt++) {
       let produced = false;
       const callSignal = withTimeout(signal, MODEL_CALL_TIMEOUT_MS);
-      const events = stream(candidate.model, context, {
+      const events = stream(candidate.model, outboundContext, {
         apiKey: candidate.apiKey,
         signal: callSignal,
       });
+      // 占位符可能被流式输出切断在两个 delta 之间，缓冲到确认安全（不是未闭合的占位符前缀）再展示。
+      const unmasker = mask ? createStreamUnmasker(mask) : null;
       for await (const event of events) {
         if (event.type === "text_delta") {
           produced = true;
-          emit({ type: "text_delta", agent, delta: event.delta });
+          const delta = unmasker ? unmasker.push(event.delta) : event.delta;
+          if (delta) emit({ type: "text_delta", agent, delta });
         } else if (event.type === "toolcall_start") {
           produced = true;
         }
+      }
+      if (unmasker) {
+        const rest = unmasker.flush();
+        if (rest) emit({ type: "text_delta", agent, delta: rest });
       }
       const message = await events.result();
       if (message.stopReason === "aborted") {
@@ -118,7 +138,14 @@ async function callModel(
           "请求超时：请检查 设置 → 通用 → HTTP 代理（Claude Code 能通时通常需要填写 Clash 等本地代理，如 http://127.0.0.1:7890）";
         break;
       }
-      if (message.stopReason !== "error") return { message, providerId: candidate.providerId };
+      if (message.stopReason !== "error") {
+        // 整体反脱敏（含 ToolCall.arguments，覆盖模型原样复读占位符到工具调用参数的情况），
+        // 这个返回值会被 runAgent 推入对话历史、也会被 executeToolCall 直接拿去真正执行工具。
+        return {
+          message: mask ? unmaskJson(message, mask) : message,
+          providerId: candidate.providerId,
+        };
+      }
       lastError = message.errorMessage ?? lastError;
       if (produced) throw new Error(`模型调用失败：${lastError}`);
       if (!isTransient(lastError) || attempt === TRANSIENT_RETRIES) break;
@@ -178,6 +205,7 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentRunResult
       definition.name,
       emit,
       signal,
+      options.mask,
     );
     providerId = used;
     messages.push(message);
@@ -275,7 +303,9 @@ async function executeToolCall(
           ...described,
           risk,
           payload: { tool: name, args },
-          reason: auto.note ? { type: "classifier_declined", note: auto.note } : { type: "default" },
+          reason: auto.note
+            ? { type: "classifier_declined", note: auto.note }
+            : { type: "default" },
         });
         if (!approved) throw new Error("用户拒绝了该操作");
       }

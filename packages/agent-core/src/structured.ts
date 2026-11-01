@@ -1,6 +1,7 @@
 import { complete, type UserMessage } from "@mariozechner/pi-ai";
 import type { z } from "zod";
 import type { ResolvedModel } from "./llm";
+import { maskJson, maskText, unmaskText, type MaskStore } from "./masking";
 
 export interface CompleteOptions {
   models: ResolvedModel[];
@@ -8,25 +9,32 @@ export interface CompleteOptions {
   prompt: string | UserMessage["content"];
   signal?: AbortSignal;
   maxTokens?: number;
+  /** 可选：发给模型前脱敏、拿到回复后换回真实值。 */
+  mask?: MaskStore;
 }
 
 /** 普通单轮补全，带备用模型切换。 */
 export async function completeText(options: CompleteOptions): Promise<string> {
   let lastError = "没有可用的模型";
+  const systemPrompt = options.mask
+    ? maskText(options.systemPrompt, options.mask)
+    : options.systemPrompt;
+  const prompt = options.mask ? maskJson(options.prompt, options.mask) : options.prompt;
   for (const candidate of options.models) {
     const message = await complete(
       candidate.model,
       {
-        systemPrompt: options.systemPrompt,
-        messages: [{ role: "user", content: options.prompt, timestamp: Date.now() }],
+        systemPrompt,
+        messages: [{ role: "user", content: prompt, timestamp: Date.now() }],
       },
       { apiKey: candidate.apiKey, signal: options.signal, maxTokens: options.maxTokens },
     );
     if (message.stopReason !== "error" && message.stopReason !== "aborted") {
-      return message.content
+      const text = message.content
         .filter((c): c is { type: "text"; text: string } => c.type === "text")
         .map((c) => c.text)
         .join("");
+      return options.mask ? unmaskText(text, options.mask) : text;
     }
     lastError = message.errorMessage ?? lastError;
   }

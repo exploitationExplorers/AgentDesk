@@ -53,3 +53,30 @@ it("身份不匹配时拒绝转发，未知接口不能成为通用代理", asyn
   ).toBe(400);
   expect(fetcher).toHaveBeenCalledTimes(1);
 });
+it("放行 stream 路径并透传真实 SSE 响应头，不覆写成 JSON", async () => {
+  const fetcher = vi
+    .fn()
+    .mockResolvedValueOnce(Response.json({ instanceId: state.instanceId, pid: state.pid }))
+    .mockResolvedValueOnce(
+      new Response("data: hello\n\n", {
+        headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" },
+      }),
+    );
+  vi.stubGlobal("fetch", fetcher);
+  const response = await app.request("/api/cli-monitor/tasks/task-1/stream?token=desktop-token");
+  expect(response.status).toBe(200);
+  expect(response.headers.get("content-type")).toContain("text/event-stream");
+  expect(await response.text()).toContain("data: hello");
+});
+it("EventSource 重连时把 Last-Event-ID 请求头换算成 after 查询参数转发", async () => {
+  const fetcher = vi
+    .fn()
+    .mockResolvedValueOnce(Response.json({ instanceId: state.instanceId, pid: state.pid }))
+    .mockResolvedValueOnce(new Response("", { headers: { "Content-Type": "text/event-stream" } }));
+  vi.stubGlobal("fetch", fetcher);
+  await app.request("/api/cli-monitor/tasks/task-1/stream?token=desktop-token&after=0", {
+    headers: { "Last-Event-ID": "42" },
+  });
+  const forwardedUrl = fetcher.mock.calls[1]?.[0] as string;
+  expect(forwardedUrl).toContain("after=42");
+});

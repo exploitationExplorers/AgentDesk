@@ -18,6 +18,8 @@ export const AppSettings = z.object({
   diskOptionalAction: z.enum(["trash", "delete"]).default("trash"),
   /** 默认关闭：开启后，被判定为 dangerous 的 shell 命令会先问一次模型是否安全变体，命中则自动放行。 */
   bashClassifierEnabled: z.boolean().default(false),
+  /** 默认关闭：开启后，发给第三方模型前先脱敏（API Key/邮箱/手机号/身份证/信用卡号等），回复再换回真实值。 */
+  contentMaskingEnabled: z.boolean().default(false),
 });
 export type AppSettings = z.infer<typeof AppSettings>;
 
