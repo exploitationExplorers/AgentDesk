@@ -52,6 +52,11 @@ export function useChatStream(onConversation: (id: string) => void) {
       setLive({ userMessage: message, text: "", agent: null, steps: [], error: null });
 
       const apply = (event: AgentStreamEvent) => {
+        if (
+          ["model_usage", "context_compaction", "approval_required", "done"].includes(event.type)
+        ) {
+          void queryClient.invalidateQueries({ queryKey: ["session-workbench", convId] });
+        }
         if (event.type === "tool_call") {
           const sid = sessionIdFromBrowserTool(event.name, event.args);
           if (sid) openBrowserPanel(sid);
@@ -156,6 +161,7 @@ export function useChatStream(onConversation: (id: string) => void) {
       } finally {
         if (convId) await queryClient.invalidateQueries({ queryKey: ["messages", convId] });
         void queryClient.invalidateQueries({ queryKey: ["conversations"] });
+        void queryClient.invalidateQueries({ queryKey: ["session-workbench", convId] });
         if (controller.current === ctrl) {
           controller.current = null;
           setLive(null);

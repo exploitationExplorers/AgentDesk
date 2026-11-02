@@ -23,11 +23,12 @@ export function LowDiskDialog({ status }: { status: DiskStatus | undefined }) {
   const navigate = useNavigate();
   const avatar = useAppAvatar();
   const setPendingDiskScan = useUi((s) => s.setPendingDiskScan);
+  const setDiskVolume = useUi((s) => s.setDiskVolume);
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
     if (status?.low && !nagSilenced()) setOpen(true);
-  }, [status?.low]);
+  }, [status?.low, status?.volumePath]);
 
   if (!open || !status?.low) return null;
 
@@ -43,6 +44,7 @@ export function LowDiskDialog({ status }: { status: DiskStatus | undefined }) {
   const look = () => {
     silenceNag();
     setOpen(false);
+    setDiskVolume(status.volumePath);
     setPendingDiskScan(true);
     void navigate({ to: "/disk" });
   };
@@ -59,7 +61,7 @@ export function LowDiskDialog({ status }: { status: DiskStatus | undefined }) {
           <AppMark src={avatar} className="h-16 w-16" />
         </div>
         <h2 id="disk-nag-title" className="mt-5 text-[18px] font-semibold tracking-tight">
-          磁盘只剩 {formatGB(status.freeBytes)} 了
+          {status.volumePath} 只剩 {formatGB(status.freeBytes)} 了
         </h2>
         <p className="mx-auto mt-2 max-w-sm text-[13.5px] leading-6 text-muted">
           {`已经低于你定的 ${formatGB(status.thresholdBytes)}。要我帮你看看哪些能清掉吗？删哪些，你说了算。`}

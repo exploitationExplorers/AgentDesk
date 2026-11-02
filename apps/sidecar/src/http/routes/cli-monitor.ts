@@ -22,7 +22,7 @@ export function cliMonitorRoutes(
     const path = c.req.path.replace(/^.*\/cli-monitor/, "");
     const isStream = /^\/tasks\/[^/]+\/stream$/.test(path);
     const readable =
-      /^\/(tasks|projects|approvals)$|^\/tasks\/[^/]+(?:\/(events|runs|artifacts|stream))?$/.test(
+      /^\/(tasks|projects|approvals)$|^\/tasks\/[^/]+(?:\/(events|runs|artifacts|stream))?$|^\/tasks\/[^/]+\/artifacts\/[^/]+\/(content|download)$/.test(
         path,
       );
     const writable =
@@ -79,9 +79,22 @@ export function cliMonitorRoutes(
         signal: AbortSignal.timeout(10_000),
         body: c.req.method === "POST" ? await c.req.text() : undefined,
       });
+      const forwarded = new Headers({ "Content-Type": "application/json" });
+      if (/^\/tasks\/[^/]+\/artifacts\/[^/]+\/download$/.test(path)) {
+        for (const name of [
+          "Content-Type",
+          "Content-Disposition",
+          "Content-Security-Policy",
+          "X-Content-Type-Options",
+          "Cache-Control",
+        ]) {
+          const value = response.headers.get(name);
+          if (value) forwarded.set(name, value);
+        }
+      }
       return new Response(response.body, {
         status: response.status,
-        headers: { "Content-Type": "application/json" },
+        headers: forwarded,
       });
     } catch {
       throw new AppError(

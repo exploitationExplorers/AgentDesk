@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   AgentName,
   AppError,
+  ArtifactVersionInput,
   ErrorCode,
   RunTrigger,
   TaskStatus,
@@ -12,6 +13,8 @@ import type { Container } from "../../container";
 import { Collection } from "../../db/collection";
 import { newId, nowIso } from "../../util";
 import { taskChannelToSse } from "../task-sse";
+import { artifactDownloadName } from "../../services/artifact-files";
+import type { TaskService } from "../../services/tasks";
 
 const CreateTaskBody = z.object({
   goal: z.string().min(1),
@@ -47,6 +50,7 @@ export function taskRoutes({ tasks, approvals, hub, dbHandle, projectInstruction
     const body = CreateTaskBody.parse(await c.req.json());
     const workspace = await projectInstructions.validateWorkspace(body.workspace);
     let conversationId = body.conversationId;
+    if (conversationId) tasks.assertConversationAvailable(conversationId);
     if (!conversationId) {
       const conversation = conversations.put({
         id: newId(),
@@ -131,10 +135,7 @@ export function taskRoutes({ tasks, approvals, hub, dbHandle, projectInstruction
     return c.json(tasks.listRuns(c.req.param("id")));
   });
 
-  app.get("/tasks/:id/artifacts", (c) => {
-    if (!tasks.get(c.req.param("id"))) throw new AppError(ErrorCode.NotFound, "任务不存在");
-    return c.json(tasks.listArtifacts(c.req.param("id")));
-  });
+  app.route("/", artifactRoutes(tasks));
 
   app.get("/tasks/:id/stream", (c) => {
     const id = c.req.param("id");
@@ -230,5 +231,38 @@ export function taskRoutes({ tasks, approvals, hub, dbHandle, projectInstruction
     return c.json(tasks.requestCancel(id));
   });
 
+  return app;
+}
+
+export function artifactRoutes(tasks: TaskService) {
+  const app = new Hono();
+  app.get("/tasks/:id/artifacts", (c) => {
+    if (!tasks.get(c.req.param("id"))) throw new AppError(ErrorCode.NotFound, "任务不存在");
+    return c.json(tasks.listArtifacts(c.req.param("id")));
+  });
+  app.get("/tasks/:id/artifacts/:artifactId/content", async (c) =>
+    c.json(await tasks.readArtifact(c.req.param("id"), c.req.param("artifactId"))),
+  );
+  app.get("/tasks/:id/artifacts/:artifactId/download", async (c) => {
+    const view = await tasks.readArtifact(c.req.param("id"), c.req.param("artifactId"));
+    const bytes = Buffer.from(view.content, view.encoding === "base64" ? "base64" : "utf8");
+    return new Response(new Uint8Array(bytes), {
+      headers: {
+        "Content-Type": view.mimeType,
+        "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(artifactDownloadName(view.artifact))}`,
+        "Content-Security-Policy":
+          "sandbox; default-src 'none'; base-uri 'none'; form-action 'none'",
+        "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "no-store",
+      },
+    });
+  });
+  app.post("/tasks/:id/artifacts/:artifactId/versions", async (c) => {
+    const body = ArtifactVersionInput.parse(await c.req.json());
+    return c.json(
+      await tasks.reviseArtifact(c.req.param("id"), c.req.param("artifactId"), body),
+      201,
+    );
+  });
   return app;
 }

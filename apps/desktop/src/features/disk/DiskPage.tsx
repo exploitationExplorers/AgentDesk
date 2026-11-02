@@ -8,6 +8,7 @@ import {
   FolderOpen,
   Globe,
   Hand,
+  HardDrive,
   Settings,
   Sparkles,
   Trash2,
@@ -69,6 +70,8 @@ export function DiskPage() {
   const queryClient = useQueryClient();
   const pendingDiskScan = useUi((s) => s.pendingDiskScan);
   const setPendingDiskScan = useUi((s) => s.setPendingDiskScan);
+  const diskVolume = useUi((s) => s.diskVolume);
+  const setDiskVolume = useUi((s) => s.setDiskVolume);
   const settings = useQuery({ queryKey: ["settings"], queryFn: api.settings });
   const status = useQuery({
     queryKey: ["disk-status"],
@@ -81,6 +84,9 @@ export function DiskPage() {
     staleTime: 30_000,
     refetchOnWindowFocus: false,
   });
+  const volumePath = diskVolume ?? status.data?.volumePath;
+  const report = scan.data?.status.volumePath === volumePath ? scan.data : null;
+  const used = status.data?.volumes.find((volume) => volume.volumePath === volumePath);
   const [threshold, setThreshold] = useState("15");
   const [action, setAction] = useState<AppSettings["diskOptionalAction"]>("trash");
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -92,25 +98,27 @@ export function DiskPage() {
   const scanRequested = useRef(false);
 
   useEffect(() => {
+    if (!diskVolume && status.data) setDiskVolume(status.data.volumePath);
+  }, [diskVolume, status.data, setDiskVolume]);
+
+  useEffect(() => {
     if (!settings.data) return;
     setThreshold(String(settings.data.diskThresholdGB));
     setAction(settings.data.diskOptionalAction);
   }, [settings.data]);
 
   useEffect(() => {
-    const report = scan.data;
-    if (!report) return;
     setSelected(
       new Set(
-        report.items
+        (report?.items ?? [])
           .filter((item) => item.tier === "primary" && item.selectable)
           .map((item) => item.id),
       ),
     );
-  }, [scan.data]);
+  }, [report]);
 
   const runScan = useMutation({
-    mutationFn: api.scanDisk,
+    mutationFn: () => api.scanDisk(volumePath),
     onSuccess: (report) => {
       setReviewed(false);
       setNotice("");
@@ -131,7 +139,7 @@ export function DiskPage() {
       api.cleanDisk(input.scanId, input.ids),
     onSuccess: async (result) => {
       setNotice(
-        `已处理 ${result.cleaned.length} 项，约释放 ${formatGB(result.freedBytes)}。跳过 ${result.skipped.length} 项。`,
+        `已处理 ${result.cleaned.length} 项，约释放 ${formatGB(result.freedBytes)}。跳过 ${result.skipped.length} 项。${result.cleaned.some((item) => item.action === "trash") ? "移入回收站的文件需清空回收站后才释放空间。" : ""}`,
       );
       await queryClient.invalidateQueries({ queryKey: ["disk-scan"] });
       await queryClient.invalidateQueries({ queryKey: ["disk-status"] });
@@ -151,8 +159,8 @@ export function DiskPage() {
   });
   const reveal = useMutation({
     mutationFn: (id: string) => {
-      if (!scan.data) throw new Error("请先扫描");
-      return api.revealDisk(scan.data.id, id);
+      if (!report) throw new Error("请先扫描所选磁盘");
+      return api.revealDisk(report.id, id);
     },
   });
 
@@ -161,14 +169,13 @@ export function DiskPage() {
       scanRequested.current = false;
       return;
     }
-    if (scanRequested.current) return;
+    if (scanRequested.current || !volumePath) return;
     scanRequested.current = true;
     setPendingDiskScan(false);
     runScan.mutate();
-  }, [pendingDiskScan, setPendingDiskScan, runScan]);
+  }, [pendingDiskScan, setPendingDiskScan, runScan, volumePath]);
 
-  const report = scan.data ?? null;
-  const used = status.data ?? report?.status;
+  const busy = runScan.isPending || review.isPending || clean.isPending;
   const primary = report?.items.filter((item) => item.tier === "primary") ?? [];
   const optional = report?.items.filter((item) => item.tier === "optional") ?? [];
   const keep = report?.items.filter((item) => item.tier === "keep") ?? [];
@@ -177,10 +184,15 @@ export function DiskPage() {
   );
   const chosen = report?.items.filter((item) => selected.has(item.id) && item.selectable) ?? [];
   const chosenBytes = sumBytes(chosen);
+  const releasedBytes = sumBytes(
+    chosen.filter(
+      (item) => item.tier === "primary" || item.mode === "recycle" || action === "delete",
+    ),
+  );
   const free = used?.freeBytes ?? 0;
   const total = used?.totalBytes ?? 0;
   const thresholdBytes = used?.thresholdBytes ?? 0;
-  const after = free + chosenBytes;
+  const after = Math.min(total, free + releasedBytes);
   const backAbove = thresholdBytes > 0 && after >= thresholdBytes;
   const thresholdNumber = Number(threshold);
   const canSave =
@@ -237,24 +249,84 @@ export function DiskPage() {
             </Button>
             <Button
               variant="secondary"
-              disabled={!report || review.isPending}
+              disabled={!report || busy}
               loading={review.isPending}
               onClick={() => report && review.mutate(report)}
             >
               <Sparkles className="h-3.5 w-3.5" />让 Bot 复核
             </Button>
-            <Button loading={runScan.isPending} onClick={() => runScan.mutate()}>
+            <Button
+              disabled={busy || !used}
+              loading={runScan.isPending}
+              onClick={() => runScan.mutate()}
+            >
               {report ? "重新扫描" : "扫描"}
             </Button>
           </div>
         </div>
+
+        <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3" aria-label="选择磁盘">
+          {status.data?.volumes.map((volume) => (
+            <button
+              key={volume.volumePath}
+              type="button"
+              aria-pressed={volumePath === volume.volumePath}
+              disabled={busy}
+              onClick={() => {
+                setDiskVolume(volume.volumePath);
+                setNotice("");
+                setReviewed(false);
+                setKeepOpen(false);
+                runScan.reset();
+                review.reset();
+                clean.reset();
+              }}
+              className={cn(
+                "rounded-2xl border px-4 py-3 text-left transition-colors disabled:opacity-60",
+                volumePath === volume.volumePath
+                  ? "border-brand bg-brand/10"
+                  : "bg-surface hover:bg-surface-2",
+              )}
+            >
+              <div className="flex items-center gap-2 text-[13px] font-medium">
+                <HardDrive className="h-4 w-4 shrink-0" />
+                <span className="truncate">
+                  {volume.volumePath} {volume.label !== volume.volumePath ? volume.label : ""}
+                </span>
+                {volume.low ? <Badge tone="warning">空间不足</Badge> : null}
+                {volume.volumePath === status.data?.volumePath ? (
+                  <Badge tone="neutral">优先关注</Badge>
+                ) : null}
+              </div>
+              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-surface-2">
+                <div
+                  className={cn("h-full rounded-full", volume.low ? "bg-danger" : "bg-brand")}
+                  style={{
+                    width: `${volume.totalBytes > 0 ? Math.min(100, (volume.usedBytes / volume.totalBytes) * 100) : 0}%`,
+                  }}
+                />
+              </div>
+              <p className="mt-2 text-[12px] text-subtle">
+                剩余 {formatGB(volume.freeBytes)} / 共 {formatGB(volume.totalBytes)}
+              </p>
+            </button>
+          ))}
+        </div>
+        {diskVolume && status.data && !used ? (
+          <p className="mb-4 text-[12.5px] text-warning">
+            所选磁盘已断开或不可读，请选择其他磁盘。
+          </p>
+        ) : null}
+        <p className="mb-3 text-[12.5px] text-subtle">
+          {volumePath ? `正在查看 ${volumePath}，扫描和清理仅针对这个磁盘。` : "正在检测本机磁盘…"}
+        </p>
 
         <div className="grid items-stretch gap-3 lg:grid-cols-[210px_1fr_1fr_1fr]">
           <Card className="flex flex-col items-center justify-center px-4 py-5">
             <UsageRing
               total={total}
               free={free}
-              selected={chosenBytes}
+              selected={releasedBytes}
               threshold={thresholdBytes}
             />
             <div className="mt-1 text-center">
@@ -288,9 +360,9 @@ export function DiskPage() {
             tone={used?.low ? "danger" : "default"}
           />
           <Stat
-            label="勾选后可释放"
-            value={formatGB(chosenBytes)}
-            hint={`已选 ${chosen.length} 项`}
+            label="预计立即释放"
+            value={formatGB(releasedBytes)}
+            hint={`已选 ${chosen.length} 项${action === "trash" ? " · 移入回收站暂不释放" : ""}`}
             tone="success"
           />
           <Stat
@@ -313,6 +385,42 @@ export function DiskPage() {
                 <p className="mt-0.5 text-[12.5px] leading-5 text-muted">{report.summary}</p>
               </div>
             </div>
+            {report.usage.length > 0 ? (
+              <Card className="px-4 py-4">
+                <h2 className="text-[13px] font-medium">主要空间占用</h2>
+                <p className="mt-1 text-[12px] text-subtle">
+                  按已统计大小排序。目录仅展示占用，大文件在下方单独确认。
+                </p>
+                <div className="mt-3 grid gap-3">
+                  {report.usage.slice(0, 8).map((entry) => (
+                    <div key={entry.path}>
+                      <div className="flex justify-between gap-4 text-[12px]">
+                        <span className="truncate" title={entry.path}>
+                          {entry.path}
+                        </span>
+                        <span className="shrink-0 text-muted">
+                          {entry.truncated ? "至少 " : ""}
+                          {formatGB(entry.bytes)}
+                        </span>
+                      </div>
+                      <div className="mt-1 h-1 overflow-hidden rounded-full bg-surface-2">
+                        <div
+                          className="h-full rounded-full bg-brand/60"
+                          style={{
+                            width: `${(entry.bytes / Math.max(1, report.usage[0]?.bytes ?? 1)) * 100}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            ) : null}
+            {report.partial ? (
+              <p className="text-[12px] text-warning">
+                部分内容因权限、受保护目录或扫描上限未完整统计，显示的大小可能低于实际占用。
+              </p>
+            ) : null}
             {backAbove ? (
               <div className="flex items-center gap-2 rounded-xl bg-success/15 px-4 py-2.5 text-[13px] text-success">
                 <Check className="h-4 w-4" />
@@ -417,7 +525,11 @@ export function DiskPage() {
             title={scan.isLoading || runScan.isPending ? "正在扫描" : "还没有扫描"}
             description="扫描只统计大小。可重建缓存会直接删除，需要你决定的项默认进回收站。"
             action={
-              <Button loading={runScan.isPending} onClick={() => runScan.mutate()}>
+              <Button
+                disabled={busy || !used}
+                loading={runScan.isPending}
+                onClick={() => runScan.mutate()}
+              >
                 开始扫描
               </Button>
             }
@@ -450,7 +562,7 @@ export function DiskPage() {
           </div>
           <Button
             variant="primary"
-            disabled={!report || chosen.length === 0 || clean.isPending}
+            disabled={!report || !used || chosen.length === 0 || busy}
             loading={clean.isPending}
             onClick={() => {
               if (!report) return;
@@ -725,7 +837,13 @@ function DiskRow({
           {days !== null && days >= 30 ? <Badge tone="danger">{days} 天未使用</Badge> : null}
           {days !== null && days < 30 ? <Badge>{days} 天未修改</Badge> : null}
           {tone === "optional" ? (
-            <Badge tone="warning">{action === "trash" ? "移到回收站" : "直接删除"}</Badge>
+            <Badge tone="warning">
+              {item.mode === "recycle"
+                ? "清空所选盘回收站"
+                : action === "trash"
+                  ? "移到回收站"
+                  : "直接删除"}
+            </Badge>
           ) : null}
           {tone === "keep" ? <Badge>不清理</Badge> : null}
         </div>

@@ -1,10 +1,12 @@
-import { and, asc, eq, gt, max } from "drizzle-orm";
+import { and, asc, eq, gt, inArray } from "drizzle-orm";
+import { resolve } from "node:path";
 import {
   AppError,
   ErrorCode,
   type AgentName,
   type Artifact,
   type ArtifactKind,
+  type ArtifactVersionInput,
   type Run,
   type RunKind,
   type RunStatus,
@@ -14,6 +16,8 @@ import {
   type TaskStreamEvent,
   type ToolCallRecord,
 } from "@agentdesk/shared";
+import { artifactContent } from "./artifact-files";
+import { conversationActivity } from "./conversation-activity";
 import type { Db } from "../db/client";
 import { Collection } from "../db/collection";
 import type { EventHub } from "../events";
@@ -43,6 +47,7 @@ export interface TaskCreateInput {
   agent?: AgentName | null;
   conversationId: string;
   requiresPlanApproval: boolean;
+  purpose?: Task["purpose"];
 }
 
 export interface CreateRunInput {
@@ -53,6 +58,9 @@ export interface CreateRunInput {
   trigger: RunTrigger;
   idempotencyKey?: string | null;
   input: { userMessage: string; context?: string; workspace?: string };
+  inheritWorkspace?: boolean;
+  /** 仅供已持有本会话执行锁的内部聊天入口使用，仍须通过活动 Run 校验。 */
+  conversationLockHeld?: boolean;
 }
 
 export interface RecordArtifactInput {
@@ -64,6 +72,7 @@ export interface RecordArtifactInput {
   filePath?: string | null;
   mimeType?: string | null;
   metadata?: unknown;
+  artifactKey?: string;
 }
 
 export interface AppendEventInput {
@@ -135,6 +144,7 @@ export class TaskService {
     const now = nowIso();
     return this.tasks.put({
       id: newId(),
+      ...(input.purpose ? { purpose: input.purpose } : {}),
       title: input.title?.trim() || input.goal.slice(0, 40),
       goal: input.goal,
       agent: input.agent ?? null,
@@ -163,6 +173,26 @@ export class TaskService {
     return this.tasks.list().find((t) => t.conversationId === conversationId);
   }
 
+  /** 创建根 Run 前检查整段会话，避免排队或执行中的任务被续跑请求覆盖。 */
+  assertConversationAvailable(conversationId: string, conversationLockHeld = false): void {
+    const activity = conversationActivity(conversationId);
+    if (activity && !(conversationLockHeld && activity === "running")) {
+      throw new AppError(ErrorCode.Conflict, "会话正在执行或压缩，请稍后再试");
+    }
+    const taskIds = this.tasks
+      .list()
+      .filter((task) => task.conversationId === conversationId)
+      .map((task) => task.id);
+    if (taskIds.length === 0) return;
+    const activeRun = this.db
+      .select({ id: runs.id })
+      .from(runs)
+      .where(and(inArray(runs.taskId, taskIds), inArray(runs.status, ["queued", "running"])))
+      .get();
+    if (activeRun)
+      throw new AppError(ErrorCode.Conflict, "会话已有排队或执行中的任务，请等待结束后再继续");
+  }
+
   transition(id: string, nextStatus: TaskStatus): Task {
     const task = this.tasks.get(id);
     if (!task) throw new AppError(ErrorCode.NotFound, "任务不存在");
@@ -185,23 +215,40 @@ export class TaskService {
         .from(runs)
         .where(eq(runs.idempotencyKey, input.idempotencyKey))
         .get();
-      if (existing) return this.toRun(existing);
+      if (existing) {
+        if (existing.taskId !== input.taskId)
+          throw new AppError(ErrorCode.Conflict, "幂等键已用于其他任务");
+        return this.toRun(existing);
+      }
     }
+    const task = this.tasks.get(input.taskId);
+    if (!task) throw new AppError(ErrorCode.NotFound, "任务不存在");
     if (input.kind === "root") {
-      const task = this.tasks.get(input.taskId);
-      if (task?.status === "awaiting_plan_approval") {
+      if (task.status === "closed")
+        throw new AppError(ErrorCode.Conflict, "任务已关闭，不能新建运行");
+      if (
+        task.purpose === "reference_analysis" &&
+        (input.trigger !== "create" || this.listRuns(task.id).length > 0)
+      ) {
+        throw new AppError(
+          ErrorCode.Conflict,
+          "资料分析不能直接续跑，请重新提交资料或选择建议创建开发任务",
+        );
+      }
+      this.assertConversationAvailable(task.conversationId, input.conversationLockHeld);
+      if (task.status === "awaiting_plan_approval") {
         if (input.trigger !== "followup") {
           throw new AppError(ErrorCode.Conflict, "方案尚未批准，无法开始执行");
         }
         this.safeTransition(input.taskId, "planning");
       }
     }
-    const task = this.tasks.get(input.taskId);
-    const previousRunId = input.parentRunId ?? task?.currentRunId;
+    const previousRunId = input.parentRunId ?? task.currentRunId;
     const inheritedWorkspace = previousRunId
       ? this.getRun(previousRunId)?.input.workspace
       : undefined;
-    const workspace = input.input.workspace ?? inheritedWorkspace;
+    const workspace =
+      input.input.workspace ?? (input.inheritWorkspace === false ? undefined : inheritedWorkspace);
     const row = {
       id: newId(),
       taskId: input.taskId,
@@ -334,7 +381,12 @@ export class TaskService {
   private async executeRun(run: Run, controller: AbortController): Promise<void> {
     const task = this.tasks.get(run.taskId);
     const started = this.updateRunRow(run.id, { status: "running", startedAt: nowIso() });
-    if (task) this.safeTransition(task.id, "running");
+    if (task) {
+      // 续跑必须先回到队列态，否则失败/取消的任务会拒绝 running 和最终成功状态。
+      if (["pending", "failed", "cancelled"].includes(task.status))
+        this.safeTransition(task.id, "queued");
+      this.safeTransition(task.id, "running");
+    }
     try {
       const result = await this.executor(started, task!, controller.signal);
       this.finalizeRun(started, result);
@@ -502,7 +554,19 @@ export class TaskService {
   }
 
   recordArtifact(input: RecordArtifactInput): Artifact {
-    const version = this.nextArtifactVersion(input.taskId, input.kind);
+    if (!this.get(input.taskId)) throw new AppError(ErrorCode.NotFound, "任务不存在");
+    if (input.runId && this.getRun(input.runId)?.taskId !== input.taskId) {
+      throw new AppError(ErrorCode.BadRequest, "成果运行不属于当前任务");
+    }
+    const metadata =
+      input.metadata && typeof input.metadata === "object" && !Array.isArray(input.metadata)
+        ? (input.metadata as Record<string, unknown>)
+        : {};
+    const key =
+      input.artifactKey ??
+      (typeof metadata.artifactKey === "string" ? metadata.artifactKey : undefined) ??
+      this.artifactKey(input.kind, input.filePath);
+    const version = this.nextArtifactVersion(input.taskId, key);
     const row = {
       id: newId(),
       taskId: input.taskId,
@@ -513,7 +577,7 @@ export class TaskService {
       content: input.content ?? null,
       filePath: input.filePath ?? null,
       mimeType: input.mimeType ?? null,
-      metadata: input.metadata ?? null,
+      metadata: { ...metadata, artifactKey: key },
       createdAt: nowIso(),
     };
     this.db.insert(artifacts).values(row).run();
@@ -522,6 +586,61 @@ export class TaskService {
 
   latestArtifact(taskId: string, kind: ArtifactKind): Artifact | undefined {
     return this.listArtifacts(taskId, kind).at(-1);
+  }
+
+  getArtifact(taskId: string, id: string): Artifact {
+    const row = this.db
+      .select()
+      .from(artifacts)
+      .where(and(eq(artifacts.id, id), eq(artifacts.taskId, taskId)))
+      .get();
+    if (!row || !this.get(taskId))
+      throw new AppError(ErrorCode.NotFound, "成果不存在或不属于当前任务");
+    return this.toArtifact(row);
+  }
+
+  async readArtifact(taskId: string, id: string) {
+    const artifact = this.getArtifact(taskId, id);
+    const run = artifact.runId ? this.getRun(artifact.runId) : undefined;
+    if (run && run.taskId !== taskId)
+      throw new AppError(ErrorCode.BadRequest, "成果运行不属于当前任务");
+    return artifactContent(artifact, run?.input.workspace);
+  }
+
+  async reviseArtifact(taskId: string, id: string, input: ArtifactVersionInput): Promise<Artifact> {
+    const view = await this.readArtifact(taskId, id);
+    if (!view.editable) throw new AppError(ErrorCode.BadRequest, "该成果不支持文本编辑");
+    if (Buffer.byteLength(input.content, "utf8") > 2 * 1024 * 1024) {
+      throw new AppError(ErrorCode.BadRequest, "成果正文不能超过 2 MB");
+    }
+    return this.db.transaction(() => {
+      const current = this.getArtifact(taskId, id);
+      const latest = this.listArtifacts(taskId)
+        .filter((item) => item.artifactKey === current.artifactKey)
+        .at(-1);
+      if (
+        !latest ||
+        current.version !== input.baseVersion ||
+        latest.version !== input.baseVersion
+      ) {
+        throw new AppError(ErrorCode.Conflict, "成果已更新，请切换到最新版本后再保存");
+      }
+      return this.recordArtifact({
+        taskId,
+        runId: current.runId,
+        kind: current.kind,
+        title: input.title ?? current.title,
+        content: input.content,
+        filePath: current.filePath,
+        mimeType: view.mimeType,
+        artifactKey: current.artifactKey,
+        metadata: {
+          ...(current.metadata as Record<string, unknown> | null),
+          editedBy: "user",
+          baseArtifactId: current.id,
+        },
+      });
+    });
   }
 
   /**
@@ -540,18 +659,24 @@ export class TaskService {
       .select()
       .from(artifacts)
       .where(condition)
-      .orderBy(asc(artifacts.version))
+      .orderBy(asc(artifacts.createdAt), asc(artifacts.version))
       .all()
       .map((row) => this.toArtifact(row));
   }
 
-  private nextArtifactVersion(taskId: string, kind: ArtifactKind): number {
-    const result = this.db
-      .select({ maxVersion: max(artifacts.version) })
-      .from(artifacts)
-      .where(and(eq(artifacts.taskId, taskId), eq(artifacts.kind, kind)))
-      .get();
-    return (result?.maxVersion ?? 0) + 1;
+  private nextArtifactVersion(taskId: string, key: string): number {
+    return (
+      this.listArtifacts(taskId).reduce(
+        (version, item) => (item.artifactKey === key ? Math.max(version, item.version) : version),
+        0,
+      ) + 1
+    );
+  }
+
+  private artifactKey(kind: ArtifactKind, filePath?: string | null): string {
+    if (!filePath) return kind;
+    const normalized = resolve(filePath);
+    return `${kind}:${process.platform === "win32" ? normalized.toLowerCase() : normalized}`;
   }
 
   private toRun(row: typeof runs.$inferSelect): Run {
@@ -567,10 +692,15 @@ export class TaskService {
   }
 
   private toArtifact(row: typeof artifacts.$inferSelect): Artifact {
+    const metadata = row.metadata as Record<string, unknown> | null;
     return {
       ...row,
       kind: row.kind as ArtifactKind,
       metadata: row.metadata as Artifact["metadata"],
+      artifactKey:
+        typeof metadata?.artifactKey === "string"
+          ? metadata.artifactKey
+          : this.artifactKey(row.kind as ArtifactKind, row.filePath),
     };
   }
 }

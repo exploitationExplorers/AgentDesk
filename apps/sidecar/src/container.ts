@@ -17,6 +17,8 @@ import { createAutoApprove } from "./services/auto-approve";
 import { BrowserService } from "./services/browser";
 import { ChatService } from "./services/chat";
 import { ConversationStore } from "./services/conversation-store";
+import { ConversationContextService } from "./services/conversation-context";
+import { ProjectInsightService } from "./services/project-insights";
 import { DeployService } from "./services/deploy";
 import { DiskService } from "./services/disk";
 import { FeedService } from "./services/feed";
@@ -52,6 +54,8 @@ export interface Container {
   wechat: WechatReportService | null;
   orchestrator: Orchestrator;
   chat: ChatService;
+  context: ConversationContextService;
+  insights: ProjectInsightService;
   tasks: TaskService;
   workflows: WorkflowService;
   scheduler: Scheduler;
@@ -144,11 +148,13 @@ export async function createContainer(
   // executor 内部让出一次微任务后才会用到它，构造完成时机已经晚于下面的赋值。
   const lazyTasks: { current?: TaskService } = {};
   const conversationStore = new ConversationStore(db);
+  const context = new ConversationContextService(db, providers, { maskFactory });
   const taskExecutor = createOrchestratorExecutor({
     getTasks: () => lazyTasks.current!,
     orchestrator,
     approvals,
     conversationStore,
+    context,
     registry,
     projectInstructions,
     autoApprove,
@@ -166,6 +172,8 @@ export async function createContainer(
     autoApprove,
     maskFactory,
   );
+  chat.setContextService(context);
+  const insights = new ProjectInsightService(db, projects, tasks, providers, maskFactory);
   const scheduler = new Scheduler(db, settings, feed, workflows);
 
   return {
@@ -188,12 +196,15 @@ export async function createContainer(
     wechat,
     orchestrator,
     chat,
+    context,
+    insights,
     tasks,
     workflows,
     scheduler,
     registry,
     dispose: async () => {
       scheduler.stop();
+      await insights.dispose();
       await browserManager.closeAll();
       dbHandle.close();
     },

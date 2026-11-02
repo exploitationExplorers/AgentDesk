@@ -1,7 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Download, KeyRound, Plus, Trash2, XCircle, Zap } from "lucide-react";
 import { useState } from "react";
-import type { Provider, ProviderApi, ProviderCandidate } from "@agentdesk/shared";
+import {
+  ModelLimits,
+  type Provider,
+  type ProviderApi,
+  type ProviderCandidate,
+} from "@agentdesk/shared";
 import {
   Badge,
   Button,
@@ -35,15 +40,53 @@ function ProviderDialog({
     models: provider?.models.join(", ") ?? "",
     apiKey: "",
   });
+  const [limits, setLimits] = useState<
+    Record<string, { contextWindow: string; maxOutputTokens: string }>
+  >(() =>
+    Object.fromEntries(
+      Object.entries(provider?.modelLimits ?? {}).map(([model, value]) => [
+        model,
+        {
+          contextWindow: String(value.contextWindow),
+          maxOutputTokens: String(value.maxOutputTokens),
+        },
+      ]),
+    ),
+  );
+  const currentModels = [...new Set(form.models.split(/[,\s]+/).filter(Boolean))];
+  const updateLimit = (model: string, key: "contextWindow" | "maxOutputTokens", value: string) => {
+    setLimits((previous) => ({
+      ...previous,
+      [model]: {
+        contextWindow: previous[model]?.contextWindow ?? "",
+        maxOutputTokens: previous[model]?.maxOutputTokens ?? "",
+        [key]: value,
+      },
+    }));
+  };
   const save = useMutation({
     mutationFn: () => {
-      const models = form.models.split(/[,\s]+/).filter(Boolean);
+      const models = currentModels;
+      const modelLimits: Record<string, ModelLimits> = {};
+      for (const [model, value] of Object.entries(limits)) {
+        if (!value.contextWindow && !value.maxOutputTokens) continue;
+        const parsed = ModelLimits.safeParse({
+          contextWindow: Number(value.contextWindow || 32768),
+          maxOutputTokens: Number(value.maxOutputTokens || 4096),
+        });
+        if (!parsed.success)
+          throw new Error(
+            `${model}：上下文窗口需为 4,096–2,000,000 的整数，输出上限需为 256–200,000 的整数，且小于窗口的一半。`,
+          );
+        modelLimits[model] = parsed.data;
+      }
       const payload = {
         name: form.name,
         api: form.api,
         baseUrl: form.baseUrl,
         models,
         defaultModel: models[0] ?? "",
+        modelLimits,
         source: provider?.source ?? ("manual" as const),
         enabled: provider?.enabled ?? true,
         apiKey: form.apiKey || undefined,
@@ -52,6 +95,7 @@ function ProviderDialog({
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["providers"] });
+      void queryClient.invalidateQueries({ queryKey: ["session-workbench"] });
       onOpenChange(false);
     },
   });
@@ -157,6 +201,52 @@ function ProviderDialog({
               );
             })}
           </div>
+        ) : null}
+        {currentModels.length > 0 ? (
+          <details className="rounded-xl border p-3">
+            <summary className="cursor-pointer text-[13px] font-medium">模型容量设置</summary>
+            <p className="mt-2 text-[12px] text-muted">
+              按服务商提供的模型容量填写，单位为 token。未填写时使用 32,768 的上下文窗口和 4,096
+              的输出上限；两项清空可恢复默认。
+            </p>
+            <div className="mt-3 grid max-h-64 gap-4 overflow-y-auto">
+              {currentModels.map((model) => (
+                <div key={model} className="grid gap-2">
+                  <p className="break-all font-mono text-[12px]">{model}</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="上下文窗口">
+                      <Input
+                        aria-label={`${model} 上下文窗口`}
+                        type="number"
+                        min={4096}
+                        max={2000000}
+                        step={1}
+                        value={limits[model]?.contextWindow ?? ""}
+                        placeholder="32768"
+                        onChange={(event) =>
+                          updateLimit(model, "contextWindow", event.target.value)
+                        }
+                      />
+                    </Field>
+                    <Field label="最大输出">
+                      <Input
+                        aria-label={`${model} 最大输出`}
+                        type="number"
+                        min={256}
+                        max={200000}
+                        step={1}
+                        value={limits[model]?.maxOutputTokens ?? ""}
+                        placeholder="4096"
+                        onChange={(event) =>
+                          updateLimit(model, "maxOutputTokens", event.target.value)
+                        }
+                      />
+                    </Field>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </details>
         ) : null}
         <Field label="API Key" hint={provider?.hasKey ? "已保存密钥，留空表示不修改" : undefined}>
           <Input

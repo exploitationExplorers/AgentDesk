@@ -1,7 +1,7 @@
 import { execFile, spawn } from "node:child_process";
 import { statfsSync } from "node:fs";
 import { lstat, readdir, realpath, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
 import { completeStructured, type ModelResolver } from "@agentdesk/agent-core";
@@ -17,6 +17,8 @@ import {
   type DiskScan,
   type DiskStatus,
   type DiskTier as DiskTierValue,
+  type DiskVolume,
+  type DiskUsageEntry,
 } from "@agentdesk/shared";
 import { newId } from "../util";
 import type { SettingsService } from "./settings";
@@ -29,6 +31,7 @@ import {
   genericCacheRoots,
   isProtectedPath,
   isSafeDeletionTarget,
+  isStrictChild,
   pathKey,
   protectedPrefixes,
   userContentRoots,
@@ -36,6 +39,8 @@ import {
   type DiskLimits,
   type DiskRule,
 } from "./disk-rules";
+import { discoverVolumes, volumeForPath, type VolumeRoot } from "./disk-volumes";
+import { inspectVolume } from "./disk-inventory";
 
 const execFileAsync = promisify(execFile);
 const SCAN_TTL_MS = 30 * 60_000;
@@ -65,6 +70,8 @@ interface StoredScan {
   at: number;
   partial: boolean;
   items: InternalItem[];
+  status: DiskStatus;
+  usage: DiskUsageEntry[];
 }
 
 interface Measured {
@@ -94,6 +101,8 @@ export interface DiskServiceOptions {
   extraProtected?: string[];
   /** 测试里关闭，避免碰到本机回收站 */
   systemTrash?: boolean;
+  /** 测试时注入临时目录，避免扫描真实磁盘。 */
+  volumes?: VolumeRoot[];
 }
 
 /**
@@ -105,6 +114,7 @@ export class DiskService {
   private readonly limits: DiskLimits;
   private readonly extraProtected: string[];
   private readonly systemTrash: boolean;
+  private readonly volumes?: VolumeRoot[];
   private latest: StoredScan | null = null;
 
   constructor(
@@ -116,29 +126,70 @@ export class DiskService {
     this.limits = options.limits ?? DEFAULT_DISK_LIMITS;
     this.extraProtected = options.extraProtected ?? [];
     this.systemTrash = options.systemTrash ?? true;
+    this.volumes = options.volumes;
   }
 
-  status(): DiskStatus {
-    let stats: ReturnType<typeof statfsSync>;
+  async status(volumePath?: string): Promise<DiskStatus> {
+    let roots: VolumeRoot[];
     try {
-      stats = statfsSync(this.env.home);
+      roots = this.volumes ?? (await discoverVolumes(this.env));
     } catch (error) {
       const message = error instanceof Error ? error.message : "无法读取磁盘空间";
       throw new AppError(ErrorCode.IntegrationFailed, message);
     }
-    const totalBytes = Math.max(0, Number(stats.blocks) * Number(stats.bsize));
-    const freeBytes = Math.max(0, Number(stats.bavail) * Number(stats.bsize));
     const thresholdBytes = this.settings.get().diskThresholdGB * 1024 ** 3;
+    const homeVolume = volumeForPath(this.env.home, roots, this.env);
+    const volumes: DiskVolume[] = [];
+    for (const root of roots) {
+      if (
+        volumes.some(
+          (volume) =>
+            pathKey(volume.volumePath, this.env.platform) === pathKey(root.path, this.env.platform),
+        )
+      )
+        continue;
+      try {
+        const stats = statfsSync(root.path);
+        const totalBytes = Math.max(0, Number(stats.blocks) * Number(stats.bsize));
+        const freeBytes = Math.max(
+          0,
+          Math.min(totalBytes, Number(stats.bavail) * Number(stats.bsize)),
+        );
+        if (!Number.isFinite(totalBytes) || totalBytes <= 0 || !Number.isFinite(freeBytes))
+          continue;
+        volumes.push({
+          volumePath: root.path,
+          label: root.label || root.path,
+          isHome: root === homeVolume,
+          totalBytes,
+          freeBytes,
+          usedBytes: totalBytes - freeBytes,
+          thresholdBytes,
+          low: freeBytes < thresholdBytes,
+        });
+      } catch {
+        // 移动盘可能在枚举后断开，忽略不可读卷。
+      }
+    }
+    const selected = volumePath
+      ? volumes.find(
+          (volume) =>
+            pathKey(volume.volumePath, this.env.platform) ===
+            pathKey(volumePath, this.env.platform),
+        )
+      : [...volumes].sort(
+          (a, b) =>
+            Number(b.low) - Number(a.low) ||
+            a.freeBytes / a.totalBytes - b.freeBytes / b.totalBytes ||
+            Number(b.isHome) - Number(a.isHome),
+        )[0];
+    if (!selected) throw new AppError(ErrorCode.BadRequest, "磁盘不可用，请刷新后选择本机磁盘");
     const platform = this.env.platform;
     return {
+      ...selected,
       platform:
         platform === "win32" || platform === "darwin" || platform === "linux" ? platform : "other",
-      volumePath: this.env.home,
-      totalBytes,
-      freeBytes,
-      usedBytes: Math.max(0, totalBytes - freeBytes),
-      thresholdBytes,
-      low: freeBytes < thresholdBytes,
+      volumes,
     };
   }
 
@@ -147,7 +198,19 @@ export class DiskService {
     return scan ? this.toPublic(scan) : null;
   }
 
-  async scan(): Promise<DiskScan> {
+  async scan(volumePath?: string): Promise<DiskScan> {
+    const status = await this.status(volumePath);
+    const roots = status.volumes.map((volume) => ({
+      path: volume.volumePath,
+      label: volume.label,
+    }));
+    const volume = { path: status.volumePath, label: status.label };
+    const belongs = (target: string) => {
+      const owner = volumeForPath(target, roots, this.env);
+      return (
+        owner && pathKey(owner.path, this.env.platform) === pathKey(volume.path, this.env.platform)
+      );
+    };
     const prefixes = this.prefixes();
     const items: InternalItem[] = [];
     const seen = new Set<string>();
@@ -170,15 +233,28 @@ export class DiskService {
         hasGit?: boolean;
       },
     ) => {
+      if (!belongs(target)) return;
       if (budget.left <= 0) {
         partial = true;
         return;
       }
-      const added = await this.considerPath(target, spec, prefixes, budget, nextId);
+      const added = await this.considerPath(target, spec, prefixes, budget, nextId, volume.path);
       if (!added) return;
+      if (!belongs(added.realPath)) return;
       if (added.truncated) partial = true;
       const key = pathKey(added.realPath, this.env.platform);
-      if (seen.has(key)) return;
+      // 避免父目录与缓存子项重复计入可释放空间。
+      if (
+        seen.has(key) ||
+        items.some(
+          (item) =>
+            item.tier !== "keep" &&
+            added.tier !== "keep" &&
+            (isStrictChild(item.realPath, added.realPath, this.env.platform) ||
+              isStrictChild(added.realPath, item.realPath, this.env.platform)),
+        )
+      )
+        return;
       seen.add(key);
       items.push(added);
     };
@@ -212,13 +288,46 @@ export class DiskService {
     }
     await this.collectGeneric(consider, prefixes);
     await this.collectUserFiles(consider);
+    // 为候选的最终路径校验保留预算，目录统计和清理列表分别展示。
+    const inventoryBudget = { left: Math.max(0, budget.left - 200) };
+    const inventory = await inspectVolume(
+      volume,
+      roots,
+      this.env,
+      prefixes,
+      this.limits,
+      inventoryBudget,
+    );
+    partial ||= inventory.partial;
+    budget.left = Math.min(budget.left, 200) + inventoryBudget.left;
+    for (const file of inventory.files) {
+      await consider(file.path, {
+        title: basename(file.path),
+        category: "user",
+        tier: file.retain ? "keep" : "optional",
+        mode: "whole",
+        regenerable: false,
+        locked: true,
+        minBytes: this.limits.largeFileMinBytes,
+        reason: file.retain
+          ? "项目、程序或数据文件，仅展示占用，建议在对应应用中管理"
+          : "所选磁盘中的大文件，确认不再需要后再清理",
+      });
+    }
     if (this.systemTrash) {
-      const trash = await this.trashItem(nextId);
+      const trash = await this.trashItem(nextId, status);
       if (trash) items.push(trash);
     }
 
     items.sort((a, b) => b.bytes - a.bytes);
-    const stored: StoredScan = { id: newId(), at: Date.now(), partial, items };
+    const stored: StoredScan = {
+      id: newId(),
+      at: Date.now(),
+      partial,
+      items,
+      status,
+      usage: inventory.usage,
+    };
     this.latest = stored;
     return this.toPublic(stored);
   }
@@ -253,7 +362,12 @@ export class DiskService {
 硬规则：protected 或 hasGit 必须是 keep；category 为 user 的最高只能是 optional；regenerable 为 false 的不能是 primary；不能把档位改得比当前 tier 更激进。
 拿不准就保持原档位。title 不超过 16 个字，reason 不超过 40 个字。summary 不超过 60 个字，说明大约能释放多少、最大头是什么。
 只输出 JSON。`,
-        prompt: JSON.stringify(payload),
+        prompt: JSON.stringify({
+          volume: scan.status,
+          usage: scan.usage.slice(0, 20),
+          items: payload,
+          partial: scan.partial,
+        }),
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "模型复核失败";
@@ -280,6 +394,7 @@ export class DiskService {
 
   async clean(input: DiskCleanRequest): Promise<DiskCleanResult> {
     const scan = this.requireScan(input.scanId);
+    await this.status(scan.status.volumePath);
     const action = this.settings.get().diskOptionalAction;
     const result: DiskCleanResult = { freedBytes: 0, cleaned: [], skipped: [] };
     const wanted = new Set(input.ids);
@@ -289,7 +404,7 @@ export class DiskService {
         result.skipped.push({ id, path: "", reason: "不在本次扫描结果里" });
         continue;
       }
-      const outcome = await this.cleanOne(item, action);
+      const outcome = await this.cleanOne(item, action, scan.status.volumePath);
       if (outcome.ok) {
         result.cleaned.push({
           id: item.id,
@@ -297,7 +412,8 @@ export class DiskService {
           bytes: item.bytes,
           action: outcome.action,
         });
-        result.freedBytes += item.bytes;
+        // 移入同盘回收站不会立即释放空间。
+        if (outcome.action === "delete") result.freedBytes += item.bytes;
         item.bytes = 0;
         item.tier = "keep";
       } else {
@@ -368,6 +484,7 @@ export class DiskService {
     prefixes: string[],
     budget: { left: number },
     nextId: () => string,
+    volumePath: string,
   ): Promise<InternalItem | null> {
     let info: { realPath: string; mtimeMs: number } | null = null;
     try {
@@ -376,18 +493,23 @@ export class DiskService {
       if (!st.isDirectory() && !st.isFile()) return null;
       const realPath = await realpath(target);
       if (isProtectedPath(realPath, this.env, prefixes)) return null;
-      if (!isSafeDeletionTarget(realPath, this.env, prefixes)) return null;
+      if (!isSafeDeletionTarget(realPath, this.env, prefixes, st.isFile() ? [volumePath] : []))
+        return null;
       info = { realPath, mtimeMs: st.mtimeMs };
     } catch {
       return null;
     }
     const allowance = Math.min(budget.left, this.limits.maxEntriesPerItem);
     const perItem = { left: allowance };
-    const measured = await measure(info.realPath, perItem);
+    const measured = await measure(
+      info.realPath,
+      perItem,
+      (path) => !isProtectedPath(path, this.env, prefixes),
+    );
     budget.left -= allowance - perItem.left;
     if (!measured || (measured.bytes < spec.minBytes && !measured.truncated)) return null;
     const hasGit = spec.hasGit ?? measured.hasGit;
-    const ruleTier: DiskTierValue = hasGit ? "keep" : spec.tier;
+    const ruleTier: DiskTierValue = hasGit || measured.truncated ? "keep" : spec.tier;
     const subject = {
       tier: ruleTier,
       ruleTier,
@@ -406,7 +528,11 @@ export class DiskService {
       tier: applyTierGuard(subject),
       ruleTier,
       category: spec.category,
-      reason: hasGit ? "包含 Git 仓库，只展示不清理" : spec.reason,
+      reason: hasGit
+        ? "包含 Git 仓库，只展示不清理"
+        : measured.truncated
+          ? "目录未完整检查，仅展示已统计占用"
+          : spec.reason,
       mode: spec.mode,
       regenerable: subject.regenerable,
       protected: false,
@@ -480,19 +606,19 @@ export class DiskService {
     }
   }
 
-  private async trashItem(nextId: () => string): Promise<InternalItem | null> {
+  private async trashItem(nextId: () => string, status: DiskStatus): Promise<InternalItem | null> {
     if (this.env.platform === "win32") {
-      const bytes = await windowsRecycleBytes();
+      const bytes = await windowsRecycleBytes(status.volumePath);
       if (bytes === null || bytes < this.limits.knownMinBytes) return null;
       return this.recycleItem(
         nextId(),
-        "回收站",
-        "shell:RecycleBinFolder",
+        `${status.volumePath} 回收站`,
+        join(status.volumePath, "$RECYCLE.BIN"),
         bytes,
         "清空回收站后，里面的文件将无法从资源管理器找回",
       );
     }
-    if (this.env.platform !== "darwin") return null;
+    if (this.env.platform !== "darwin" || !status.isHome) return null;
     const trash = join(this.env.home, ".Trash");
     try {
       const st = await lstat(trash);
@@ -544,18 +670,21 @@ export class DiskService {
   private async cleanOne(
     item: InternalItem,
     optionalAction: "trash" | "delete",
+    volumePath: string,
   ): Promise<{ ok: true; action: "delete" | "trash" } | { ok: false; reason: string }> {
     if (item.tier === "keep" || item.protected || item.hasGit) {
       return { ok: false, reason: "这一项只展示，不会清理" };
     }
     if (item.mode === "recycle") {
-      const emptied = await this.emptyTrash();
+      const emptied = await this.emptyTrash(volumePath);
       return emptied.ok ? { ok: true, action: "delete" } : { ok: false, reason: emptied.reason };
     }
     let realPath: string;
+    let isFile = false;
     try {
       const st = await lstat(item.path);
       if (st.isSymbolicLink()) return { ok: false, reason: "路径是符号链接，已跳过" };
+      isFile = st.isFile();
       realPath = await realpath(item.path);
     } catch {
       return { ok: false, reason: "路径已经不存在" };
@@ -565,10 +694,20 @@ export class DiskService {
     }
     const prefixes = this.prefixes();
     if (
-      !isSafeDeletionTarget(realPath, this.env, prefixes) ||
+      !isSafeDeletionTarget(realPath, this.env, prefixes, isFile ? [volumePath] : []) ||
       isProtectedPath(realPath, this.env, prefixes)
     ) {
       return { ok: false, reason: "路径不在允许清理的范围内" };
+    }
+    if (!isFile) {
+      const measured = await measure(
+        realPath,
+        { left: this.limits.maxEntriesPerItem },
+        (path) => !isProtectedPath(path, this.env, prefixes),
+      );
+      if (!measured || measured.hasGit || measured.truncated) {
+        return { ok: false, reason: "目录包含受保护内容或未完整检查，请重新扫描" };
+      }
     }
     const useTrash = item.tier === "optional" && optionalAction === "trash";
     try {
@@ -585,7 +724,9 @@ export class DiskService {
     }
   }
 
-  private async emptyTrash(): Promise<{ ok: true } | { ok: false; reason: string }> {
+  private async emptyTrash(
+    volumePath: string,
+  ): Promise<{ ok: true } | { ok: false; reason: string }> {
     try {
       if (this.env.platform === "win32") {
         await execFileAsync(
@@ -594,9 +735,13 @@ export class DiskService {
             "-NoProfile",
             "-NonInteractive",
             "-Command",
-            "Clear-RecycleBin -Force -ErrorAction Stop",
+            "Clear-RecycleBin -DriveLetter $env:AGENTDESK_RECYCLE_DRIVE -Force -ErrorAction Stop",
           ],
-          { windowsHide: true, timeout: 60_000 },
+          {
+            windowsHide: true,
+            timeout: 60_000,
+            env: { ...process.env, AGENTDESK_RECYCLE_DRIVE: volumePath[0] },
+          },
         );
         return { ok: true };
       }
@@ -644,9 +789,10 @@ export class DiskService {
     return {
       id: scan.id,
       scannedAt: new Date(scan.at).toISOString(),
-      status: this.status(),
-      summary: summarize(scan.items, scan.partial),
+      status: scan.status,
+      summary: `${scan.status.volumePath}：${summarize(scan.items, scan.partial)}${scan.usage[0] ? `。已统计的最大占用是「${scan.usage[0].title}」，约 ${formatBytes(scan.usage[0].bytes)}` : ""}`,
       items,
+      usage: scan.usage,
       primaryBytes,
       optionalBytes,
       partial: scan.partial,
@@ -717,7 +863,11 @@ async function existsDir(target: string): Promise<boolean> {
   }
 }
 
-async function measure(target: string, budget: { left: number }): Promise<Measured | null> {
+async function measure(
+  target: string,
+  budget: { left: number },
+  canRead: (path: string) => boolean = () => true,
+): Promise<Measured | null> {
   let rootStat;
   try {
     rootStat = await lstat(target);
@@ -738,7 +888,7 @@ async function measure(target: string, budget: { left: number }): Promise<Measur
   let bytes = 0;
   let newestMs = rootStat.mtimeMs;
   let truncated = false;
-  const hasGit = await existsDir(join(target, ".git"));
+  let hasGit = await existsDir(join(target, ".git"));
   const stack = [target];
   while (stack.length > 0) {
     const dir = stack.pop()!;
@@ -746,6 +896,7 @@ async function measure(target: string, budget: { left: number }): Promise<Measur
     try {
       entries = await readdir(dir, { withFileTypes: true });
     } catch {
+      truncated = true;
       continue;
     }
     for (const entry of entries) {
@@ -754,8 +905,19 @@ async function measure(target: string, budget: { left: number }): Promise<Measur
         break;
       }
       budget.left -= 1;
-      if (entry.isSymbolicLink()) continue;
+      if (entry.isSymbolicLink()) {
+        truncated = true;
+        continue;
+      }
       const child = join(dir, entry.name);
+      if (entry.name.toLowerCase() === ".git") hasGit = true;
+      if (
+        !canRead(child) ||
+        [".ssh", ".gnupg", ".aws", ".codex", ".claude"].includes(entry.name.toLowerCase())
+      ) {
+        truncated = true;
+        continue;
+      }
       if (entry.isDirectory()) {
         stack.push(child);
         continue;
@@ -767,6 +929,7 @@ async function measure(target: string, budget: { left: number }): Promise<Measur
         if (st.mtimeMs > newestMs) newestMs = st.mtimeMs;
       } catch {
         // 被占用或没有权限的文件不计入
+        truncated = true;
       }
     }
     if (truncated) break;
@@ -829,7 +992,7 @@ async function moveToTrash(target: string, platform: NodeJS.Platform): Promise<v
   throw new Error("当前系统没有回收站，请在设置里改成直接删除");
 }
 
-async function windowsRecycleBytes(): Promise<number | null> {
+async function windowsRecycleBytes(volumePath: string): Promise<number | null> {
   try {
     const { stdout } = await execFileAsync(
       "powershell.exe",
@@ -837,9 +1000,19 @@ async function windowsRecycleBytes(): Promise<number | null> {
         "-NoProfile",
         "-NonInteractive",
         "-Command",
-        "$sum = (New-Object -ComObject Shell.Application).NameSpace(10).Items() | Measure-Object -Property Size -Sum | Select-Object -ExpandProperty Sum; if ($null -eq $sum) { 0 } else { [int64]$sum }",
+        [
+          "Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public static class AgentDeskRecycle { [StructLayout(LayoutKind.Sequential, Pack=8)] public struct Info { public int cbSize; public long bytes; public long items; } [DllImport(\"shell32.dll\", CharSet=CharSet.Unicode)] public static extern int SHQueryRecycleBin(string root, ref Info info); }'",
+          "$info = New-Object AgentDeskRecycle+Info",
+          "$info.cbSize = [System.Runtime.InteropServices.Marshal]::SizeOf($info)",
+          "if ([AgentDeskRecycle]::SHQueryRecycleBin($env:AGENTDESK_RECYCLE_ROOT, [ref]$info) -ne 0) { exit 1 }",
+          "$info.bytes",
+        ].join("\n"),
       ],
-      { windowsHide: true, timeout: 20_000 },
+      {
+        windowsHide: true,
+        timeout: 20_000,
+        env: { ...process.env, AGENTDESK_RECYCLE_ROOT: volumePath },
+      },
     );
     const value = Number(String(stdout).trim());
     return Number.isFinite(value) ? value : null;

@@ -80,3 +80,46 @@ it("EventSource 重连时把 Last-Event-ID 请求头换算成 after 查询参数
   const forwardedUrl = fetcher.mock.calls[1]?.[0] as string;
   expect(forwardedUrl).toContain("after=42");
 });
+
+it("成果下载透传附件和隔离响应头，同时拒绝 CLI 成果写入", async () => {
+  const fetcher = vi
+    .fn()
+    .mockResolvedValueOnce(Response.json({ instanceId: state.instanceId, pid: state.pid }))
+    .mockResolvedValueOnce(
+      new Response("# 报告", {
+        headers: {
+          "Content-Type": "text/markdown; charset=utf-8",
+          "Content-Disposition": "attachment; filename=report.md",
+          "Content-Security-Policy": "sandbox; default-src 'none'",
+          "X-Content-Type-Options": "nosniff",
+          "Cache-Control": "no-store",
+          "X-AgentDesk-Token": state.token,
+        },
+      }),
+    );
+  vi.stubGlobal("fetch", fetcher);
+  const path = "/api/cli-monitor/tasks/task-1/artifacts/artifact-1";
+  const response = await app.request(`${path}/download`);
+  expect(response.status).toBe(200);
+  expect(response.headers.get("content-type")).toContain("text/markdown");
+  expect(response.headers.get("content-disposition")).toBe("attachment; filename=report.md");
+  expect(response.headers.get("content-security-policy")).toContain("sandbox");
+  expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+  expect(response.headers.get("cache-control")).toBe("no-store");
+  expect(response.headers.get("x-agentdesk-token")).toBeNull();
+  expect(await response.text()).toBe("# 报告");
+  expect((await app.request(`${path}/versions`, { method: "POST", body: "{}" })).status).toBe(400);
+  expect(fetcher).toHaveBeenCalledTimes(2);
+});
+
+it("成果正文仅开放 GET 只读代理", async () => {
+  const fetcher = vi
+    .fn()
+    .mockResolvedValueOnce(Response.json({ instanceId: state.instanceId, pid: state.pid }))
+    .mockResolvedValueOnce(Response.json({ content: "报告正文", encoding: "utf8" }));
+  vi.stubGlobal("fetch", fetcher);
+  const path = "/api/cli-monitor/tasks/task-1/artifacts/artifact-1/content";
+  expect(await (await app.request(path)).json()).toMatchObject({ content: "报告正文" });
+  expect((await app.request(path, { method: "POST", body: "{}" })).status).toBe(400);
+  expect(fetcher).toHaveBeenCalledTimes(2);
+});

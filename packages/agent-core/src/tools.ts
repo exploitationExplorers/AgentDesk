@@ -33,6 +33,9 @@ export interface RecordArtifactInput {
   kind: ArtifactKind;
   title: string;
   content?: string;
+  filePath?: string;
+  mimeType?: string;
+  artifactKey?: string;
   metadata?: unknown;
 }
 

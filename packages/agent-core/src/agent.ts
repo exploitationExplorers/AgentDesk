@@ -8,6 +8,8 @@ import {
 } from "@mariozechner/pi-ai";
 import type { AgentName, AgentStreamEvent, ToolCallRecord } from "@agentdesk/shared";
 import type { ResolvedModel } from "./llm";
+import { DEFAULT_CONTEXT_WINDOW } from "./llm";
+import { estimateMessageTokens, estimateTokens, inputBudget } from "./context";
 import { createStreamUnmasker, maskJson, maskText, unmaskJson, type MaskStore } from "./masking";
 import {
   fromWireName,
@@ -109,12 +111,22 @@ async function callModel(
     : context;
   let lastError = "unknown error";
   for (const candidate of models) {
+    const contextWindow = candidate.model.contextWindow || DEFAULT_CONTEXT_WINDOW;
+    const estimatedInputTokens =
+      estimateMessageTokens(outboundContext.messages) +
+      estimateTokens(outboundContext.systemPrompt ?? "") +
+      estimateTokens(JSON.stringify(outboundContext.tools ?? []));
+    if (estimatedInputTokens > inputBudget(contextWindow, candidate.model.maxTokens || 4096)) {
+      lastError = `上下文超出 ${candidate.model.id} 的输入预算（估算 ${estimatedInputTokens} tokens）。请压缩历史、缩短输入或扩大模型窗口后继续；执行记录已保留。`;
+      continue;
+    }
     for (let attempt = 0; attempt <= TRANSIENT_RETRIES; attempt++) {
       let produced = false;
       const callSignal = withTimeout(signal, MODEL_CALL_TIMEOUT_MS);
       const events = stream(candidate.model, outboundContext, {
         apiKey: candidate.apiKey,
         signal: callSignal,
+        maxTokens: candidate.model.maxTokens,
       });
       // 占位符可能被流式输出切断在两个 delta 之间，缓冲到确认安全（不是未闭合的占位符前缀）再展示。
       const unmasker = mask ? createStreamUnmasker(mask) : null;
@@ -139,6 +151,21 @@ async function callModel(
         break;
       }
       if (message.stopReason !== "error") {
+        // 用量来自供应商响应；估算仅用于预算，不作为实际计费数据。
+        emit({
+          type: "model_usage",
+          purpose: "response",
+          agent,
+          providerId: candidate.providerId,
+          model: candidate.model.id,
+          inputTokens: message.usage.input,
+          outputTokens: message.usage.output,
+          cacheReadTokens: message.usage.cacheRead,
+          cacheWriteTokens: message.usage.cacheWrite,
+          totalTokens: message.usage.totalTokens,
+          contextWindow,
+          estimatedInputTokens,
+        });
         // 整体反脱敏（含 ToolCall.arguments，覆盖模型原样复读占位符到工具调用参数的情况），
         // 这个返回值会被 runAgent 推入对话历史、也会被 executeToolCall 直接拿去真正执行工具。
         return {

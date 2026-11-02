@@ -1,4 +1,5 @@
 import { parse } from "node-html-parser";
+import { basename, extname } from "node:path";
 import { ToolRegistry, Type, defineTool } from "@agentdesk/agent-core";
 import {
   fileChange,
@@ -589,6 +590,18 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
           toolCallId: ctx.toolCallId ?? path,
           change: result.change,
         });
+        // 文档成果保存完整快照，普通代码写入仍只记录文件差异。
+        if (
+          [".md", ".html", ".htm", ".txt", ".svg", ".csv"].includes(extname(path).toLowerCase())
+        ) {
+          ctx.recordArtifact?.({
+            kind: "file",
+            title: basename(result.change.path),
+            filePath: result.change.path,
+            content: Buffer.byteLength(content, "utf8") <= 2 * 1024 * 1024 ? content : undefined,
+            metadata: { source: "fs.write", toolCallId: ctx.toolCallId },
+          });
+        }
         return result;
       },
     }),
@@ -701,7 +714,7 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
     defineTool({
       name: "disk.status",
       description:
-        "查看本机用户目录所在磁盘的总容量、剩余空间，以及是否低于清理提醒阈值。只读，不扫描文件。",
+        "查看本机所有可用磁盘的容量、剩余空间和提醒阈值，默认关注空间紧张的盘。只读，不扫描文件。",
       parameters: Type.Object({}),
       risk: "safe",
       execute: async () => disk.status(),
@@ -709,14 +722,21 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
     defineTool({
       name: "disk.scan",
       description:
-        "扫描可重建缓存、开发工具缓存和下载/桌面/文稿里的大文件。不会删除任何文件。返回档位 primary（可清理）、optional（需用户决定）、keep（不清理）。",
-      parameters: Type.Object({}),
+        "分析所选磁盘的目录占用、可重建缓存和大文件。先用 disk.status 获取实际 volumePath；用户指定 D 盘等磁盘时传入对应路径，否则优先分析空间紧张的盘。不会删除文件。primary 是可重建缓存，optional 需用户决定，keep 不清理。",
+      parameters: Type.Object({
+        volumePath: Type.Optional(
+          Type.String({ description: "disk.status 返回的磁盘 volumePath" }),
+        ),
+      }),
       risk: "safe",
-      execute: async () => {
-        const scan = await disk.scan();
+      execute: async ({ volumePath }) => {
+        const scan = await disk.scan(volumePath);
         return {
           id: scan.id,
           summary: scan.summary,
+          volumePath: scan.status.volumePath,
+          usage: scan.usage.slice(0, 20),
+          partial: scan.partial,
           freeBytes: scan.status.freeBytes,
           low: scan.status.low,
           primaryBytes: scan.primaryBytes,

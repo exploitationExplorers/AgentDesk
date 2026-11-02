@@ -1,6 +1,7 @@
-import { complete, type UserMessage } from "@mariozechner/pi-ai";
+import { complete, type Usage, type UserMessage } from "@mariozechner/pi-ai";
 import type { z } from "zod";
-import type { ResolvedModel } from "./llm";
+import { DEFAULT_CONTEXT_WINDOW, type ResolvedModel } from "./llm";
+import { estimateMessageTokens, estimateTokens, inputBudget } from "./context";
 import { maskJson, maskText, unmaskText, type MaskStore } from "./masking";
 
 export interface CompleteOptions {
@@ -11,6 +12,8 @@ export interface CompleteOptions {
   maxTokens?: number;
   /** 可选：发给模型前脱敏、拿到回复后换回真实值。 */
   mask?: MaskStore;
+  /** 每次请求的供应商用量；包含解析重试和备用模型返回的用量。 */
+  onUsage?: (usage: Usage, model: ResolvedModel, estimatedInputTokens: number) => void;
 }
 
 /** 普通单轮补全，带备用模型切换。 */
@@ -20,15 +23,30 @@ export async function completeText(options: CompleteOptions): Promise<string> {
     ? maskText(options.systemPrompt, options.mask)
     : options.systemPrompt;
   const prompt = options.mask ? maskJson(options.prompt, options.mask) : options.prompt;
+  const messages: UserMessage[] = [{ role: "user", content: prompt, timestamp: Date.now() }];
+  const estimatedInputTokens = estimateTokens(systemPrompt) + estimateMessageTokens(messages);
   for (const candidate of options.models) {
+    options.signal?.throwIfAborted();
+    const maxTokens = Math.min(
+      options.maxTokens ?? candidate.model.maxTokens,
+      candidate.model.maxTokens,
+    );
+    if (
+      estimatedInputTokens >
+      inputBudget(candidate.model.contextWindow || DEFAULT_CONTEXT_WINDOW, maxTokens)
+    ) {
+      lastError = `上下文超出 ${candidate.model.id} 的输入预算（估算 ${estimatedInputTokens} tokens），请缩短输入或配置更大的模型窗口`;
+      continue;
+    }
     const message = await complete(
       candidate.model,
       {
         systemPrompt,
-        messages: [{ role: "user", content: prompt, timestamp: Date.now() }],
+        messages,
       },
-      { apiKey: candidate.apiKey, signal: options.signal, maxTokens: options.maxTokens },
+      { apiKey: candidate.apiKey, signal: options.signal, maxTokens },
     );
+    options.onUsage?.(message.usage, candidate, estimatedInputTokens);
     if (message.stopReason !== "error" && message.stopReason !== "aborted") {
       const text = message.content
         .filter((c): c is { type: "text"; text: string } => c.type === "text")

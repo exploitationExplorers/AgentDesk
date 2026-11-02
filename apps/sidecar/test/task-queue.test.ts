@@ -48,6 +48,42 @@ async function waitFor(predicate: () => boolean, timeoutMs = 2000): Promise<void
 }
 
 describe("TaskService 并发队列", () => {
+  it.each(["failed", "cancelled"] as const)(
+    "%s 任务续跑时同步进入 running，成功后进入 awaiting_review",
+    async (status) => {
+      let finish!: (outcome: RunOutcome) => void;
+      const tasks = createTaskService({
+        executor: () =>
+          new Promise<RunOutcome>((resolve) => {
+            finish = resolve;
+          }),
+      });
+      const { task, run } = makeTaskWithRun(tasks, `resume-${status}`);
+      tasks.startRunDirect(run.id);
+      tasks.finalizeRunDirect(run.id, { status });
+      expect(tasks.get(task.id)?.status).toBe(status);
+
+      const resumed = tasks.createRun({
+        taskId: task.id,
+        kind: "root",
+        agent: "code",
+        trigger: "resume",
+        input: { userMessage: "继续剩余工作" },
+      });
+      tasks.enqueue(resumed.id);
+      expect(tasks.getRun(resumed.id)?.status).toBe("running");
+      expect(tasks.get(task.id)).toMatchObject({ status: "running", currentRunId: resumed.id });
+
+      finish({ status: "succeeded", resultText: "后续工作完成" });
+      await waitFor(() => tasks.getRun(resumed.id)?.status === "succeeded");
+      expect(tasks.get(task.id)).toMatchObject({
+        status: "awaiting_review",
+        currentRunId: resumed.id,
+      });
+      expect(tasks.getRun(run.id)?.status).toBe(status);
+    },
+  );
+
   it("并发槛位限制：按入队顺序领取，任意时刻运行数不超过上限", async () => {
     const deferred = new Map<string, (outcome: RunOutcome) => void>();
     const executor: RunExecutor = (run) =>

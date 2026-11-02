@@ -22,6 +22,8 @@ interface UiState {
   /** 低空间弹窗点「帮我看看」后，磁盘页接着开始扫描 */
   pendingDiskScan: boolean;
   setPendingDiskScan: (pending: boolean) => void;
+  diskVolume: string | null;
+  setDiskVolume: (volumePath: string) => void;
 }
 
 export const useUi = create<UiState>()(
@@ -43,6 +45,8 @@ export const useUi = create<UiState>()(
       setBrowserPanelOpen: (browserPanelOpen) => set({ browserPanelOpen }),
       pendingDiskScan: false,
       setPendingDiskScan: (pendingDiskScan) => set({ pendingDiskScan }),
+      diskVolume: null,
+      setDiskVolume: (diskVolume) => set({ diskVolume }),
     }),
     {
       name: "agentdesk-ui",

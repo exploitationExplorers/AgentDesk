@@ -48,6 +48,7 @@ import { api } from "../../lib/api";
 import { compactNumber, timeAgo } from "../../lib/format";
 import { toast } from "../../lib/toast";
 import { useUi } from "../../stores/ui";
+import { ProjectInsights } from "./ProjectInsights";
 
 function StarBadge({ project }: { project: Project }) {
   if (project.stars == null) return null;
@@ -399,10 +400,12 @@ function ProjectDrawer({
   project,
   onClose,
   onAiCommit,
+  onInsights,
 }: {
   project: Project;
   onClose: () => void;
   onAiCommit: () => void;
+  onInsights: () => void;
 }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -449,6 +452,10 @@ function ProjectDrawer({
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
             <LaunchButtons project={project} size="md" />
+            <Button variant="secondary" onClick={onInsights}>
+              <Sparkles className="h-3.5 w-3.5" />
+              资料转改进
+            </Button>
             <Button variant="primary" onClick={onAiCommit}>
               <Sparkles className="h-3.5 w-3.5" />
               AI 提交推送
@@ -933,6 +940,7 @@ export function ProjectsPage() {
   const [openId, setOpenId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [aiCommitId, setAiCommitId] = useState<string | null>(null);
+  const [insightsProjectId, setInsightsProjectId] = useState<string | null>(null);
   const scan = useMutation({
     mutationFn: api.scanProjects,
     onSuccess: () => {
@@ -990,6 +998,14 @@ export function ProjectsPage() {
           description="GitHub、Gitee、公司 GitLab 项目统一管理，一键在 Cursor 或 Claude Code 中打开"
           actions={
             <>
+              <Button
+                variant="secondary"
+                disabled={data.length === 0}
+                onClick={() => setInsightsProjectId(data[0]?.id ?? null)}
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                资料转改进
+              </Button>
               <Button variant="ghost" onClick={() => setAdding(true)}>
                 <Plus className="h-3.5 w-3.5" />
                 添加
@@ -1103,9 +1119,20 @@ export function ProjectsPage() {
           project={opened}
           onClose={() => setOpenId(null)}
           onAiCommit={() => setAiCommitId(opened.id)}
+          onInsights={() => {
+            setInsightsProjectId(opened.id);
+            setOpenId(null);
+          }}
         />
       ) : null}
       {adding ? <AddProjectDialog open onOpenChange={setAdding} /> : null}
+      {insightsProjectId ? (
+        <ProjectInsights
+          projects={data}
+          initialProjectId={insightsProjectId}
+          onClose={() => setInsightsProjectId(null)}
+        />
+      ) : null}
       {aiCommitProject ? (
         <AiCommitDialog
           project={aiCommitProject}

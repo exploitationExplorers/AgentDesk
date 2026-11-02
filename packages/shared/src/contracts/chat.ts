@@ -29,11 +29,64 @@ export const Conversation = z.object({
   title: z.string(),
   createdAt: z.string(),
   updatedAt: z.string(),
+  pinned: z.boolean().optional(),
+  archived: z.boolean().optional(),
+  groupId: z.string().nullable().optional(),
+  projectId: z.string().nullable().optional(),
 });
 export type Conversation = z.infer<typeof Conversation>;
 
+export const ConversationPatch = z
+  .object({
+    title: z.string().trim().min(1).max(200).optional(),
+    pinned: z.boolean().optional(),
+    archived: z.boolean().optional(),
+    groupId: z.string().min(1).nullable().optional(),
+    projectId: z.string().min(1).nullable().optional(),
+  })
+  .strict()
+  .refine((patch) => Object.keys(patch).length > 0, "至少修改一个会话属性");
+export type ConversationPatch = z.infer<typeof ConversationPatch>;
+
+export const ConversationQuery = z.object({
+  search: z.string().trim().max(200).optional(),
+  groupId: z.string().min(1).optional(),
+  archived: z.enum(["active", "archived", "all"]).optional(),
+});
+export type ConversationQuery = z.infer<typeof ConversationQuery>;
+
+export const ConversationGroup = z.object({
+  id: z.string(),
+  name: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type ConversationGroup = z.infer<typeof ConversationGroup>;
+
+export const ConversationGroupInput = z.object({ name: z.string().trim().min(1).max(80) }).strict();
+
 /** SSE 事件：对话和工作流执行共用的流式事件协议。 */
 export type AgentStreamEvent =
+  | {
+      type: "model_usage";
+      purpose?: "response" | "compaction" | "analysis";
+      agent: AgentName;
+      providerId: string;
+      model: string;
+      inputTokens: number;
+      outputTokens: number;
+      cacheReadTokens: number;
+      cacheWriteTokens: number;
+      totalTokens: number;
+      contextWindow: number;
+      estimatedInputTokens: number;
+    }
+  | {
+      type: "context_compaction";
+      phase: "start" | "complete" | "error";
+      conversationId: string;
+      message: string;
+    }
   | { type: "conversation"; conversationId: string }
   | { type: "route"; agent: AgentName; reason: string }
   | { type: "agent_start"; agent: AgentName }

@@ -240,6 +240,7 @@ export class ProviderService implements ModelResolver {
       providerName: provider.name,
       model: buildModel(provider, model),
       apiKey,
+      capacitySource: provider.modelLimits?.[model] ? "configured" : "default",
     };
   }
 

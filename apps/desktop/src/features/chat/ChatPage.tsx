@@ -1,18 +1,18 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { AlertTriangle, Code2, MessageSquarePlus, Trash2, User } from "lucide-react";
+import { AlertTriangle, Code2, PanelRight, User } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentName } from "@agentdesk/shared";
-import { cn } from "@agentdesk/ui";
 import { BrowserLivePanel } from "../../components/BrowserLivePanel";
 import { Markdown } from "../../components/Markdown";
 import { AGENT_META } from "../../lib/agents";
 import { api } from "../../lib/api";
-import { timeAgo } from "../../lib/format";
 import { chatRoute } from "../../router";
 import { useUi } from "../../stores/ui";
 import { Composer } from "./Composer";
+import { ConversationList } from "./ConversationList";
 import { HomeHero } from "./HomeHero";
+import { SessionPanel, useSessionWorkbench } from "./SessionPanel";
 import { LiveSteps, SavedSteps } from "./Steps";
 import { useChatStream } from "./useChatStream";
 
@@ -25,65 +25,13 @@ function AgentAvatar({ agent }: { agent: AgentName | null }) {
   );
 }
 
-function ConversationList({ activeId }: { activeId?: string }) {
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const { data = [] } = useQuery({ queryKey: ["conversations"], queryFn: api.conversations });
-  const remove = useMutation({
-    mutationFn: (id: string) => api.deleteConversation(id),
-    onSuccess: (_, id) => {
-      void queryClient.invalidateQueries({ queryKey: ["conversations"] });
-      if (id === activeId) void navigate({ to: "/", search: {} });
-    },
-  });
-  return (
-    <div className="flex w-[232px] shrink-0 flex-col border-r bg-surface/30">
-      <div className="p-3">
-        <button
-          type="button"
-          onClick={() => void navigate({ to: "/", search: {} })}
-          className="flex h-9 w-full items-center gap-2 rounded-xl border bg-surface px-3 text-[13px] font-medium hover:bg-surface-2"
-        >
-          <MessageSquarePlus className="h-4 w-4 text-muted" />
-          新对话
-        </button>
-      </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
-        {data.map((c) => (
-          <div
-            key={c.id}
-            className={cn(
-              "group flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-[12.5px]",
-              c.id === activeId ? "bg-surface-2 text-fg" : "text-muted hover:bg-surface-2/60",
-            )}
-            onClick={() => void navigate({ to: "/", search: { c: c.id } })}
-          >
-            <div className="min-w-0 flex-1">
-              <p className="truncate">{c.title}</p>
-              <p className="text-[11px] text-subtle">{timeAgo(c.updatedAt)}</p>
-            </div>
-            <button
-              type="button"
-              aria-label="删除会话"
-              className="hidden rounded p-1 text-subtle hover:text-danger group-hover:block"
-              onClick={(e) => {
-                e.stopPropagation();
-                remove.mutate(c.id);
-              }}
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 export function ChatPage() {
   const { c: conversationId } = chatRoute.useSearch();
   const navigate = useNavigate();
   const [agent, setAgent] = useState<AgentName>("orchestrator");
+  const [panelOpen, setPanelOpen] = useState(true);
+  const [compacting, setCompacting] = useState(false);
+  const workbench = useSessionWorkbench(conversationId, agent);
   const { chatPrefill, setChatPrefill, browserPanelOpen, activeBrowserSessionId } = useUi();
   const [prefill, setPrefill] = useState<string | undefined>();
   const bottom = useRef<HTMLDivElement>(null);
@@ -124,6 +72,11 @@ export function ChatPage() {
       onSend={(t) => handleSend(t)}
       onStop={stop}
       streaming={streaming}
+      disabled={
+        compacting ||
+        (!streaming && !!workbench.data?.activity) ||
+        workbench.data?.task?.purpose === "reference_analysis"
+      }
       agent={agent}
       onAgentChange={setAgent}
       initial={prefill}
@@ -150,6 +103,15 @@ export function ChatPage() {
           <>
             {conversationId && (
               <div className="flex justify-end border-b px-6 py-2">
+                <button
+                  type="button"
+                  aria-pressed={panelOpen}
+                  onClick={() => setPanelOpen((open) => !open)}
+                  className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs text-muted hover:bg-surface-2 hover:text-fg"
+                >
+                  <PanelRight className="h-3.5 w-3.5" />
+                  会话状态
+                </button>
                 <Link
                   to="/code"
                   search={{ c: conversationId, source: "workbench" }}
@@ -227,6 +189,16 @@ export function ChatPage() {
           </>
         )}
       </div>
+      {conversationId && panelOpen && !showBrowser ? (
+        <SessionPanel
+          key={conversationId}
+          conversationId={conversationId}
+          agent={agent}
+          streaming={streaming}
+          compacting={compacting}
+          onCompacting={setCompacting}
+        />
+      ) : null}
       {showBrowser ? <BrowserLivePanel sessionId={activeBrowserSessionId!} /> : null}
     </div>
   );

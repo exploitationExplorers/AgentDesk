@@ -17,6 +17,8 @@ import { taskRoutes } from "./routes/tasks";
 import { wechatRoutes } from "./routes/wechat";
 import { workflowRoutes } from "./routes/workflows";
 import { createWorkbench } from "./workbench";
+import { projectInsightRoutes } from "./routes/project-insights";
+import { sessionWorkbenchRoutes } from "./routes/session-workbench";
 
 export function createApp(container: Container, options: { webRoot?: string } = {}): Hono {
   const app = new Hono();
@@ -66,6 +68,8 @@ export function createApp(container: Container, options: { webRoot?: string } = 
   app.route("/api", deployRoutes(container));
   app.route("/api", browserRoutes(container));
   app.route("/api", chatRoutes(container));
+  app.route("/api", sessionWorkbenchRoutes(container));
+  app.route("/api", projectInsightRoutes(container));
   app.route("/api", workflowRoutes(container));
   app.route("/api", taskRoutes(container));
   app.route("/api", cliMonitorRoutes());

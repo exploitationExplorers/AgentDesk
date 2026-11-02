@@ -6,6 +6,17 @@ export type ProviderApi = z.infer<typeof ProviderApi>;
 export const ProviderSource = z.enum(["manual", "dotenv", "cc-switch"]);
 export type ProviderSource = z.infer<typeof ProviderSource>;
 
+/** 按模型配置容量，未配置时采用明确标注的保守默认预算。 */
+export const ModelLimits = z
+  .object({
+    contextWindow: z.number().int().min(4096).max(2_000_000),
+    maxOutputTokens: z.number().int().min(256).max(200_000),
+  })
+  .refine((value) => value.maxOutputTokens < value.contextWindow / 2, {
+    message: "输出上限必须小于上下文窗口的一半",
+  });
+export type ModelLimits = z.infer<typeof ModelLimits>;
+
 export const Provider = z.object({
   id: z.string(),
   name: z.string().min(1),
@@ -13,6 +24,7 @@ export const Provider = z.object({
   baseUrl: z.string().url(),
   models: z.array(z.string()).min(1),
   defaultModel: z.string(),
+  modelLimits: z.record(z.string(), ModelLimits).optional(),
   source: ProviderSource,
   enabled: z.boolean(),
   hasKey: z.boolean(),
@@ -26,6 +38,7 @@ export const ProviderInput = Provider.pick({
   baseUrl: true,
   models: true,
   defaultModel: true,
+  modelLimits: true,
   source: true,
   enabled: true,
 }).extend({ apiKey: z.string().optional() });

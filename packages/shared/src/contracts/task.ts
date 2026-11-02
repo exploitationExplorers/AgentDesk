@@ -20,6 +20,7 @@ export const Task = z.object({
   id: z.string(),
   title: z.string(),
   goal: z.string(),
+  purpose: z.enum(["standard", "reference_analysis"]).optional(),
   agent: AgentName.nullable(),
   conversationId: z.string(),
   requiresPlanApproval: z.boolean(),
@@ -80,9 +81,29 @@ export const Artifact = z.object({
   filePath: z.string().nullable(),
   mimeType: z.string().nullable(),
   metadata: z.unknown().nullable(),
+  /** 同一成果的稳定标识；旧记录由服务端从类型和路径推导。 */
+  artifactKey: z.string().optional(),
   createdAt: z.string(),
 });
 export type Artifact = z.infer<typeof Artifact>;
+
+export const ArtifactVersionInput = z.object({
+  baseVersion: z.number().int().positive(),
+  content: z.string().max(2 * 1024 * 1024),
+  title: z.string().trim().min(1).max(200).optional(),
+});
+export type ArtifactVersionInput = z.infer<typeof ArtifactVersionInput>;
+
+export const ArtifactContent = z.object({
+  artifact: Artifact,
+  content: z.string(),
+  encoding: z.enum(["utf8", "base64"]),
+  mimeType: z.string(),
+  editable: z.boolean(),
+  source: z.enum(["snapshot", "file"]),
+  changedOnDisk: z.boolean().nullable(),
+});
+export type ArtifactContent = z.infer<typeof ArtifactContent>;
 
 /** Task/Run 专用的内部事件流，复用 AgentStreamEvent 的全部 variant 并追加任务级事件。 */
 export type TaskStreamEvent =

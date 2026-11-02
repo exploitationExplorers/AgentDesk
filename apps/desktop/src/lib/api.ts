@@ -116,7 +116,7 @@ export const api = {
     http.delete<{ id: string; deleted: true }>(`/memories/${encodeURIComponent(id)}`),
   diskStatus: () => http.get<DiskStatus>("/disk/status"),
   diskScan: () => http.get<DiskScan | null>("/disk/scan"),
-  scanDisk: () => http.post<DiskScan>("/disk/scan"),
+  scanDisk: (volumePath?: string) => http.post<DiskScan>("/disk/scan", { volumePath }),
   reviewDisk: (scanId: string) => http.post<DiskScan>("/disk/review", { scanId }),
   cleanDisk: (scanId: string, ids: string[]) =>
     http.post<DiskCleanResult>("/disk/clean", { scanId, ids }),

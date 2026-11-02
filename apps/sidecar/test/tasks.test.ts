@@ -127,20 +127,22 @@ describe("TaskService.createRun 幂等性", () => {
     expect(tasks.listRuns(task.id)).toHaveLength(1);
   });
 
-  it("不带 idempotencyKey 多次调用，每次都产生新行", () => {
+  it("不带 idempotencyKey，上一轮结束后可创建新行", () => {
     const tasks = createTaskService();
     const task = tasks.create({
       goal: "无幂等键测试",
       conversationId: "c8",
       requiresPlanApproval: false,
     });
-    tasks.createRun({
+    const first = tasks.createRun({
       taskId: task.id,
       kind: "root",
       agent: "orchestrator",
       trigger: "create",
       input: { userMessage: "第一次" },
     });
+    tasks.startRunDirect(first.id);
+    tasks.finalizeRunDirect(first.id, { status: "succeeded", resultText: "已完成第一轮" });
     tasks.createRun({
       taskId: task.id,
       kind: "root",

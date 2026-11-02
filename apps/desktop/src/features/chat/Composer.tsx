@@ -41,6 +41,7 @@ export function Composer({
   initial,
   autoFocus,
   large,
+  disabled = false,
 }: {
   onSend: (text: string) => void;
   onStop: () => void;
@@ -50,6 +51,7 @@ export function Composer({
   initial?: string;
   autoFocus?: boolean;
   large?: boolean;
+  disabled?: boolean;
 }) {
   const [text, setText] = useState(initial ?? "");
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -69,7 +71,7 @@ export function Composer({
 
   const submit = () => {
     const value = text.trim();
-    if (!value || streaming) return;
+    if (!value || streaming || disabled) return;
     onSend(value);
     setText("");
   };
@@ -84,6 +86,7 @@ export function Composer({
       <textarea
         ref={ref}
         value={text}
+        disabled={disabled}
         autoFocus={autoFocus}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => {
@@ -133,7 +136,7 @@ export function Composer({
             <button
               type="button"
               onClick={submit}
-              disabled={!text.trim()}
+              disabled={!text.trim() || disabled}
               aria-label="发送"
               className="grid h-9 w-9 place-items-center rounded-full bg-accent text-accent-fg transition-opacity hover:opacity-90 disabled:opacity-30"
             >

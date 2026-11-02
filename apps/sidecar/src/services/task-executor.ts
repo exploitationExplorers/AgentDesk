@@ -16,24 +16,11 @@ import type {
 import { errorMessage, newId, nowIso } from "../util";
 import type { ApprovalService } from "./approvals";
 import type { ConversationStore } from "./conversation-store";
+import type { ConversationContextService } from "./conversation-context";
+import { acquireConversation } from "./conversation-activity";
 import type { ProjectInstructionService } from "./project-instructions";
 import type { RunExecutor, RunOutcome, TaskService } from "./tasks";
-
-/**
- * 把一次失败/取消的历史 Run 摘要成一段可读文本，拼进续跑的 context：
- * 工具调用只取 name/args/isError/result 几个关键字段，不原样塞整个 JSON。
- */
-function summarizeToolCalls(records: ToolCallRecord[]): string {
-  return records
-    .map((call) => {
-      const argsText = JSON.stringify(call.args ?? {}).slice(0, 200);
-      const resultText = (
-        typeof call.result === "string" ? call.result : JSON.stringify(call.result ?? null)
-      ).slice(0, 200);
-      return `${call.name}(${argsText}) → ${call.isError ? "失败" : "完成"}：${resultText}`;
-    })
-    .join("；");
-}
+import { failedRunMessage, readRunToolHistory, summarizeToolCalls } from "./run-tool-history";
 
 /**
  * requestAnswer 的通用实现：用 kind='question' 的审批记录承载问题，等待用户通过
@@ -121,7 +108,11 @@ export function createDelegateHandler(deps: {
     const done = (result: { text: string; toolCalls: ToolCallRecord[] } | { error: string }) => {
       const outcome: RunOutcome =
         "error" in result
-          ? { status: signal.aborted ? "cancelled" : "failed", resultError: result.error }
+          ? {
+              status: signal.aborted ? "cancelled" : "failed",
+              resultError: result.error,
+              toolCalls: readRunToolHistory(tasks, childRun.id),
+            }
           : { status: "succeeded", resultText: result.text, toolCalls: result.toolCalls };
       tasks.finalizeRunDirect(childRun.id, outcome);
       append({
@@ -142,6 +133,7 @@ export interface RealExecutorDeps {
   orchestrator: Orchestrator;
   approvals: ApprovalService;
   conversationStore: ConversationStore;
+  context?: ConversationContextService;
   /** 用于在方案关口场景下，把可用工具收紧到"只读工具 + tasks.submit_plan"。 */
   registry: ToolRegistry;
   projectInstructions: ProjectInstructionService;
@@ -155,56 +147,77 @@ export function createOrchestratorExecutor(deps: RealExecutorDeps): RunExecutor 
     // 让出一次微任务：重启恢复时 TaskService 构造函数会同步 pump() 直到调用到这个 executor，
     // 这一行保证外层把 TaskService 自身引用写回 deps 之后，getTasks() 才会被真正调用。
     await Promise.resolve();
-    const tasks = deps.getTasks();
-    const { orchestrator, approvals, conversationStore, registry, autoApprove, maskFactory } = deps;
+    if (task.purpose === "reference_analysis") {
+      return {
+        status: "failed",
+        resultError: "资料分析请从项目中心重新提交，不能通过通用任务继续执行",
+      };
+    }
+    let release: (() => void) | undefined;
+    try {
+      release = acquireConversation(task.conversationId, "running");
+      const tasks = deps.getTasks();
+      const { orchestrator, approvals, conversationStore, registry, autoApprove, maskFactory } =
+        deps;
 
-    // 方案关口：requiresPlanApproval 的任务首条根 Run 只允许产出方案，不允许执行任何
-    // 有副作用的操作——把可用工具收紧到"只读工具 + tasks.submit_plan"，不传给模型
-    // agents.delegate 等有副作用能力。真正"未经批准不能执行"的硬校验在 TaskService.createRun
-    // 里（服务层），这里只是约束模型这一轮能调用什么。
-    const isPlanGate = task.requiresPlanApproval && run.trigger === "create";
-    const allowedTools = isPlanGate
-      ? [
-          ...registry
-            .list()
-            .filter((t) => t.risk === "safe")
-            .map((t) => t.name),
-          "tasks.submit_plan",
-        ]
-      : undefined;
-    const planGateHint = isPlanGate
-      ? "本次只需要产出方案并调用 tasks.submit_plan，不要执行任何有副作用的操作。"
-      : undefined;
-    const planVersionBefore = isPlanGate
-      ? (tasks.latestArtifact(task.id, "plan")?.version ?? 0)
-      : 0;
+      // 方案关口：requiresPlanApproval 的任务首条根 Run 只允许产出方案，不允许执行任何
+      // 有副作用的操作——把可用工具收紧到"只读工具 + tasks.submit_plan"，不传给模型
+      // agents.delegate 等有副作用能力。真正"未经批准不能执行"的硬校验在 TaskService.createRun
+      // 里（服务层），这里只是约束模型这一轮能调用什么。
+      const isPlanGate = task.requiresPlanApproval && run.trigger === "create";
+      const allowedTools = isPlanGate
+        ? [
+            ...registry
+              .list()
+              .filter((t) => t.risk === "safe")
+              .map((t) => t.name),
+            "tasks.submit_plan",
+          ]
+        : undefined;
+      const planGateHint = isPlanGate
+        ? "本次只需要产出方案并调用 tasks.submit_plan，不要执行任何有副作用的操作。"
+        : undefined;
+      const planVersionBefore = isPlanGate
+        ? (tasks.latestArtifact(task.id, "plan")?.version ?? 0)
+        : 0;
 
-    const history = conversationStore.listMessages(task.conversationId);
-    conversationStore.insertMessage({
-      id: newId(),
-      conversationId: task.conversationId,
-      role: "user",
-      content: run.input.userMessage,
-      agent: null,
-      toolCalls: [],
-      createdAt: nowIso(),
-    });
+      const history = conversationStore.listMessages(task.conversationId);
+      conversationStore.insertMessage({
+        id: newId(),
+        conversationId: task.conversationId,
+        role: "user",
+        content: run.input.userMessage,
+        agent: null,
+        toolCalls: [],
+        createdAt: nowIso(),
+      });
 
-    const emit = (event: TaskStreamEvent) =>
-      tasks.appendEvent({ taskId: task.id, runId: run.id, parentRunId: run.parentRunId, event });
-    // 委派子 Run 由 createDelegateHandler 在创建时立即补发 run_started；根 Run 此前没有任何地方
-    // 发过这条事件（真实执行只会看到 agent_start/text_delta/agent_end/run_ended），导致 CLI 的
-    // task-reducer.mjs（只在收到 run_started 时才建根 Run 节点）在交互式 TaskView 里对根 Run 一直
-    // 建不出节点、什么都不渲染——这里补发，让根/子 Run 共用同一条"进入 runsById"的入口事件。
-    emit({
-      type: "run_started",
-      runId: run.id,
-      parentRunId: run.parentRunId,
-      agent: run.agent,
-      trigger: run.trigger,
-    });
-    const requestApproval = (request: ApprovalRequest) =>
-      approvals.request({ kind: "tool", ...request }, signal, (approval) =>
+      const emit = (event: TaskStreamEvent) =>
+        tasks.appendEvent({ taskId: task.id, runId: run.id, parentRunId: run.parentRunId, event });
+      // 委派子 Run 由 createDelegateHandler 在创建时立即补发 run_started；根 Run 此前没有任何地方
+      // 发过这条事件（真实执行只会看到 agent_start/text_delta/agent_end/run_ended），导致 CLI 的
+      // task-reducer.mjs（只在收到 run_started 时才建根 Run 节点）在交互式 TaskView 里对根 Run 一直
+      // 建不出节点、什么都不渲染——这里补发，让根/子 Run 共用同一条"进入 runsById"的入口事件。
+      emit({
+        type: "run_started",
+        runId: run.id,
+        parentRunId: run.parentRunId,
+        agent: run.agent,
+        trigger: run.trigger,
+      });
+      const requestApproval = (request: ApprovalRequest) =>
+        approvals.request({ kind: "tool", ...request }, signal, (approval) =>
+          emit({
+            type: "approval_required",
+            approvalId: approval.id,
+            title: approval.title,
+            detail: approval.detail,
+            risk: approval.risk,
+            payload: approval.payload,
+            reason: approval.reason,
+          }),
+        );
+      const requestAnswer = createRequestAnswer(approvals, signal, (approval) =>
         emit({
           type: "approval_required",
           approvalId: approval.id,
@@ -215,162 +228,186 @@ export function createOrchestratorExecutor(deps: RealExecutorDeps): RunExecutor 
           reason: approval.reason,
         }),
       );
-    const requestAnswer = createRequestAnswer(approvals, signal, (approval) =>
-      emit({
-        type: "approval_required",
-        approvalId: approval.id,
-        title: approval.title,
-        detail: approval.detail,
-        risk: approval.risk,
-        payload: approval.payload,
-        reason: approval.reason,
-      }),
-    );
-    const onDelegate = createDelegateHandler({
-      tasks,
-      approvals,
-      taskId: task.id,
-      parentRunId: run.id,
-      signal,
-    });
-    const recordArtifact = (input: {
-      kind: ArtifactKind;
-      title: string;
-      content?: string;
-      metadata?: unknown;
-    }) =>
-      tasks.recordArtifact({
+      const onDelegate = createDelegateHandler({
+        tasks,
+        approvals,
         taskId: task.id,
-        runId: run.id,
-        kind: input.kind,
-        title: input.title,
-        content: input.content,
-        metadata: input.metadata,
+        parentRunId: run.id,
+        signal,
       });
+      const recordArtifact = (input: {
+        kind: ArtifactKind;
+        title: string;
+        content?: string;
+        metadata?: unknown;
+        filePath?: string;
+        mimeType?: string;
+        artifactKey?: string;
+      }) =>
+        tasks.recordArtifact({
+          taskId: task.id,
+          runId: run.id,
+          kind: input.kind,
+          title: input.title,
+          content: input.content,
+          metadata: input.metadata,
+          filePath: input.filePath,
+          mimeType: input.mimeType,
+          artifactKey: input.artifactKey,
+        });
 
-    // trigger='resume' 时，把上一条失败/取消的历史 Run 的摘要（工具调用 + 失败原因）
-    // 和已有的 plan 产物（阶段 F 才会真正产出，这里查不到时直接跳过）拼进这次的 context，
-    // 让模型知道"之前已经做过什么、为什么失败"，而不是从零开始。
-    let resumeContext: string | undefined;
-    if (run.trigger === "resume") {
-      const previousFailed = tasks
-        .listRuns(task.id)
-        .filter((r) => r.id !== run.id && (r.status === "failed" || r.status === "cancelled"))
-        .sort((a, b) => (a.createdAt > b.createdAt ? -1 : 1))[0];
-      const parts: string[] = [];
-      if (previousFailed) {
-        const toolCalls = previousFailed.toolCalls as ToolCallRecord[] | null;
-        if (toolCalls && toolCalls.length > 0) {
-          parts.push(`之前执行已完成以下操作：${summarizeToolCalls(toolCalls)}`);
+      // trigger='resume' 时，把上一条失败/取消的历史 Run 的摘要（工具调用 + 失败原因）
+      // 和已有的 plan 产物（阶段 F 才会真正产出，这里查不到时直接跳过）拼进这次的 context，
+      // 让模型知道"之前已经做过什么、为什么失败"，而不是从零开始。
+      let resumeContext: string | undefined;
+      if (run.trigger === "resume") {
+        const previousFailed = tasks
+          .listRuns(task.id)
+          .filter((r) => r.id !== run.id && (r.status === "failed" || r.status === "cancelled"))
+          .sort((a, b) => (a.createdAt > b.createdAt ? -1 : 1))[0];
+        const parts: string[] = [];
+        if (previousFailed) {
+          const toolCalls = previousFailed.toolCalls?.length
+            ? (previousFailed.toolCalls as ToolCallRecord[])
+            : readRunToolHistory(tasks, previousFailed.id);
+          if (toolCalls.length > 0) {
+            parts.push(
+              `之前已记录以下操作，请跳过已确认完成的操作：${summarizeToolCalls(toolCalls)}`,
+            );
+          }
+          if (previousFailed.resultError) parts.push(`上次失败原因：${previousFailed.resultError}`);
         }
-        if (previousFailed.resultError) parts.push(`上次失败原因：${previousFailed.resultError}`);
+        const plan = tasks.latestArtifact(task.id, "plan");
+        if (plan) {
+          parts.push(
+            `已有方案草稿（版本 ${plan.version}）：${(plan.content ?? plan.title).slice(0, 1000)}`,
+          );
+        }
+        if (parts.length > 0) resumeContext = parts.join("\n");
       }
-      const plan = tasks.latestArtifact(task.id, "plan");
-      if (plan) {
-        parts.push(
-          `已有方案草稿（版本 ${plan.version}）：${(plan.content ?? plan.title).slice(0, 1000)}`,
-        );
-      }
-      if (parts.length > 0) resumeContext = parts.join("\n");
-    }
 
-    try {
-      const projectContext = await deps.projectInstructions.load(run.input.workspace, signal);
-      const result = await orchestrator.run({
-        history: conversationStore.toPiMessages(history),
-        userMessage: run.input.userMessage,
-        agent: task.agent ?? undefined,
-        context:
+      try {
+        const projectContext = await deps.projectInstructions.load(run.input.workspace, signal);
+        const context =
           [run.input.context, resumeContext, projectContext, planGateHint]
             .filter(Boolean)
-            .join("\n\n") || undefined,
-        signal,
-        emit,
-        requestApproval,
-        requestAnswer,
-        onDelegate,
-        allowedTools,
-        recordArtifact,
-        autoApprove,
-        mask: maskFactory(),
-      });
-      conversationStore.insertMessage({
-        id: newId(),
-        conversationId: task.conversationId,
-        role: "assistant",
-        content: result.text,
-        agent: result.agent,
-        toolCalls: result.toolCalls,
-        createdAt: nowIso(),
-      });
-      emit({ type: "run_ended", runId: run.id, status: "succeeded" });
-
-      if (isPlanGate) {
-        const plan = tasks.latestArtifact(task.id, "plan");
-        if (plan && plan.version > planVersionBefore) {
-          // 不 await：这条 Run 在方案提交后就算成功结束，批准/拒绝由下面的 .then()
-          // 异步驱动 Task 的后续状态迁移（awaiting_plan_approval -> running/planning）。
-          void approvals
-            .request(
-              {
-                kind: "plan",
-                title: `方案待批准：${task.title}`,
-                detail: plan.content ?? plan.title,
-                risk: "confirm",
-                payload: { taskId: task.id, artifactId: plan.id, version: plan.version },
-              },
-              signal,
-              (approval) =>
-                emit({
-                  type: "approval_required",
-                  approvalId: approval.id,
-                  title: approval.title,
-                  detail: approval.detail,
-                  risk: approval.risk,
-                  payload: approval.payload,
-                  reason: approval.reason,
-                }),
-            )
-            .then((approved) => {
-              try {
-                tasks.transition(task.id, approved ? "running" : "planning");
-              } catch {
-                // 任务状态机已经走到其它分支（例如被用户取消），忽略
-              }
-            });
-          return {
-            status: "succeeded",
-            resultText: result.text,
-            toolCalls: result.toolCalls,
-            nextTaskStatus: "awaiting_plan_approval",
-          };
-        }
-        console.error(
-          `[task-executor] 方案关口：模型未调用 tasks.submit_plan，已降级为直接执行（taskId=${task.id} runId=${run.id}）`,
-        );
-      }
-
-      // 正常走到 awaiting_review：真正创建一条 kind='review' 的审批记录承载验收，而不是等
-      // POST /tasks/:id/review 被调用时凭空接受一个请求。只对 requiresPlanApproval 的任务
-      // 主动创建——这类任务本来就走正式的流程监管（方案关口 + 验收关口成对出现）；普通任务
-      // （例如既有的 /chat 借壳、ask_user 追问等场景）不主动创建，避免给每一次任务完成都挂一条
-      // 永不过期的 pending 审批，污染"取第一条 pending 审批"这类既有调用方的假设。没有主动创建
-      // 的任务仍可以正常走 POST /tasks/:id/review——那里有懒创建兜底，同样会落一条真实记录。
-      if (task.requiresPlanApproval) {
-        approvals.create({
-          kind: "review",
-          title: `验收：${task.title}`,
-          detail: result.text.slice(0, 2000),
-          risk: "confirm",
-          payload: { taskId: task.id, runId: run.id },
+            .join("\n\n") || undefined;
+        const prepared = await deps.context?.prepare({
+          conversationId: task.conversationId,
+          history,
+          userMessage: run.input.userMessage,
+          systemContext: context,
+          agent: run.agent,
+          signal,
+          emit,
         });
+        const result = await orchestrator.run({
+          history: prepared?.history ?? conversationStore.toPiMessages(history),
+          userMessage: run.input.userMessage,
+          agent: run.agent,
+          context,
+          signal,
+          emit,
+          requestApproval,
+          requestAnswer,
+          onDelegate,
+          allowedTools,
+          recordArtifact,
+          autoApprove,
+          mask: maskFactory(),
+        });
+        conversationStore.insertMessage({
+          id: newId(),
+          conversationId: task.conversationId,
+          role: "assistant",
+          content: result.text,
+          agent: result.agent,
+          toolCalls: result.toolCalls,
+          createdAt: nowIso(),
+        });
+        emit({ type: "run_ended", runId: run.id, status: "succeeded" });
+
+        if (isPlanGate) {
+          const plan = tasks.latestArtifact(task.id, "plan");
+          if (plan && plan.version > planVersionBefore) {
+            // 不 await：这条 Run 在方案提交后就算成功结束，批准/拒绝由下面的 .then()
+            // 异步驱动 Task 的后续状态迁移（awaiting_plan_approval -> running/planning）。
+            void approvals
+              .request(
+                {
+                  kind: "plan",
+                  title: `方案待批准：${task.title}`,
+                  detail: plan.content ?? plan.title,
+                  risk: "confirm",
+                  payload: { taskId: task.id, artifactId: plan.id, version: plan.version },
+                },
+                signal,
+                (approval) =>
+                  emit({
+                    type: "approval_required",
+                    approvalId: approval.id,
+                    title: approval.title,
+                    detail: approval.detail,
+                    risk: approval.risk,
+                    payload: approval.payload,
+                    reason: approval.reason,
+                  }),
+              )
+              .then((approved) => {
+                try {
+                  tasks.transition(task.id, approved ? "running" : "planning");
+                } catch {
+                  // 任务状态机已经走到其它分支（例如被用户取消），忽略
+                }
+              });
+            return {
+              status: "succeeded",
+              resultText: result.text,
+              toolCalls: result.toolCalls,
+              nextTaskStatus: "awaiting_plan_approval",
+            };
+          }
+          console.error(
+            `[task-executor] 方案关口：模型未调用 tasks.submit_plan，已降级为直接执行（taskId=${task.id} runId=${run.id}）`,
+          );
+        }
+
+        // 正常走到 awaiting_review：真正创建一条 kind='review' 的审批记录承载验收，而不是等
+        // POST /tasks/:id/review 被调用时凭空接受一个请求。只对 requiresPlanApproval 的任务
+        // 主动创建——这类任务本来就走正式的流程监管（方案关口 + 验收关口成对出现）；普通任务
+        // （例如既有的 /chat 借壳、ask_user 追问等场景）不主动创建，避免给每一次任务完成都挂一条
+        // 永不过期的 pending 审批，污染"取第一条 pending 审批"这类既有调用方的假设。没有主动创建
+        // 的任务仍可以正常走 POST /tasks/:id/review——那里有懒创建兜底，同样会落一条真实记录。
+        if (task.requiresPlanApproval) {
+          approvals.create({
+            kind: "review",
+            title: `验收：${task.title}`,
+            detail: result.text.slice(0, 2000),
+            risk: "confirm",
+            payload: { taskId: task.id, runId: run.id },
+          });
+        }
+        return { status: "succeeded", resultText: result.text, toolCalls: result.toolCalls };
+      } catch (error) {
+        const status = signal.aborted ? "cancelled" : "failed";
+        const message = errorMessage(error);
+        const toolCalls = readRunToolHistory(tasks, run.id);
+        conversationStore.insertMessage({
+          id: newId(),
+          conversationId: task.conversationId,
+          role: "assistant",
+          content: failedRunMessage(message, toolCalls),
+          agent: run.agent,
+          toolCalls,
+          createdAt: nowIso(),
+        });
+        emit({ type: "run_ended", runId: run.id, status, error: message });
+        return { status, resultError: message, toolCalls };
       }
-      return { status: "succeeded", resultText: result.text, toolCalls: result.toolCalls };
     } catch (error) {
-      const status = signal.aborted ? "cancelled" : "failed";
-      const message = errorMessage(error);
-      emit({ type: "run_ended", runId: run.id, status, error: message });
-      return { status, resultError: message };
+      return { status: signal.aborted ? "cancelled" : "failed", resultError: errorMessage(error) };
+    } finally {
+      release?.();
     }
   };
 }

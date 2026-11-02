@@ -5,11 +5,9 @@ import type { Db } from "../db/client";
 import { messages } from "../db/schema";
 import { toJsonSafe } from "../util";
 
-const HISTORY_LIMIT = 20;
-
 /** 历史消息只回放文本；工具调用细节以摘要附在助手消息后，控制上下文长度。 */
 function toPiMessages(history: ChatMessage[]): Message[] {
-  return history.slice(-HISTORY_LIMIT).map((m): Message => {
+  return history.map((m): Message => {
     if (m.role === "user")
       return { role: "user", content: m.content, timestamp: Date.parse(m.createdAt) };
     const toolNote = m.toolCalls.length

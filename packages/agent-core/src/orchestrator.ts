@@ -203,6 +203,7 @@ export class Orchestrator {
               signal: opts.signal,
               context: opts.context,
               modelSelection: opts.modelSelection,
+              recordArtifact: opts.recordArtifact,
               autoApprove: opts.autoApprove,
               mask: opts.mask,
             },

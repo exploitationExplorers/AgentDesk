@@ -188,6 +188,51 @@ it("聊天产生可观察的运行，拒绝编辑不会生成成功差异", asyn
   expect(events.some((e) => e.event.type === "file_change")).toBe(false);
 });
 
+for (const source of ["task", "chat"] as const) {
+  it(`${source} 的文档写入自动登记可预览成果，项目后续修改不覆盖快照`, async () => {
+    const path = `report-${source}.md`;
+    const content = "# 分析报告\n\n已验证文档成果。";
+    faux.setResponses([
+      tool("fs.write", { project, path, content, expectedHash: "" }),
+      fauxAssistantMessage(fauxText("报告已保存。")),
+      fauxAssistantMessage(fauxText('{"memories":[]}')),
+    ]);
+    const response = await request(
+      source === "task" ? "/tasks" : "/chat",
+      source === "task"
+        ? { goal: `创建 ${path}`, agent: "code", workspace: project }
+        : { message: `创建 ${path}`, agent: "code", workspace: project },
+    );
+    const stream = source === "chat" ? response.text() : undefined;
+    const task = source === "task" ? ((await response.json()) as Task) : undefined;
+    await waitFor(() => container.approvals.list("pending").length > 0);
+    await request(`/approvals/${container.approvals.list("pending")[0]!.id}`, { approved: true });
+    if (stream) await stream;
+    const taskId =
+      task?.id ?? container.tasks.list().find((item) => item.goal === `创建 ${path}`)!.id;
+    await waitFor(() => container.tasks.get(taskId)?.status === "awaiting_review");
+    const artifacts = container.tasks.listArtifacts(taskId);
+    const artifact = artifacts.find((item) => item.kind === "file")!;
+    expect(artifact).toMatchObject({
+      title: path,
+      content,
+      filePath: join(project, path),
+      version: 1,
+    });
+    expect(artifacts.filter((item) => item.kind === "change")).toHaveLength(1);
+    expect(await container.tasks.readArtifact(taskId, artifact.id)).toMatchObject({
+      content,
+      source: "snapshot",
+      changedOnDisk: false,
+    });
+    writeFileSync(join(project, path), "后来的磁盘修改");
+    expect(await container.tasks.readArtifact(taskId, artifact.id)).toMatchObject({
+      content,
+      changedOnDisk: true,
+    });
+  });
+}
+
 for (const decision of ["approve", "reject", "cancel"] as const) {
   it(`聊天委派的文件编辑在当前 SSE 显示审批并支持 ${decision}`, async () => {
     const path = `delegated-${decision}.ts`;

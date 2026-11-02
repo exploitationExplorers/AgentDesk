@@ -29,6 +29,7 @@ import { codeRoute } from "../../router";
 import { codeApi, type CodeSource } from "./api";
 import { outputText, projectActivity, stepHint, type CodeStep } from "./activity";
 import { DiffView } from "./DiffView";
+import { ArtifactWorkspace } from "./ArtifactWorkspace";
 import { FlowGraph } from "./FlowGraph";
 import { useRunTree } from "./useRunTree";
 import { useTaskEvents } from "./useTaskEvents";
@@ -283,7 +284,7 @@ function TaskDetail({ task, source }: { task: Task; source: CodeSource }) {
   const [selectedStep, setSelectedStep] = useState<string | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [timelineView, setTimelineView] = useState<"timeline" | "flow">("timeline");
-  const [tab, setTab] = useState<"diff" | "output">("diff");
+  const [tab, setTab] = useState<"diff" | "output" | "artifacts">("diff");
   const [followup, setFollowup] = useState("");
   const change = activity.changes.find((c) => c.key === selectedChange) ?? activity.changes.at(-1);
   const step =
@@ -500,36 +501,42 @@ function TaskDetail({ task, source }: { task: Task; source: CodeSource }) {
               />
             </TabsContent>
           </Tabs>
-          {!["closed", "completed"].includes(task.status) && (
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                action.mutate("followup");
-              }}
-              className="border-t p-4"
-            >
-              <div className="flex items-center gap-2 rounded-xl border bg-surface p-2">
-                <input
-                  aria-label="后续要求"
-                  value={followup}
-                  onChange={(e) => setFollowup(e.target.value)}
-                  disabled={busy || task.status === "awaiting_plan_approval"}
-                  placeholder={busy ? "执行中，可在此查看实时进展" : "补充要求，或继续完成任务…"}
-                  className="min-w-0 flex-1 bg-transparent px-1 text-xs outline-none"
-                />
-                <Button
-                  type="submit"
-                  size="sm"
-                  variant="ghost"
-                  disabled={busy || task.status === "awaiting_plan_approval" || action.isPending}
-                  aria-label="继续任务"
-                >
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
-              </div>
-              <p className="mt-2 text-[10px] text-subtle">执行记录自动保存，可随时回来查看。</p>
-            </form>
+          {task.purpose === "reference_analysis" && (
+            <p className="border-t p-4 text-xs text-muted">
+              资料分析为只读记录，请到项目中心勾选建议创建开发任务。
+            </p>
           )}
+          {task.purpose !== "reference_analysis" &&
+            !["closed", "completed"].includes(task.status) && (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  action.mutate("followup");
+                }}
+                className="border-t p-4"
+              >
+                <div className="flex items-center gap-2 rounded-xl border bg-surface p-2">
+                  <input
+                    aria-label="后续要求"
+                    value={followup}
+                    onChange={(e) => setFollowup(e.target.value)}
+                    disabled={busy || task.status === "awaiting_plan_approval"}
+                    placeholder={busy ? "执行中，可在此查看实时进展" : "补充要求，或继续完成任务…"}
+                    className="min-w-0 flex-1 bg-transparent px-1 text-xs outline-none"
+                  />
+                  <Button
+                    type="submit"
+                    size="sm"
+                    variant="ghost"
+                    disabled={busy || task.status === "awaiting_plan_approval" || action.isPending}
+                    aria-label="继续任务"
+                  >
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </div>
+                <p className="mt-2 text-[10px] text-subtle">执行记录自动保存，可随时回来查看。</p>
+              </form>
+            )}
         </section>
         <section className="flex min-h-0 min-w-0 flex-col bg-surface/35" aria-label="代码检查器">
           <div className="flex items-center gap-5 border-b px-5">
@@ -555,12 +562,27 @@ function TaskDetail({ task, source }: { task: Task; source: CodeSource }) {
               <Terminal className="h-3.5 w-3.5" />
               工具输出
             </button>
+            <button
+              type="button"
+              onClick={() => setTab("artifacts")}
+              className={cn(
+                "flex items-center gap-2 border-b-2 py-3.5 text-xs",
+                tab === "artifacts"
+                  ? "border-emerald-400 text-fg"
+                  : "border-transparent text-muted",
+              )}
+            >
+              <FileCode2 className="h-3.5 w-3.5" />
+              成果
+            </button>
             <div className="ml-auto font-mono text-[11px]">
               <span className="text-success">+{total.add}</span>
               <span className="ml-2 text-danger">−{total.del}</span>
             </div>
           </div>
-          {tab === "diff" ? (
+          {tab === "artifacts" ? (
+            <ArtifactWorkspace taskId={task.id} source={source} />
+          ) : tab === "diff" ? (
             change ? (
               <>
                 <div className="max-h-40 shrink-0 overflow-y-auto border-b p-2">

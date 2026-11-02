@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -75,7 +76,8 @@ function createSseReader(res: Response) {
 function createRootTask(goal: string) {
   const task = container.tasks.create({
     goal,
-    conversationId: "conv-task-sse-test",
+    // 各用例只测试事件回放，Run 生命周期由用例手动驱动，因此会话必须独立。
+    conversationId: `conv-task-sse-${randomUUID()}`,
     requiresPlanApproval: false,
   });
   const run = container.tasks.createRun({
@@ -288,6 +290,7 @@ describe("task SSE 断线重连", () => {
       parentRunId: null,
       event: { type: "run_ended", runId: firstRun.id, status: "succeeded" },
     });
+    container.tasks.finalizeRunDirect(firstRun.id, { status: "succeeded" });
     // 第二条根 Run（例如 resume）在连接建立前也已经跑完：历史里会先经过第一条 Run 的 run_ended，
     // 如果一遇到任意终止事件就提前收尾（而不是等整段历史补齐完再看最新一条），就会漏掉这一轮。
     const secondRun = container.tasks.createRun({

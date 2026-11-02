@@ -211,7 +211,12 @@ const BROAD_DIRECT_NAMES = new Set([
  * 删除前的路径闸门。不跟随符号链接；调用方应先 realpath，再把真实路径传进来。
  * 家目录、磁盘根、用户壳层目录、浏览器配置档和受保护前缀一律拒绝。
  */
-export function isSafeDeletionTarget(target: string, env: DiskEnv, prefixes: string[]): boolean {
+export function isSafeDeletionTarget(
+  target: string,
+  env: DiskEnv,
+  prefixes: string[],
+  volumeRoots: string[] = [],
+): boolean {
   if (!target.trim()) return false;
   const platform = env.platform;
   const resolved = resolve(target);
@@ -221,7 +226,14 @@ export function isSafeDeletionTarget(target: string, env: DiskEnv, prefixes: str
 
   const anchors = [env.home, env.local, env.roaming];
   const anchor = anchors.find((item) => isStrictChild(item, resolved, platform));
-  if (!anchor) return false;
+  if (!anchor) {
+    // 扩展到数据盘时只放行所选卷内的路径，调用方只允许删除单个文件。
+    return volumeRoots.some(
+      (root) =>
+        isStrictChild(root, resolved, platform) &&
+        !isProtectedVolumePath(resolved, root, env, prefixes),
+    );
+  }
 
   const forbidden = [
     env.home,
@@ -258,6 +270,90 @@ export function isSafeDeletionTarget(target: string, env: DiskEnv, prefixes: str
   }
   // 缓存目录有时直接放在 Local/Roaming，且这两处不在家目录下
   return fromHome === 0 && (fromLocal === 1 || fromRoaming === 1) && !BROAD_DIRECT_NAMES.has(name);
+}
+
+const VOLUME_PROTECTED_NAMES = new Set([
+  ...DENY_ANY_BASENAME,
+  "appdata",
+  "library",
+  "application support",
+  ".ssh",
+  ".gnupg",
+  ".config",
+  ".claude",
+  ".codex",
+  ".ollama",
+  "$recycle.bin",
+  "system volume information",
+  "programdata",
+  "recovery",
+  "config.msi",
+  "users",
+  "documents and settings",
+  "$windows.~bt",
+  "$windows.~ws",
+  "windowsapps",
+  "wpsystem",
+  "msocache",
+  "node_modules",
+  ".git",
+  ".hg",
+  ".svn",
+  ".aws",
+  ".azure",
+  "pagefile.sys",
+  "hiberfil.sys",
+  "swapfile.sys",
+  "boot",
+  "bootmgr",
+  "efi",
+]);
+
+export function isProtectedVolumePath(
+  target: string,
+  root: string,
+  env: DiskEnv,
+  prefixes: string[],
+): boolean {
+  if (isProtectedPath(target, env, prefixes)) return true;
+  if (env.platform !== "win32") {
+    const systemRoots = [
+      "/bin",
+      "/sbin",
+      "/usr",
+      "/etc",
+      "/var",
+      "/lib",
+      "/lib64",
+      "/dev",
+      "/proc",
+      "/sys",
+      "/run",
+      "/boot",
+      "/root",
+      "/home",
+      "/System",
+      "/Applications",
+      "/Library",
+      "/private",
+    ];
+    if (
+      systemRoots.some(
+        (path) => samePath(path, target, env.platform) || isStrictChild(path, target, env.platform),
+      )
+    )
+      return true;
+  }
+  // 不重复遍历家目录和应用配置；它们仍由精确的缓存规则处理。
+  if (
+    [env.home, env.local, env.roaming].some(
+      (anchor) =>
+        samePath(anchor, target, env.platform) || isStrictChild(anchor, target, env.platform),
+    )
+  )
+    return true;
+  const parts = relative(resolve(root), resolve(target)).split(sep);
+  return parts.some((part) => VOLUME_PROTECTED_NAMES.has(part.toLowerCase()));
 }
 
 function relativeDepth(parent: string, child: string, platform: NodeJS.Platform): number {
