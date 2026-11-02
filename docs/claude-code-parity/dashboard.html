@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AgentDesk 架构与能力对照看板</title>
+<style>
+  :root{
+    --bg:#fbfaf8; --panel:#ffffff; --text:#1c1b1a; --muted:#6b6560;
+    --border:#e7e2db; --accent:#b45309; --accent-soft:#fef3e2;
+    --code-bg:#f3efe8; --table-head:#f6f1e9; --warn-bg:#fff4e5; --warn-border:#e8b167;
+    --good:#1a7f37; --good-bg:#e9f6ec; --partial:#b45309; --partial-bg:#fdf1e2;
+    --missing:#c2362b; --missing-bg:#fdeceb; --diff:#6366f1; --diff-bg:#edeeff;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#14120f; --panel:#1c1a16; --text:#ece7de; --muted:#a89d8d;
+      --border:#332e27; --accent:#e0923c; --accent-soft:#2a2115;
+      --code-bg:#241f18; --table-head:#241f18; --warn-bg:#241a0c; --warn-border:#7a5321;
+      --good:#4fae6a; --good-bg:#132018; --partial:#e0923c; --partial-bg:#2a2115;
+      --missing:#e0675b; --missing-bg:#2a1512; --diff:#9497ff; --diff-bg:#1b1b2e;
+    }
+  }
+  *{box-sizing:border-box;}
+  body{margin:0; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans SC",sans-serif; line-height:1.7;}
+  .wrap{max-width:980px; margin:0 auto; padding:40px 20px 100px;}
+  header.hero{padding:36px 24px; border-radius:16px; background:var(--panel); border:1px solid var(--border); margin-bottom:24px;}
+  header.hero h1{margin:0 0 8px; font-size:1.7rem;}
+  header.hero p{margin:4px 0; color:var(--muted); font-size:0.92rem;}
+  header.hero a{color:var(--accent);}
+  .stats{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:28px;}
+  .stat{background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:16px; text-align:center;}
+  .stat .num{font-size:1.8rem; font-weight:700;}
+  .stat .label{font-size:0.8rem; color:var(--muted); margin-top:4px;}
+  .stat.good .num{color:var(--good);} .stat.partial .num{color:var(--partial);}
+  .stat.missing .num{color:var(--missing);} .stat.diff .num{color:var(--diff);}
+  .note{background:var(--warn-bg); border:1px solid var(--warn-border); border-radius:10px; padding:14px 18px; font-size:0.88rem; margin:16px 0;}
+  .note strong{color:var(--accent);}
+  section{margin-bottom:36px;}
+  h2{font-size:1.2rem; border-bottom:2px solid var(--border); padding-bottom:8px; margin-top:0;}
+  h3{font-size:1rem;}
+  table{border-collapse:collapse; width:100%; font-size:0.85rem; margin:14px 0;}
+  th,td{border:1px solid var(--border); padding:8px 10px; text-align:left; vertical-align:top;}
+  th{background:var(--table-head);}
+  code{background:var(--code-bg); padding:2px 6px; border-radius:5px; font-size:0.85em; font-family:ui-monospace,Menlo,Consolas,monospace;}
+  .badge{display:inline-block; font-size:0.74rem; font-weight:600; padding:3px 9px; border-radius:999px; white-space:nowrap;}
+  .badge.good{background:var(--good-bg); color:var(--good);}
+  .badge.partial{background:var(--partial-bg); color:var(--partial);}
+  .badge.missing{background:var(--missing-bg); color:var(--missing);}
+  .badge.diff{background:var(--diff-bg); color:var(--diff);}
+  .srcbar{display:flex; flex-wrap:wrap; gap:8px; font-size:0.78rem; margin-top:10px;}
+  .srcbar a{background:var(--code-bg); border-radius:999px; padding:4px 10px; text-decoration:none; color:var(--text); border:1px solid var(--border);}
+  footer{color:var(--muted); font-size:0.82rem; text-align:center; margin-top:48px;}
+  .groupbar{font-size:0.78rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.04em; margin:22px 0 6px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <h1>AgentDesk 架构与能力对照看板</h1>
+    <p>对标 <a href="https://nangongwentian-fe.github.io/learn-claude-source/" target="_blank" rel="noopener">learn-claude-source</a>（Claude Code v2.1.88 逆向解析）梳理的 12 个核心能力域，呈现 AgentDesk 当前代码的实际状态。</p>
+    <p>基线日期：2026-10-28（<code>docs/claude-code-parity/</code> 逐文件核对），2026-11-02 复核一处过期结论。这是<strong>当前代码快照</strong>，不是对未来重构结果的承诺；每条结论都应在动手前用 Grep/Read 重新核实。</p>
+  </header>
+
+  <div class="note">
+    <strong>证据边界：</strong>本页数据来自对本地 Claude Code 2.1.87 参考源码（1,902 个文件、51 万行）的结构扫描 + 关键路径人工阅读，以及对 AgentDesk 当前代码的直接 Read/Grep 核实，<strong>不是逐行语义审计，也不构成对 Claude Code 官方发布版"默认可用功能"的认证</strong>。详见 <code>docs/claude-code-parity/README.md</code> 的方法论说明。
+  </div>
+
+  <div class="stats">
+    <div class="stat good"><div class="num">1</div><div class="label">已具备</div></div>
+    <div class="stat partial"><div class="num">8</div><div class="label">部分具备</div></div>
+    <div class="stat missing"><div class="num">2</div><div class="label">缺失</div></div>
+    <div class="stat diff"><div class="num">1</div><div class="label">架构不同（部分对应）</div></div>
+  </div>
+
+  <section>
+    <h2>十二能力域对照（对齐 learn-claude-source 的 S01–S12）</h2>
+
+    <div class="groupbar">核心循环 S01–S03</div>
+    <table>
+      <thead><tr><th style="width:120px">能力域</th><th style="width:90px">状态</th><th>AgentDesk 现状</th></tr></thead>
+      <tbody>
+        <tr><td>S01 Agent Loop</td><td><span class="badge good">已具备</span></td>
+          <td><code>agent-core/src/agent.ts:209</code> <code>runAgent</code> 实现模型↔工具多轮循环；达到 <code>maxTurns</code> 后会明确报告"任务尚未完成"而非误标成功（本轮已修复）。</td></tr>
+        <tr><td>S02 Tools（工具系统）</td><td><span class="badge partial">部分具备</span></td>
+          <td><code>tools.ts:66</code> 统一 <code>AgentTool</code> 接口 + 并发安全标注（只读批并发、写操作顺序屏障，本轮已落实）；缺分段读取大文件、Notebook/LSP 工具、延迟 schema 加载。</td></tr>
+        <tr><td>S03 Permissions（权限系统）</td><td><span class="badge partial">部分具备</span></td>
+          <td><code>agent.ts:309</code> safe/confirm/dangerous 三级 risk + 前缀规则 + AI 分类器兜底；<strong>只覆盖 <code>shell.run</code></strong>，无 deny 规则、无会话/项目级持久策略、无 OS 沙箱。</td></tr>
+      </tbody>
+    </table>
+
+    <div class="groupbar">提示词与上下文 S04–S05</div>
+    <table>
+      <tbody>
+        <tr><td style="width:120px">S04 System Prompt</td><td style="width:90px"><span class="badge partial">部分具备</span></td>
+          <td><code>orchestrator.ts:155</code> 拼接系统提示词（项目指令 + 技能目录 + 路由提示）；<code>project-instructions.ts</code> 已按工作区加载 <code>AGENTS.md</code>/<code>CLAUDE.md</code>，但不读祖先/全局规则；无 Hook 改写系统提示词的能力。</td></tr>
+        <tr><td>S05 Context &amp; Compact</td><td><span class="badge partial">部分具备</span></td>
+          <td><code>conversation-context.ts</code> 已实现阈值触发的滚动摘要 + 预算裁剪 + 失败熔断。<span class="badge diff">文档已更新</span> <code>core.md</code>（2026-10-28）曾判定此项"缺失"，该结论已过期，本页已修正；仍缺"每轮保留最近 N 条完整工具结果"的 micro-compact 层。</td></tr>
+      </tbody>
+    </table>
+
+    <div class="groupbar">扩展能力 S06–S08</div>
+    <table>
+      <tbody>
+        <tr><td style="width:120px">S06 Subagents</td><td style="width:90px"><span class="badge partial">部分具备</span></td>
+          <td><code>orchestrator.ts:164/180</code> 支持委派专用 Agent，子 Run 独立 <code>parentRunId</code> + 事件流；工具集/工作区仍与父 Agent 共享，无 worktree/进程隔离，无动态角色定义。</td></tr>
+        <tr><td>S07 MCP</td><td><span class="badge missing">缺失</span></td>
+          <td>全仓库 grep 无任何 MCP 相关代码。现有 <code>ToolRegistry</code>（名称 + Zod schema + execute）理论上可适配 MCP 转换层，但需单独立项。</td></tr>
+        <tr><td>S08 Hooks</td><td><span class="badge missing">缺失</span></td>
+          <td>全仓库 grep 无 Hook 生命周期相关代码；现有审批（<code>approvals</code>）只是单点拦截，不是可配置的 Pre/PostToolUse 洋葱模型。</td></tr>
+      </tbody>
+    </table>
+
+    <div class="groupbar">工程实现 S09–S12</div>
+    <table>
+      <tbody>
+        <tr><td style="width:120px">S09 Streaming</td><td style="width:90px"><span class="badge partial">部分具备</span></td>
+          <td><code>agent.ts:126</code> <code>stream()</code> + <code>emit</code> 回调，经 SSE（<code>run-events</code> → <code>task-sse.ts</code>）推到前端；工具在整次模型响应完成后才执行，没有工具参数增量事件。</td></tr>
+        <tr><td>S10 Skills &amp; CLAUDE.md</td><td><span class="badge partial">部分具备</span></td>
+          <td><code>skills.ts</code> 已有目录摘要 + 触发词 + <code>skills.load</code> 按需加载（两层按需加载模式已落地）；标准字段 <code>allowed-tools</code>/<code>disable-model-invocation</code> 等兼容不完整。</td></tr>
+        <tr><td>S11 State &amp; Session</td><td><span class="badge partial">部分具备</span></td>
+          <td><code>tasks.ts</code> Task/Run/Artifact 状态机 + SQLite 持久化 + 重启恢复（<code>recoverAfterRestart</code>）；无文件写前版本校验（仅调用方显式传 <code>expectedHash</code> 时才检查）、无修改检查点/回退。</td></tr>
+        <tr><td>S12 CLI &amp; Architecture</td><td><span class="badge diff">架构不同</span></td>
+          <td><code>apps/sidecar</code>（常驻 HTTP 服务）+ <code>apps/cli</code>（终端）+ <code>apps/desktop</code>（Tauri 桌面）三进程经 HTTP/SSE 协作，类似但非 Claude Code 的单进程多模式 + 特性标志死代码消除设计——这是合理的架构选择，不是需要"对齐"的缺口。</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>关键发现</h2>
+    <ul>
+      <li><strong>原生 Agent 能力的骨架已经完整</strong>：多轮工具调用、原生文件编辑、真实 diff、审批、桌面编码现场、长期记忆均已有基础实现——不是"从零开始"的项目。</li>
+      <li><strong>差距集中在"深度"而非"有无"</strong>：权限只覆盖 Shell、压缩缺 micro 层、子代理无隔离、技能字段兼容不全——这些是同一能力域里"从部分到完整"的工作，不是全新建设。</li>
+      <li><strong>两个完全空白的能力域</strong>：MCP、通用 Hook 生命周期系统，两者都需要独立立项，不能靠改几个入口文案宣称已对齐。</li>
+      <li><strong>文档会过期</strong>：本页已发现并修正一处（S05 长会话压缩），说明 <code>docs/claude-code-parity/</code> 的结论需要定期用实际代码复核，不能当作永久真相。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>后续实施优先级（源自 docs/claude-code-parity/discussion.md）</h2>
+    <table>
+      <thead><tr><th style="width:60px">阶段</th><th>能力</th><th>完成时应看到的行为</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>保障正确性与现有流程</td><td>单次欢迎区、严格 TS 类型、工具顺序屏障、Shell 明确分类、跨端审批、待审批退出、项目工作区隔离——均可用局部回归测试验证</td></tr>
+        <tr><td>2</td><td>编码任务的持久上下文与恢复</td><td>按模型窗口压缩、结构化工具历史、文件分段读取、读取版本校验、修改检查点、冲突安全回退</td></tr>
+        <tr><td>3</td><td>高频交互效率</td><td>本地 <code>/help</code> <code>/new</code> <code>/resume</code> 命令、输入历史、多行编辑、可回答的文本问答、运行中追加指令</td></tr>
+        <tr><td>4</td><td>生态与并发工作空间</td><td>MCP、LSP、Hooks、动态子 Agent、后台进程、worktree 隔离、跨设备远程、插件分发——按可观察验收逐项独立落地</td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:0.85rem;color:var(--muted)">这是已核实的缺口与验收标准，不是已完成的功能清单；具体执行哪一项、执行到什么程度，需要在动手前单独确认范围。</p>
+  </section>
+
+  <section>
+    <h2>延伸阅读</h2>
+    <div class="srcbar">
+      <a href="./README.md">claude-code-parity/README.md</a>
+      <a href="./core.md">core.md（执行内核/工具/上下文）</a>
+      <a href="./interaction.md">interaction.md（终端交互/会话）</a>
+      <a href="./integrations.md">integrations.md（扩展/MCP/Hooks/插件）</a>
+      <a href="./discussion.md">discussion.md（交叉复核与优先级）</a>
+      <a href="../engineering-standards.html">engineering-standards.html（规则层）</a>
+      <a href="https://nangongwentian-fe.github.io/learn-claude-source/" target="_blank" rel="noopener">learn-claude-source（对标网站）</a>
+    </div>
+  </section>
+
+  <footer>AgentDesk · 架构与能力对照看板 · 2026-11-02</footer>
+</div>
+</body>
+</html>

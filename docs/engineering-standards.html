@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AgentDesk 工程规范</title>
+<style>
+  :root{
+    --bg:#fbfaf8; --panel:#ffffff; --text:#1c1b1a; --muted:#6b6560;
+    --border:#e7e2db; --accent:#b45309; --accent-soft:#fef3e2;
+    --code-bg:#f3efe8; --table-head:#f6f1e9; --warn-bg:#fff4e5; --warn-border:#e8b167;
+    --good:#1a7f37; --partial:#b45309; --missing:#c2362b;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#14120f; --panel:#1c1a16; --text:#ece7de; --muted:#a89d8d;
+      --border:#332e27; --accent:#e0923c; --accent-soft:#2a2115;
+      --code-bg:#241f18; --table-head:#241f18; --warn-bg:#241a0c; --warn-border:#7a5321;
+      --good:#4fae6a; --partial:#e0923c; --missing:#e0675b;
+    }
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans SC",sans-serif;
+    line-height:1.7;
+  }
+  .wrap{max-width:900px; margin:0 auto; padding:40px 20px 100px;}
+  header.hero{
+    padding:36px 24px; border-radius:16px; background:var(--panel);
+    border:1px solid var(--border); margin-bottom:28px;
+  }
+  header.hero h1{margin:0 0 8px; font-size:1.7rem;}
+  header.hero p{margin:4px 0; color:var(--muted); font-size:0.92rem;}
+  nav.toc{
+    background:var(--panel); border:1px solid var(--border); border-radius:12px;
+    padding:16px 20px; margin-bottom:32px; font-size:0.92rem;
+  }
+  nav.toc strong{display:block; margin-bottom:8px;}
+  nav.toc ol{margin:0; padding-left:20px; columns:1;}
+  nav.toc a{color:var(--accent); text-decoration:none;}
+  nav.toc a:hover{text-decoration:underline;}
+  section{margin-bottom:40px;}
+  h2{
+    font-size:1.25rem; border-bottom:2px solid var(--border); padding-bottom:8px;
+    margin-top:0; scroll-margin-top:16px;
+  }
+  h3{font-size:1.05rem; color:var(--text); scroll-margin-top:16px;}
+  .note{
+    background:var(--warn-bg); border:1px solid var(--warn-border); border-radius:10px;
+    padding:14px 18px; font-size:0.9rem; margin:16px 0;
+  }
+  .note strong{color:var(--accent);}
+  table{border-collapse:collapse; width:100%; font-size:0.86rem; margin:14px 0;}
+  caption{caption-side:top; text-align:left; font-size:0.8rem; color:var(--muted); padding-bottom:6px;}
+  th,td{border:1px solid var(--border); padding:8px 10px; text-align:left; vertical-align:top;}
+  th{background:var(--table-head);}
+  tr:nth-child(even) td{background:rgba(0,0,0,0.012);}
+  code{
+    background:var(--code-bg); padding:2px 6px; border-radius:5px; font-size:0.85em;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  pre{
+    background:var(--code-bg); padding:14px 16px; border-radius:10px; overflow-x:auto;
+    font-size:0.85rem; border:1px solid var(--border);
+  }
+  pre code{background:none; padding:0;}
+  ul,ol{padding-left:22px;}
+  li{margin:4px 0;}
+  .tree{white-space:pre; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:0.84rem; line-height:1.5;}
+  .tag{display:inline-block; font-size:0.72rem; font-weight:600; padding:2px 8px; border-radius:999px; margin-right:4px;}
+  .tag.good{background:rgba(26,127,55,0.12); color:var(--good);}
+  .tag.partial{background:rgba(180,83,9,0.14); color:var(--partial);}
+  .tag.missing{background:rgba(194,54,43,0.14); color:var(--missing);}
+  footer{color:var(--muted); font-size:0.82rem; text-align:center; margin-top:48px;}
+  .checklist li{list-style:none; margin:8px 0;}
+  .checklist li::before{content:"☐ "; color:var(--accent);}
+  a.back-top{font-size:0.78rem; color:var(--muted); text-decoration:none;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <h1>AgentDesk 工程规范</h1>
+    <p>提炼自 Claude Code 的架构设计模式，用于指导 AgentDesk 后续的代码重构与新功能开发。</p>
+    <p>最后整理日期：2026-11-02 · 源文件：<code>docs/engineering-standards.md</code></p>
+  </header>
+
+  <nav class="toc">
+    <strong>目录</strong>
+    <ol>
+      <li><a href="#s0">文档定位与证据边界（请先读）</a></li>
+      <li><a href="#s1">核心设计理念</a></li>
+      <li><a href="#s2">十条可迁移设计模式与落地规则</a></li>
+      <li><a href="#s3">目录结构规范</a></li>
+      <li><a href="#s4">TypeScript / 代码风格规范</a></li>
+      <li><a href="#s5">Git 提交规范</a></li>
+      <li><a href="#s6">Agent 专项规则 Checklist</a></li>
+      <li><a href="#s7">这份文档怎么用</a></li>
+    </ol>
+  </nav>
+
+  <section id="s0">
+    <h2>0. 文档定位与证据边界（请先读）</h2>
+    <p>本规范的素材来自两类完全不同性质的来源，使用前必须分清楚：</p>
+    <ol>
+      <li><strong>anthropics/claude-code 官方 GitHub 仓库</strong> —— 核实后确认它<strong>不包含产品源码</strong>，只是发布 / Issue 跟踪仓库（README 只有安装方式和数据政策，没有 CONTRIBUTING.md、没有 commit 规范、没有架构文档；仓库里的 <code>CLAUDE.md</code> 只是它自己 CI 的安全护栏说明）。因此本规范<strong>不存在"抄 Claude Code 官方贡献指南"</strong>这件事。</li>
+      <li><strong>第三方逆向分析</strong> —— <a href="https://nangongwentian-fe.github.io/learn-claude-source/" target="_blank" rel="noopener">learn-claude-source</a> 网站对 Claude Code v2.1.88 编译产物的逆向整理（作者声明"仅用于学习研究目的"），以及本仓库 <code>docs/claude-code-parity/</code> 下对本地 Claude Code 2.1.87 参考源码（1,902 个文件、51 万行）做的逐文件结构扫描 + 关键路径人工阅读。<strong>这两类都是二手整理，不是逐行语义审计。</strong></li>
+    </ol>
+    <div class="note">
+      <strong>本文档的性质：</strong>从"可观察到的工业级 Agent 产品长什么样"中提炼出的可迁移设计模式与工程纪律，不是对 Claude Code 源码的复制，也不是官方规范的转述。
+    </div>
+    <p><code>docs/claude-code-parity/{README,core,interaction,integrations,discussion}.md</code> 是本仓库代码与参考材料的能力对照表，比本文档更具体、更新更频繁，是重构 backlog 的来源；本文档只负责"规则"层。</p>
+    <div class="note">
+      <strong>已知过期点：</strong><code>core.md</code> 判定"长会话压缩 = 缺失"，但 <code>apps/sidecar/src/services/conversation-context.ts</code> 现已实现分段摘要压缩（滚动摘要 + 预算裁剪 + 失败熔断）——代码演进快于文档，使用对照表前请先核实文件是否仍存在、行为是否仍如文档所述。
+    </div>
+  </section>
+
+  <section id="s1">
+    <h2>1. 核心设计理念</h2>
+    <p>五条贯穿工业级 Agent 系统的核心认知（源自 learn-claude-source 概览页五点洞察，经适配）：</p>
+    <ol>
+      <li><strong>Agent 的本质是 <code>while</code> 循环 + 工具调用</strong>，其余复杂度都是叠加在循环之上的工程纪律。对应 <code>packages/agent-core/src/agent.ts</code> 的 <code>runAgent</code>。</li>
+      <li><strong>一切皆 Tool</strong>：文件读写、Shell、子代理委派、未来的 MCP 都应是同一个 <code>Tool</code> 接口的实现。</li>
+      <li><strong>权限是架构的第一等公民</strong>，检查点必须在执行之前，默认值必须 fail-closed。</li>
+      <li><strong>上下文窗口是稀缺资源</strong>，必须用分层策略主动管理。</li>
+      <li><strong>异步生成器是流式与可中断性的标准范式</strong>，优于回调或轮询。</li>
+    </ol>
+    <p>与 <code>~/.maestro/workflows/coding-philosophy.md</code> 中"数据结构优先""拥抱简单"等通用原则不冲突：前者是通用编码哲学，这里是 Agent 系统的领域特定补充。</p>
+  </section>
+
+  <section id="s2">
+    <h2>2. 十条可迁移设计模式与落地规则</h2>
+    <table>
+      <thead><tr><th>#</th><th>模式</th><th>解决的问题</th><th>AgentDesk 现状</th><th>落地建议</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>统一 Tool 接口</td><td>新增能力不应改动 Agent Loop 本身</td><td><code>tools.ts:66</code> 已有 <code>AgentTool</code>/<code>defineTool</code>，<code>ToolRegistry.select</code> 支持命名空间通配</td><td>新工具一律通过同一接口注册；禁止在 <code>orchestrator.ts</code> 里为某个工具开特例分支</td></tr>
+        <tr><td>2</td><td>权限三态 + fail-closed</td><td>二元 allow/deny 表达不了"需要询问"</td><td><code>agent.ts:309</code> 已有 safe/confirm/dangerous 三级 risk，但只覆盖 <code>shell.run</code>，无 deny 规则</td><td>扩展规则模型为 <code>{tool, scope, pattern, decision}</code>；deny 永远优先于 allow；新工具默认 <code>dangerous</code></td></tr>
+        <tr><td>3</td><td>分层上下文压缩</td><td>长任务耗尽上下文窗口，截断不可逆丢信息</td><td><code>conversation-context.ts</code> 已有阈值触发的滚动摘要 + 预算裁剪 + 失败熔断</td><td>补齐"每轮保留最近 N 条完整工具结果"的 micro 层；摘要用结构化字段；压缩前先落盘原始转录</td></tr>
+        <tr><td>4</td><td>子代理即分治</td><td>子任务中间步骤不应污染主任务上下文</td><td><code>orchestrator.ts:164/180</code> 已支持委派，子 Run 独立事件流</td><td>子代理从空消息列表起步；只回传最终产物；工具集中绝不包含"派生子代理"的工具</td></tr>
+        <tr><td>5</td><td>Hook 洋葱模型</td><td>需在不改源码前提下插入审计/拦截/改写逻辑</td><td>目前只有单点审批，无通用 Pre/PostToolUse</td><td>在 <code>executeToolCall</code> 前后引入可配置 hook；顺序固定 <code>validate → Pre → permission → call → Post</code></td></tr>
+        <tr><td>6</td><td>异步生成器驱动流式</td><td>实时反馈与中断不应靠回调/轮询</td><td><code>agent.ts:126</code> 的 <code>stream()</code> + <code>emit</code> 回调</td><td>新链路优先用 <code>async function*</code>；中断统一走 <code>AbortSignal</code></td></tr>
+        <tr><td>7</td><td>两层按需加载</td><td>工具/技能增多时系统提示词不能线性膨胀</td><td><code>skills.ts</code> 已有目录摘要 + 按需加载全文</td><td>工具变多后比照同一模式：核心常驻，其余按需取 schema</td></tr>
+        <tr><td>8</td><td>Append-only 持久化</td><td>高频写入需要性能和 crash 安全</td><td><code>tasks.ts</code> 状态机已用 SQLite</td><td>会话转录类数据优先 JSONL 追加写 + 元数据分文件</td></tr>
+        <tr><td>9</td><td>Fail-closed 默认值</td><td>"忘记声明"不能等于"允许"</td><td>部分工具已显式声明</td><td>默认分支统一走拒绝/不安全，用集中 <code>DEFAULTS</code> 常量表达</td></tr>
+        <tr><td>10</td><td>适配器模式扩展外部能力</td><td>接入外部协议不应为每个服务单独写分发逻辑</td><td>全仓库未发现 MCP 相关代码（已核实缺失）</td><td>工具命名加来源前缀防冲突；单个外部连接失败要隔离</td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:0.85rem;color:var(--muted)">"现状"列的文件:行号来自对当前代码的直接核实；重构前请用 <code>git log -p</code> 或重新 Grep 复核。</p>
+  </section>
+
+  <section id="s3">
+    <h2>3. 目录结构规范</h2>
+    <h3>3.1 Monorepo 顶层约定（现状，继续保持）</h3>
+    <div class="tree">AgentDesk/
+├── apps/
+│   ├── desktop/     # Tauri + React 桌面端 UI
+│   ├── sidecar/     # Node/Hono 常驻后端：Agent 执行、HTTP/SSE API
+│   └── cli/         # Ink 终端客户端
+├── packages/
+│   ├── agent-core/  # Agent Loop / Tool Registry / Orchestrator 核心库
+│   ├── shared/      # 跨包契约（Zod schema + 推导类型）
+│   ├── integrations/# 第三方能力适配
+│   ├── ui/          # 可复用 UI 组件
+│   └── workflow/    # 可视化工作流相关
+├── docs/
+│   ├── claude-code-parity/        # 能力对照 backlog
+│   └── engineering-standards.md   # 本文档：规则层
+└── scripts/         # 构建/发布/校验脚本</div>
+    <p>依赖方向只能是 <code>apps/* → packages/*</code>、<code>packages/agent-core → packages/shared</code>，禁止 <code>packages/*</code> 反向依赖 <code>apps/*</code>。</p>
+
+    <h3>3.2 新增能力时的标准落点</h3>
+    <table>
+      <thead><tr><th>要新增的东西</th><th>放在哪</th><th>必须同时做的事</th></tr></thead>
+      <tbody>
+        <tr><td>新的 Agent 工具</td><td><code>packages/agent-core/src/tools.ts</code> + 具体实现放对应 service</td><td>声明并发安全/风险等级；补单测</td></tr>
+        <tr><td>新的 HTTP 路由</td><td><code>apps/sidecar/src/http/routes/&lt;domain&gt;.ts</code></td><td>一路由一文件</td></tr>
+        <tr><td>新的跨包契约类型</td><td><code>packages/shared/src/contracts/&lt;domain&gt;.ts</code></td><td>Zod schema + 类型推导，不要在业务包重复定义</td></tr>
+        <tr><td>新的桌面功能</td><td><code>apps/desktop/src/features/&lt;feature&gt;/</code></td><td>按 feature 分目录，不按组件类型分目录</td></tr>
+        <tr><td>新的技能</td><td>技能目录下 <code>SKILL.md</code></td><td>Markdown + frontmatter，不用 JSON</td></tr>
+      </tbody>
+    </table>
+
+    <h3>3.3 命名约定</h3>
+    <ul>
+      <li>文件名：TS/TSX 源文件 <code>kebab-case.ts</code>；React 组件文件可用 <code>PascalCase.tsx</code></li>
+      <li>类型/接口：<code>PascalCase</code>；Zod schema 常量：同名 <code>camelCase</code></li>
+      <li>函数/变量：<code>camelCase</code>；未使用变量加前缀 <code>_</code></li>
+    </ul>
+  </section>
+
+  <section id="s4">
+    <h2>4. TypeScript / 代码风格规范</h2>
+    <h3>4.1 现状（继续保持，不允许放松）</h3>
+    <ul>
+      <li><code>strict</code> + <code>noUncheckedIndexedAccess</code> + <code>noImplicitOverride</code> + <code>noFallthroughCasesInSwitch</code> + <code>verbatimModuleSyntax</code></li>
+      <li><code>@typescript-eslint/consistent-type-imports: error</code></li>
+      <li><code>no-console</code>：只允许 <code>warn/error/info</code></li>
+      <li>React Hooks 规则仅在 <code>apps/desktop</code>、<code>apps/cli</code>、<code>packages/ui</code> 生效</li>
+    </ul>
+    <h3>4.2 新增纪律</h3>
+    <ul>
+      <li>安全相关属性一律显式声明，不依赖默认值隐式放行</li>
+      <li>工具/服务函数是完整对象（schema + 风险标注 + 执行 + 结果上限），不是裸函数</li>
+      <li>错误处理统一走 <code>AppError</code>/<code>ErrorCode</code>（<code>@agentdesk/shared</code>）</li>
+      <li>注释解释"为什么"而非"是什么"</li>
+      <li>不写占位实现而不说明；需要占位时在代码中明确标注</li>
+    </ul>
+  </section>
+
+  <section id="s5">
+    <h2>5. Git 提交规范</h2>
+    <p>项目已通过 <code>commitlint.config.js</code>（<code>@commitlint/config-conventional</code>）强制 Conventional Commits。</p>
+    <pre><code>&lt;type&gt;(&lt;scope&gt;): &lt;简短中文描述&gt;
+
+[可选正文：说明动机/背景，而不是复述 diff]</code></pre>
+    <ul>
+      <li><code>type</code>：<code>feat</code> <code>fix</code> <code>refactor</code> <code>docs</code> <code>test</code> <code>chore</code></li>
+      <li><code>scope</code>：受影响的包/应用名，如 <code>desktop</code> <code>sidecar</code> <code>cli</code> <code>agent-core</code> <code>shared</code> <code>code</code> <code>projects</code></li>
+      <li>描述用简体中文，动宾结构，说明做了什么/为什么，而不是复述 diff</li>
+    </ul>
+    <div class="note">
+      <strong>反例：</strong>历史上出现过一次 commit subject 直接是未解析的 JSON 字符串（如 <code>{"subject": "feat(projects): ..."}</code>）——说明自动生成 commit message 的流程没有正确解包成纯文本。任何自动化提交流程都要在写入前校验"最终字符串不包含 JSON 结构字符"。
+    </div>
+    <h3>示例</h3>
+    <pre><code>feat(agent-core): 为工具调用增加并发安全标注
+
+只读工具默认允许并发批处理，写操作形成顺序屏障，避免 Promise.all 无差别并行导致的文件竞争。</code></pre>
+    <pre><code>fix(sidecar): 修复长会话压缩后工具调用与结果配对丢失的问题</code></pre>
+  </section>
+
+  <section id="s6">
+    <h2>6. Agent 专项规则 Checklist（重构时逐项核对）</h2>
+    <p>动手前请先用 Grep/Read 核实差距是否依然存在，不要凭记忆判断。</p>
+    <ul class="checklist">
+      <li>工具执行顺序：只读工具可并发，写操作是否已形成顺序屏障？</li>
+      <li>Shell 风险分类：<code>git branch -D/-m</code>、<code>git fetch</code> 等是否仍被宽泛前缀白名单误判为安全？</li>
+      <li>权限规则是否仍只覆盖 <code>shell.run</code>，缺少 <code>fs.write</code>/<code>deploy.run</code> 等其他高风险工具的持久规则？</li>
+      <li>长会话压缩是否已有"失败熔断/分级回退"，而不是压缩失败就崩溃？</li>
+      <li>子代理委派的工具集中是否意外包含了"派生子代理"的工具（递归爆炸风险）？</li>
+      <li>技能 <code>allowed-tools</code> 字段解析成功是否被误当成"工具权限已强制执行"？</li>
+      <li>跨端（CLI/桌面）审批是否存在重复提交、或一端处理后另一端仍在等待本地输入的问题？</li>
+    </ul>
+  </section>
+
+  <section id="s7">
+    <h2>7. 这份文档怎么用</h2>
+    <ol>
+      <li>动手重构/写新功能前，先读第 2、6 节确认适用的模式和 checklist；再读 <code>docs/claude-code-parity/</code> 对应文件确认差距是否仍然存在。</li>
+      <li>本文档描述的是<strong>规则</strong>，不是任务清单。具体做哪个 backlog 项由每次任务单独确认范围。</li>
+      <li>规则更新：直接编辑本文件并在 git 提交信息里说明原因，不要另建互相矛盾的规范文档。</li>
+      <li>与 <code>docs/claude-code-parity/</code> 的分工：这里是"为什么这样做"的规则层；那边是"现在做到哪一步了"的证据层。两者都过期时以重新核实代码为准。</li>
+    </ol>
+  </section>
+
+  <footer>
+    AgentDesk · <a class="back-top" href="#">回到顶部</a>
+  </footer>
+
+</div>
+</body>
+</html>
