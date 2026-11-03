@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AgentDesk UI/交互参考对照看板</title>
+<style>
+  :root{
+    --bg:#fbfaf8; --panel:#ffffff; --text:#1c1b1a; --muted:#6b6560;
+    --border:#e7e2db; --accent:#b45309; --accent-soft:#fef3e2;
+    --code-bg:#f3efe8; --table-head:#f6f1e9; --warn-bg:#fff4e5; --warn-border:#e8b167;
+    --good:#1a7f37; --good-bg:#e9f6ec; --partial:#b45309; --partial-bg:#fdf1e2;
+    --missing:#c2362b; --missing-bg:#fdeceb; --diff:#6366f1; --diff-bg:#edeeff;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#14120f; --panel:#1c1a16; --text:#ece7de; --muted:#a89d8d;
+      --border:#332e27; --accent:#e0923c; --accent-soft:#2a2115;
+      --code-bg:#241f18; --table-head:#241f18; --warn-bg:#241a0c; --warn-border:#7a5321;
+      --good:#4fae6a; --good-bg:#132018; --partial:#e0923c; --partial-bg:#2a2115;
+      --missing:#e0675b; --missing-bg:#2a1512; --diff:#9497ff; --diff-bg:#1b1b2e;
+    }
+  }
+  *{box-sizing:border-box;}
+  body{margin:0; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans SC",sans-serif; line-height:1.7;}
+  .wrap{max-width:1040px; margin:0 auto; padding:40px 20px 100px;}
+  header.hero{padding:36px 24px; border-radius:16px; background:var(--panel); border:1px solid var(--border); margin-bottom:24px;}
+  header.hero h1{margin:0 0 8px; font-size:1.7rem;}
+  header.hero p{margin:4px 0; color:var(--muted); font-size:0.92rem;}
+  header.hero a{color:var(--accent);}
+  .stats{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:28px;}
+  .stat{background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:16px; text-align:center;}
+  .stat .num{font-size:1.8rem; font-weight:700;}
+  .stat .label{font-size:0.8rem; color:var(--muted); margin-top:4px;}
+  .stat.good .num{color:var(--good);} .stat.partial .num{color:var(--partial);}
+  .stat.missing .num{color:var(--missing);} .stat.diff .num{color:var(--diff);}
+  .note{background:var(--warn-bg); border:1px solid var(--warn-border); border-radius:10px; padding:14px 18px; font-size:0.88rem; margin:16px 0;}
+  .note strong{color:var(--accent);}
+  section{margin-bottom:36px;}
+  h2{font-size:1.2rem; border-bottom:2px solid var(--border); padding-bottom:8px; margin-top:0;}
+  h3{font-size:1rem; margin-top:28px;}
+  p{font-size:0.92rem;}
+  table{border-collapse:collapse; width:100%; font-size:0.85rem; margin:14px 0;}
+  th,td{border:1px solid var(--border); padding:8px 10px; text-align:left; vertical-align:top;}
+  th{background:var(--table-head);}
+  code{background:var(--code-bg); padding:2px 6px; border-radius:5px; font-size:0.85em; font-family:ui-monospace,Menlo,Consolas,monospace;}
+  .badge{display:inline-block; font-size:0.74rem; font-weight:600; padding:3px 9px; border-radius:999px; white-space:nowrap;}
+  .badge.good{background:var(--good-bg); color:var(--good);}
+  .badge.partial{background:var(--partial-bg); color:var(--partial);}
+  .badge.missing{background:var(--missing-bg); color:var(--missing);}
+  .badge.diff{background:var(--diff-bg); color:var(--diff);}
+  .srcbar{display:flex; flex-wrap:wrap; gap:8px; font-size:0.78rem; margin-top:10px;}
+  .srcbar a{background:var(--code-bg); border-radius:999px; padding:4px 10px; text-decoration:none; color:var(--text); border:1px solid var(--border);}
+  footer{color:var(--muted); font-size:0.82rem; text-align:center; margin-top:48px;}
+  .groupbar{font-size:0.78rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.04em; margin:22px 0 6px;}
+  .cards{display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:14px; margin:16px 0;}
+  .card{background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:16px;}
+  .card h4{margin:0 0 6px; font-size:0.95rem;}
+  .card .tag{display:inline-block; font-size:0.72rem; color:var(--muted); background:var(--code-bg); border-radius:999px; padding:2px 8px; margin:2px 4px 0 0;}
+
+  /* 路由图谱风格的小示意：卡片 + 虚线连接线，呼应 magpie 截图里的视觉语言，用原创实现表达，非对其代码的复刻 */
+  .flowdemo{display:flex; align-items:center; justify-content:space-between; gap:0; margin:18px 0; position:relative; flex-wrap:wrap;}
+  .flowcard{background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:14px 18px; font-size:0.85rem; text-align:center; min-width:140px; position:relative; z-index:1;}
+  .flowcard.hit{border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft);}
+  .flowcard .dot{display:inline-block; width:8px; height:8px; border-radius:50%; border:2px solid var(--muted); margin-right:6px;}
+  .flowcard.hit .dot{background:var(--accent); border-color:var(--accent); animation:flowpulse 1.6s ease-in-out infinite;}
+  .flowline{flex:1; min-width:40px; height:0; border-top:2px dashed var(--border); position:relative; top:0;}
+  @keyframes flowpulse{0%,100%{box-shadow:0 0 0 0 var(--accent-soft);} 50%{box-shadow:0 0 0 6px var(--accent-soft);}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <h1>AgentDesk UI / 交互参考对照看板</h1>
+    <p>配合 <code>docs/ui-reference-parity/README.md</code> 阅读。调研对象：<a href="https://github.com/yetone/magpie" target="_blank" rel="noopener">yetone/magpie</a>（桌面端视觉/动效参考）、<a href="https://github.com/earendil-works/pi" target="_blank" rel="noopener">earendil-works/pi</a>（终端渲染与组件体系参考）。</p>
+    <p>调研日期：2026-11-03。方法：只读结构调查（目录结构 / <code>package.json</code> / 文件命名 / CSS <code>@keyframes</code> 名称清单），未逐行阅读或复制源码正文，未构建运行。两者均 MIT 协议。</p>
+  </header>
+
+  <div class="note">
+    <strong>这是什么、不是什么：</strong>本页是"现状差距"证据层，不是任务清单，也不是"已经移植完成"的宣称。逐文件照搬不可行（技术栈完全不同：magpie 是 Go + 无框架 vanilla JS，pi-tui 是不依赖 React 的差分渲染引擎），能复用的是组织方式和视觉语言，用 AgentDesk 自己的技术栈重新实现。详见 README 第 5 节。
+  </div>
+
+  <div class="stats">
+    <div class="stat missing"><div class="num">0</div><div class="label">AgentDesk 当前动画库数量</div></div>
+    <div class="stat good"><div class="num">2</div><div class="label">参考项目均 MIT 协议</div></div>
+    <div class="stat partial"><div class="num">4</div><div class="label">可排期的落地阶段</div></div>
+    <div class="stat diff"><div class="num">2</div><div class="label">需单独立项的中长期方向</div></div>
+  </div>
+
+  <section>
+    <h2>三个项目速览</h2>
+    <table>
+      <thead><tr><th style="width:130px"></th><th>AgentDesk（现状）</th><th>magpie</th><th>pi</th></tr></thead>
+      <tbody>
+        <tr><td>定位</td><td>多端 Agent 编码工具：sidecar + 桌面编码现场 + CLI</td><td>本地模型网关 + 菜单栏桌面应用</td><td>极简可扩展 Agent Harness（CLI + SDK）</td></tr>
+        <tr><td>桌面技术栈</td><td>Tauri 2 + React 19 + Tailwind v4</td><td>Go + 内嵌 HTTP 服务 + <strong>无框架 vanilla JS/CSS</strong></td><td>无独立桌面端</td></tr>
+        <tr><td>终端技术栈</td><td>Ink 8（React 虚拟 DOM 渲染到终端）</td><td>—</td><td>自研 <code>pi-tui</code>：<strong>差分渲染</strong>，不依赖 React</td></tr>
+        <tr><td>动画方案</td><td><span class="badge missing">无专门动画库</span></td><td>CSS <code>@keyframes</code> + JS 状态机，自成动效词汇表</td><td>差分渲染 + OKLab 色彩空间插值（终端场景）</td></tr>
+        <tr><td>主题系统</td><td>CLI 有 TS 常量主题；桌面端 Tailwind media query，无 token 层</td><td>CSS 变量 + <code>prefers-color-scheme</code></td><td><strong>JSON token + ThemeController</strong>，可安装第三方主题包</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>magpie：动效词汇表（从 CSS <code>@keyframes</code> 命名归纳）</h2>
+    <p>magpie 按"语义角色"命名动效（如 <code>view-in</code> 表达"这是一次视图切换"），而不是按视觉效果命名（如 <code>fade</code>）。下面是归纳出的四类，具体 keyframes 名称仅作为结构证据列出，非代码引用：</p>
+    <div class="cards">
+      <div class="card">
+        <h4>面板 / 视图转场</h4>
+        <span class="tag">pop-in</span><span class="tag">pop-out</span><span class="tag">side-in</span><span class="tag">side-out</span><span class="tag">view-in</span><span class="tag">sub-in</span>
+      </div>
+      <div class="card">
+        <h4>加载态</h4>
+        <span class="tag">skeleton-shift</span><span class="tag">spin</span><span class="tag">ps-wait</span>
+      </div>
+      <div class="card">
+        <h4>实时 / 在线态</h4>
+        <span class="tag">new-dot-in</span><span class="tag">new-dot-ring</span><span class="tag">rtlive</span><span class="tag">rppulse</span>
+      </div>
+      <div class="card">
+        <h4>操作反馈</h4>
+        <span class="tag">copy-pop</span><span class="tag">flash</span><span class="tag">shine-glow</span><span class="tag">shine-trace</span>
+      </div>
+    </div>
+
+    <h3>截图里的路由图谱：视觉语言的原创复刻示意</h3>
+    <p>下面不是对 magpie 代码的复制，而是用本看板已有的 CSS 变量，按截图传达的"卡片 + 虚线连接线 + 命中态呼吸光圈"这套视觉语言做的一个独立实现示意，用来说明"参考视觉语言"和"抄代码"是两回事：</p>
+    <div class="flowdemo">
+      <div class="flowcard">Claude Code<br/><small style="color:var(--muted)">工具结果</small></div>
+      <div class="flowline"></div>
+      <div class="flowcard hit"><span class="dot"></span>claude-opus-5-5<br/><small style="color:var(--muted)">同一轮 · 不重新询问</small></div>
+      <div class="flowline"></div>
+      <div class="flowcard">deepseek-v4-flash<br/><small style="color:var(--muted)">意图 · 简单提问</small></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>pi：组件 / 主题体系（从目录结构归纳）</h2>
+    <table>
+      <thead><tr><th style="width:170px">约定</th><th>pi 的做法</th><th>AgentDesk 现状</th></tr></thead>
+      <tbody>
+        <tr><td>Selector 家族</td><td>model/theme/session/config/trust/thinking/oauth/tree-selector 统一命名与交互</td><td><span class="badge partial">部分具备</span> 有 <code>Select</code> 组件打底，但审批菜单、会话选择器各写各的</td></tr>
+        <tr><td>主题即数据</td><td><code>dark.json</code>/<code>light.json</code> + schema 校验 + <code>ThemeController</code> + 可安装主题包</td><td><span class="badge missing">缺失</span> <code>theme.ts</code>/<code>colors.ts</code> 是写死的 TS 常量</td></tr>
+        <tr><td>消息按类型拆组件</td><td>assistant/user/tool-execution/compaction-summary/skill-invocation 各一个组件文件</td><td><span class="badge partial">部分具备</span> <code>StepRow</code>/<code>ApprovalCard</code> 已拆分，但压缩摘要、技能调用无专属视觉表达</td></tr>
+        <tr><td>最小粒度反馈组件</td><td>countdown-timer/bordered-loader/status-indicator/keybinding-hints/dynamic-border</td><td><span class="badge missing">缺失</span> 多数反馈内联写在 <code>TaskView</code>/<code>App.tsx</code> 里</td></tr>
+        <tr><td>富内容内联渲染</td><td>diff / mermaid / markdown-transform</td><td><span class="badge partial">部分具备</span> 已有 diff 展示，无终端内 Mermaid 渲染</td></tr>
+        <tr><td>终端渲染架构</td><td>差分渲染，不依赖 React，OKLab 色彩插值</td><td><span class="badge diff">架构不同</span> Ink（React 虚拟 DOM 渲染到终端），当前功能够用</td></tr>
+      </tbody>
+    </table>
+    <div class="note"><strong>血缘提示：</strong>AgentDesk 已依赖的 <code>@mariozechner/pi-ai</code> 与本节的 <code>@earendil-works/pi-ai</code> 是同一作者（Mario Zechner）同一套库的不同阶段——参考 pi 不是引入陌生理念，而是看清楚已经在用的底层库后来演进成了什么样。</div>
+  </section>
+
+  <section>
+    <h2>落地建议：分阶段，不是一次性重写</h2>
+    <table>
+      <thead><tr><th style="width:50px">阶段</th><th>范围</th><th>现状差距</th><th>建议</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>桌面端动画基建</td><td><span class="badge missing">零动画库</span></td><td>引入 <code>motion</code>（Framer Motion 继任者），先覆盖本周期新增的 <code>ArtifactWorkspace</code>/<code>SessionPanel</code>/<code>ConversationList</code></td></tr>
+        <tr><td>2</td><td>桌面端动效词汇表</td><td><span class="badge missing">无统一命名规范</span></td><td>参照 magpie 四分类，在 <code>packages/ui</code> 建立共享 <code>motion</code> 预设</td></tr>
+        <tr><td>3</td><td>CLI 主题结构</td><td><span class="badge partial">写死的 TS 常量</span></td><td>拆成 token 数据 + <code>ThemeController</code>，为未来自定义配色留口子</td></tr>
+        <tr><td>4</td><td>CLI 组件信息架构</td><td><span class="badge partial">交互各写各的</span></td><td>梳理 Selector 家族统一接入点；压缩摘要/技能调用拆独立展示组件</td></tr>
+        <tr><td>5（中长期）</td><td>CLI 渲染架构</td><td><span class="badge diff">Ink vs 差分渲染</span></td><td>不在本轮动手；记录为性能瓶颈出现时的候选方向</td></tr>
+        <tr><td>6（中长期）</td><td>状态可视化图谱</td><td><span class="badge missing">无此类组件</span></td><td>有需求时再做，复用阶段 2 的动效词汇表</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>关键发现</h2>
+    <ul>
+      <li><strong>不是做错了，是从没建设过</strong>：CLI 和桌面端功能完整，但动效/主题系统都停留在朴素默认值，没有被当成独立设计系统投入过。</li>
+      <li><strong>“移植”要拆成两层</strong>：视觉语言/组织方式（可以搬）vs 具体渲染技术（magpie 的 vanilla JS、pi-tui 的差分渲染，都和 AgentDesk 的技术栈不兼容，不能搬）。</li>
+      <li><strong>pi 不是外部项目，是自家依赖的未来形态</strong>：参考它的组件体系本质是向自己已经选用的库的后续演进学习。</li>
+      <li><strong>四个阶段可以现在排期，两个方向需要单独立项</strong>：避免把"参考里有"直接当成"现在就该做"的授权。</li>
+    </ul>
+  </section>
+
+  <div class="srcbar">
+    <a href="https://github.com/yetone/magpie" target="_blank" rel="noopener">github.com/yetone/magpie</a>
+    <a href="https://github.com/earendil-works/pi" target="_blank" rel="noopener">github.com/earendil-works/pi</a>
+    <a href="../engineering-standards.md">engineering-standards.md</a>
+    <a href="./README.md">ui-reference-parity/README.md</a>
+  </div>
+
+  <footer>AgentDesk · UI/交互参考对照 · 2026-11-03</footer>
+</div>
+</body>
+</html>
