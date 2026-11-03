@@ -77,6 +77,13 @@ export interface AgentTool<TParams extends TSchema = TSchema> {
   describeApproval?: (
     args: Static<TParams>,
   ) => { title: string; detail: string } | Promise<{ title: string; detail: string }>;
+  /**
+   * 工具成功执行后，若返回值隐含"从现在起只能调用这些工具"（例如加载了声明 allowed-tools
+   * 的技能），从结果里提取新增的允许列表；返回 undefined/空数组表示不收紧。多次收紧取并集，
+   * 不会相互覆盖。定义了这个字段的工具本身永远不受当前收紧状态限制，否则一旦收紧就再也
+   * 调不回来。
+   */
+  restrictsToolsTo?: (result: unknown) => string[] | undefined;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

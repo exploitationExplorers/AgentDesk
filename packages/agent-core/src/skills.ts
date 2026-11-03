@@ -140,6 +140,11 @@ export class SkillRegistry {
           instructions: skill.instructions,
         };
       },
+      /** 技能声明了 allowed-tools 时，本轮起把可调用的工具收紧到这个列表（多个技能取并集）。 */
+      restrictsToolsTo: (result) => {
+        const allowedTools = (result as { allowedTools?: string[] }).allowedTools;
+        return allowedTools && allowedTools.length > 0 ? allowedTools : undefined;
+      },
     });
   }
 }

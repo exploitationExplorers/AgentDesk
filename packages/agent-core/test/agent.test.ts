@@ -154,6 +154,71 @@ describe("runAgent", () => {
     expect(result.toolCalls[0]?.isError).toBe(true);
   });
 
+  it("工具收紧允许列表后，不在列表里的调用被拒绝；能调整收紧状态的工具本身永远不受限", async () => {
+    const models = setup();
+    let blockedExecuted = false;
+    let allowedExecuted = false;
+    const loadTool = defineTool({
+      name: "skills.load",
+      description: "加载技能",
+      parameters: Type.Object({ skill: Type.String() }),
+      risk: "safe",
+      execute: async ({ skill }) => ({ allowedTools: skill === "a" ? ["projects.allowed"] : [] }),
+      restrictsToolsTo: (result) => (result as { allowedTools: string[] }).allowedTools,
+    });
+    const allowedTool = defineTool({
+      name: "projects.allowed",
+      description: "允许的工具",
+      parameters: Type.Object({}),
+      risk: "safe",
+      execute: async () => {
+        allowedExecuted = true;
+        return "ok";
+      },
+    });
+    const blockedTool = defineTool({
+      name: "projects.blocked",
+      description: "不在允许列表里的工具",
+      parameters: Type.Object({}),
+      risk: "safe",
+      execute: async () => {
+        blockedExecuted = true;
+        return "ok";
+      },
+    });
+    faux!.setResponses([
+      fauxAssistantMessage(fauxToolCall(toWireName("skills.load"), { skill: "a" }), {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage(fauxToolCall(toWireName("projects.blocked"), {}), {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage(fauxToolCall(toWireName("skills.load"), { skill: "a" }), {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage(fauxToolCall(toWireName("projects.allowed"), {}), {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage(fauxText("完成")),
+    ]);
+    const result = await runAgent({
+      definition: projectAgent,
+      tools: [loadTool, allowedTool, blockedTool],
+      models,
+      messages: [],
+      emit: () => {},
+      requestApproval: async () => true,
+    });
+    expect(blockedExecuted).toBe(false);
+    expect(allowedExecuted).toBe(true);
+    const blockedCall = result.toolCalls.find((c) => c.name === "projects.blocked");
+    expect(blockedCall?.isError).toBe(true);
+    expect(String(blockedCall?.result)).toMatch(/收紧|projects\.allowed/);
+    // 第二次 skills.load（本身定义了 restrictsToolsTo）在收紧状态下仍能正常调用，不会被拒绝。
+    const secondLoad = result.toolCalls.filter((c) => c.name === "skills.load")[1];
+    expect(secondLoad?.isError).toBe(false);
+  });
+
   it("传入 mask 后，发给模型的内容替换成占位符，最终结果换回真实值", async () => {
     const models = setup();
     let seenByModel = "";

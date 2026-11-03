@@ -223,6 +223,8 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentRunResult
   let providerId: string | null = null;
 
   emit({ type: "agent_start", agent: definition.name });
+  // 本次运行当前允许调用的工具；null 表示不限制，加载了声明 allowed-tools 的技能后收紧（并集）。
+  const access: ToolAccessState = { allowed: null };
 
   for (let turn = 0; turn < maxTurns; turn++) {
     signal?.throwIfAborted();
@@ -245,7 +247,9 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentRunResult
       signal?.throwIfAborted();
       // 即使事件回调或其他外围逻辑抛错，也等本批已启动的工具全部收尾，避免悬空操作。
       const settled = await Promise.allSettled(
-        batch.map((call) => executeToolCall(call, tools, piTools, options, definition.name)),
+        batch.map((call) =>
+          executeToolCall(call, tools, piTools, options, definition.name, access),
+        ),
       );
       signal?.throwIfAborted();
       for (const outcome of settled) {
@@ -287,12 +291,18 @@ function* toolCallBatches(calls: ToolCall[], tools: AnyAgentTool[]): Generator<T
   if (reads.length > 0) yield reads;
 }
 
+/** 本次 Agent 运行当前被允许调用的工具集合；null 表示不限制。 */
+interface ToolAccessState {
+  allowed: Set<string> | null;
+}
+
 async function executeToolCall(
   call: ToolCall,
   tools: AnyAgentTool[],
   piTools: ReturnType<typeof toPiTool>[],
   options: RunAgentOptions,
   agent: AgentName,
+  access: ToolAccessState,
 ): Promise<{ record: ToolCallRecord; result: ToolResultMessage }> {
   const name = fromWireName(call.name);
   const tool = tools.find((t) => t.name === name);
@@ -303,6 +313,13 @@ async function executeToolCall(
   try {
     options.signal?.throwIfAborted();
     if (!tool) throw new Error(`未知工具：${name}`);
+    // 能调整收紧状态的工具（如 skills.load）永远不受限，否则一旦收紧就再也调不回来。
+    if (access.allowed && !access.allowed.has(name) && !tool.restrictsToolsTo) {
+      throw new Error(
+        `当前已激活的技能把可用工具收紧为：${[...access.allowed].join(", ")}；` +
+          `${name} 不在其中。如需使用，请先加载声明了该工具权限的技能。`,
+      );
+    }
     const piTool = piTools.find((t) => t.name === call.name);
     const args = piTool ? validateToolArguments(piTool, call) : call.arguments;
 
@@ -349,6 +366,10 @@ async function executeToolCall(
     };
     options.signal?.throwIfAborted();
     output = await tool.execute(args, ctx);
+    const widen = tool.restrictsToolsTo?.(output);
+    if (widen && widen.length > 0) {
+      access.allowed = new Set([...(access.allowed ?? []), ...widen]);
+    }
   } catch (error) {
     isError = true;
     output = error instanceof Error ? error.message : String(error);

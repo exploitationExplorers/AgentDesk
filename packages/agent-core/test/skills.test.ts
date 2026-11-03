@@ -45,4 +45,15 @@ describe("技能兼容与模型调用边界", () => {
       registry.createLoadTool().execute({ name: "release" }, { ...context, agent: "research" }),
     ).rejects.toThrow("不适用于");
   });
+
+  it("declareTools().restrictsToolsTo 按技能的 allowed-tools 收紧，空数组不收紧", async () => {
+    const registry = new SkillRegistry();
+    registry.add(parseSkill(source("allowed-tools: [Read, shell.run]"), "/skills"));
+    registry.add(parseSkill("---\nname: no-limit\ndescription: 无限制\n---\n指令", "/skills"));
+    const loadTool = registry.createLoadTool();
+    const result = await loadTool.execute({ name: "release" }, context);
+    expect(loadTool.restrictsToolsTo?.(result)).toEqual(["Read", "shell.run"]);
+    const unrestricted = await loadTool.execute({ name: "no-limit" }, context);
+    expect(loadTool.restrictsToolsTo?.(unrestricted)).toBeUndefined();
+  });
 });
