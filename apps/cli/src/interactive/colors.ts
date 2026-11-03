@@ -2,22 +2,19 @@
 import type { AccessibilityTheme } from "./theme.js";
 import type { ThemePalette } from "../preferences.js";
 
-const TOKENS = {
-  permission: "",
-  suggestion: "",
-  success: "",
-  warning: "",
-  error: "",
-  diffAdded: "",
-  diffRemoved: "",
-  diffAddedBg: "",
-  diffRemovedBg: "",
-  brand: "",
-  accent: "",
-  border: "",
-};
-
-export type ColorToken = keyof typeof TOKENS;
+export type ColorToken =
+  | "permission"
+  | "suggestion"
+  | "success"
+  | "warning"
+  | "error"
+  | "diffAdded"
+  | "diffRemoved"
+  | "diffAddedBg"
+  | "diffRemovedBg"
+  | "brand"
+  | "accent"
+  | "border";
 
 export const PALETTES: Record<ThemePalette, Record<ColorToken, string>> = {
   dark: {
@@ -67,6 +64,9 @@ export const PALETTES: Record<ThemePalette, Record<ColorToken, string>> = {
 };
 
 /** theme.color 为 false（--no-color / NO_COLOR）时返回 undefined，交给 Ink 按无色渲染。 */
-export function pick(token: ColorToken, theme: Pick<AccessibilityTheme, "color" | "palette">): string | undefined {
+export function pick(
+  token: ColorToken,
+  theme: Pick<AccessibilityTheme, "color" | "palette">,
+): string | undefined {
   return theme.color ? PALETTES[theme.palette][token] : undefined;
 }
