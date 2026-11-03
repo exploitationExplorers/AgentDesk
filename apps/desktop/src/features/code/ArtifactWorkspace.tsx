@@ -2,7 +2,18 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, FileText, Pencil, Save, X } from "lucide-react";
 import type { Artifact, ArtifactContent } from "@agentdesk/shared";
-import { Badge, Button, EmptyState, Select, Spinner, Textarea, cn } from "@agentdesk/ui";
+import {
+  AnimatePresence,
+  Badge,
+  Button,
+  EmptyState,
+  Select,
+  Spinner,
+  Textarea,
+  cn,
+  crossfadeVariants,
+  motion,
+} from "@agentdesk/ui";
 import { Markdown } from "../../components/Markdown";
 import { useApiUrl } from "../../hooks/useApiUrl";
 import { artifactsApi } from "./artifacts-api";
@@ -203,14 +214,23 @@ export function ArtifactWorkspace({
                   </div>
                 </div>
               ) : (
-                <ArtifactEditor
-                  key={selected.id}
-                  taskId={taskId}
-                  source={source}
-                  view={view.data}
-                  latest={selected.id === group?.items.at(-1)?.id}
-                  onSaved={(artifact) => setVersionId(artifact.id)}
-                />
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={selected.id}
+                    variants={crossfadeVariants}
+                    initial="hidden"
+                    animate="visible"
+                    exit="exit"
+                  >
+                    <ArtifactEditor
+                      taskId={taskId}
+                      source={source}
+                      view={view.data}
+                      latest={selected.id === group?.items.at(-1)?.id}
+                      onSaved={(artifact) => setVersionId(artifact.id)}
+                    />
+                  </motion.div>
+                </AnimatePresence>
               )}
             </div>
           ) : null}

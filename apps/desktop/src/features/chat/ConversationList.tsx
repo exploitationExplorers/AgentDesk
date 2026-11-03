@@ -11,7 +11,17 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { Conversation, ConversationGroup, ConversationPatch } from "@agentdesk/shared";
-import { Button, Dialog, Field, Input, Select, cn } from "@agentdesk/ui";
+import {
+  AnimatePresence,
+  Button,
+  Dialog,
+  Field,
+  Input,
+  Select,
+  cn,
+  listItemVariants,
+  motion,
+} from "@agentdesk/ui";
 import { api } from "../../lib/api";
 import { timeAgo } from "../../lib/format";
 import { conversationsApi } from "./conversations-api";
@@ -185,46 +195,53 @@ export function ConversationList({ activeId }: { activeId?: string }) {
         {sections.map((section) => (
           <section key={section.id} aria-label={section.name} className="mb-3">
             <h2 className="px-2.5 py-1.5 text-[11px] font-medium text-subtle">{section.name}</h2>
-            {section.items.map((conversation) => (
-              <div
-                key={conversation.id}
-                className={cn(
-                  "group flex items-center gap-1 rounded-lg",
-                  conversation.id === activeId
-                    ? "bg-surface-2 text-fg"
-                    : "text-muted hover:bg-surface-2/60",
-                )}
-              >
-                <button
-                  type="button"
-                  onClick={() => void navigate({ to: "/", search: { c: conversation.id } })}
-                  className="min-w-0 flex-1 px-2.5 py-2 text-left"
-                  aria-current={conversation.id === activeId ? "page" : undefined}
+            <AnimatePresence initial={false}>
+              {section.items.map((conversation) => (
+                <motion.div
+                  key={conversation.id}
+                  layout="position"
+                  variants={listItemVariants}
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
+                  className={cn(
+                    "group flex items-center gap-1 overflow-hidden rounded-lg",
+                    conversation.id === activeId
+                      ? "bg-surface-2 text-fg"
+                      : "text-muted hover:bg-surface-2/60",
+                  )}
                 >
-                  <span className="flex items-center gap-1.5 text-[12.5px]">
-                    {conversation.pinned ? <Pin className="h-3 w-3 shrink-0 text-brand" /> : null}
-                    <span className="truncate">{conversation.title}</span>
-                  </span>
-                  <span className="mt-0.5 block truncate text-[11px] text-subtle">
-                    {projects.data?.find((project) => project.id === conversation.projectId)
-                      ?.name ?? timeAgo(conversation.updatedAt)}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  aria-label={`管理会话：${conversation.title}`}
-                  title="管理会话"
-                  className="mr-1 rounded p-1 text-subtle opacity-70 hover:bg-surface hover:text-fg focus-visible:opacity-100 group-hover:opacity-100"
-                  onClick={() => {
-                    patch.reset();
-                    remove.reset();
-                    setEditing(conversation);
-                  }}
-                >
-                  <MoreHorizontal className="h-4 w-4" />
-                </button>
-              </div>
-            ))}
+                  <button
+                    type="button"
+                    onClick={() => void navigate({ to: "/", search: { c: conversation.id } })}
+                    className="min-w-0 flex-1 px-2.5 py-2 text-left"
+                    aria-current={conversation.id === activeId ? "page" : undefined}
+                  >
+                    <span className="flex items-center gap-1.5 text-[12.5px]">
+                      {conversation.pinned ? <Pin className="h-3 w-3 shrink-0 text-brand" /> : null}
+                      <span className="truncate">{conversation.title}</span>
+                    </span>
+                    <span className="mt-0.5 block truncate text-[11px] text-subtle">
+                      {projects.data?.find((project) => project.id === conversation.projectId)
+                        ?.name ?? timeAgo(conversation.updatedAt)}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`管理会话：${conversation.title}`}
+                    title="管理会话"
+                    className="mr-1 rounded p-1 text-subtle opacity-70 hover:bg-surface hover:text-fg focus-visible:opacity-100 group-hover:opacity-100"
+                    onClick={() => {
+                      patch.reset();
+                      remove.reset();
+                      setEditing(conversation);
+                    }}
+                  >
+                    <MoreHorizontal className="h-4 w-4" />
+                  </button>
+                </motion.div>
+              ))}
+            </AnimatePresence>
           </section>
         ))}
       </div>

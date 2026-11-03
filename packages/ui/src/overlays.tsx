@@ -4,6 +4,7 @@ import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 import { X } from "lucide-react";
 import type { ComponentPropsWithoutRef, ReactNode } from "react";
 import { cn } from "./cn";
+import { AnimatePresence, drawerVariants, motion, panelVariants } from "./motion";
 
 export function Dialog({
   open,
@@ -24,42 +25,60 @@ export function Dialog({
 }) {
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/60 backdrop-blur-[2px] animate-fade-in" />
-        <DialogPrimitive.Content
-          className={cn(
-            "fixed left-1/2 top-1/2 z-50 flex max-h-[86vh] w-[min(560px,92vw)] -translate-x-1/2 -translate-y-1/2 flex-col rounded-2xl border bg-surface shadow-2xl animate-fade-in focus:outline-none",
-            className,
-          )}
-        >
-          <div className="flex items-start justify-between gap-4 border-b px-5 py-4">
-            <div>
-              <DialogPrimitive.Title className="text-[15px] font-semibold">
-                {title}
-              </DialogPrimitive.Title>
-              {description ? (
-                <DialogPrimitive.Description className="mt-1 text-[12.5px] text-muted">
-                  {description}
-                </DialogPrimitive.Description>
-              ) : (
-                <DialogPrimitive.Description className="sr-only">
-                  {String(title)}
-                </DialogPrimitive.Description>
-              )}
-            </div>
-            <DialogPrimitive.Close
-              className="rounded-lg p-1 text-muted hover:bg-surface-2 hover:text-fg"
-              aria-label="关闭"
-            >
-              <X className="h-4 w-4" />
-            </DialogPrimitive.Close>
-          </div>
-          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">{children}</div>
-          {footer ? (
-            <div className="flex justify-end gap-2 border-t px-5 py-3">{footer}</div>
-          ) : null}
-        </DialogPrimitive.Content>
-      </DialogPrimitive.Portal>
+      <AnimatePresence>
+        {open ? (
+          <DialogPrimitive.Portal forceMount>
+            <DialogPrimitive.Overlay asChild forceMount>
+              <motion.div
+                className="fixed inset-0 z-50 bg-black/60 backdrop-blur-[2px]"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
+              />
+            </DialogPrimitive.Overlay>
+            <DialogPrimitive.Content asChild forceMount>
+              <motion.div
+                variants={panelVariants}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+                className={cn(
+                  "fixed left-1/2 top-1/2 z-50 flex max-h-[86vh] w-[min(560px,92vw)] -translate-x-1/2 -translate-y-1/2 flex-col rounded-2xl border bg-surface shadow-2xl focus:outline-none",
+                  className,
+                )}
+              >
+                <div className="flex items-start justify-between gap-4 border-b px-5 py-4">
+                  <div>
+                    <DialogPrimitive.Title className="text-[15px] font-semibold">
+                      {title}
+                    </DialogPrimitive.Title>
+                    {description ? (
+                      <DialogPrimitive.Description className="mt-1 text-[12.5px] text-muted">
+                        {description}
+                      </DialogPrimitive.Description>
+                    ) : (
+                      <DialogPrimitive.Description className="sr-only">
+                        {String(title)}
+                      </DialogPrimitive.Description>
+                    )}
+                  </div>
+                  <DialogPrimitive.Close
+                    className="rounded-lg p-1 text-muted hover:bg-surface-2 hover:text-fg"
+                    aria-label="关闭"
+                  >
+                    <X className="h-4 w-4" />
+                  </DialogPrimitive.Close>
+                </div>
+                <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">{children}</div>
+                {footer ? (
+                  <div className="flex justify-end gap-2 border-t px-5 py-3">{footer}</div>
+                ) : null}
+              </motion.div>
+            </DialogPrimitive.Content>
+          </DialogPrimitive.Portal>
+        ) : null}
+      </AnimatePresence>
     </DialogPrimitive.Root>
   );
 }
@@ -79,29 +98,47 @@ export function Drawer({
 }) {
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40" />
-        <DialogPrimitive.Content
-          style={{ width }}
-          className="fixed right-0 top-0 z-50 flex h-full max-w-[94vw] flex-col border-l bg-surface shadow-2xl animate-fade-in focus:outline-none"
-        >
-          <div className="flex items-center justify-between border-b px-5 py-3.5">
-            <DialogPrimitive.Title className="text-[15px] font-semibold">
-              {title}
-            </DialogPrimitive.Title>
-            <DialogPrimitive.Description className="sr-only">
-              {String(title)}
-            </DialogPrimitive.Description>
-            <DialogPrimitive.Close
-              className="rounded-lg p-1 text-muted hover:bg-surface-2 hover:text-fg"
-              aria-label="关闭"
-            >
-              <X className="h-4 w-4" />
-            </DialogPrimitive.Close>
-          </div>
-          <div className="min-h-0 flex-1 overflow-y-auto p-5">{children}</div>
-        </DialogPrimitive.Content>
-      </DialogPrimitive.Portal>
+      <AnimatePresence>
+        {open ? (
+          <DialogPrimitive.Portal forceMount>
+            <DialogPrimitive.Overlay asChild forceMount>
+              <motion.div
+                className="fixed inset-0 z-50 bg-black/40"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
+              />
+            </DialogPrimitive.Overlay>
+            <DialogPrimitive.Content asChild forceMount>
+              <motion.div
+                style={{ width }}
+                variants={drawerVariants}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+                className="fixed right-0 top-0 z-50 flex h-full max-w-[94vw] flex-col border-l bg-surface shadow-2xl focus:outline-none"
+              >
+                <div className="flex items-center justify-between border-b px-5 py-3.5">
+                  <DialogPrimitive.Title className="text-[15px] font-semibold">
+                    {title}
+                  </DialogPrimitive.Title>
+                  <DialogPrimitive.Description className="sr-only">
+                    {String(title)}
+                  </DialogPrimitive.Description>
+                  <DialogPrimitive.Close
+                    className="rounded-lg p-1 text-muted hover:bg-surface-2 hover:text-fg"
+                    aria-label="关闭"
+                  >
+                    <X className="h-4 w-4" />
+                  </DialogPrimitive.Close>
+                </div>
+                <div className="min-h-0 flex-1 overflow-y-auto p-5">{children}</div>
+              </motion.div>
+            </DialogPrimitive.Content>
+          </DialogPrimitive.Portal>
+        ) : null}
+      </AnimatePresence>
     </DialogPrimitive.Root>
   );
 }
