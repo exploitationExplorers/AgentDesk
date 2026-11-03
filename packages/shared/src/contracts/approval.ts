@@ -13,11 +13,16 @@ export const ApprovalReason = z.union([
 ]);
 export type ApprovalReason = z.infer<typeof ApprovalReason>;
 
-/** 用户在审批时选择"以后不再询问"后持久化的规则；目前只支持 shell.run 的命令前缀匹配。 */
+/**
+ * 用户在审批时选择"以后不再询问"后持久化的规则。`pattern` 的匹配对象因 tool 而异
+ * （见 permission-rules.ts 的 keyOf）：shell.run 是命令前缀，fs.write 是文件路径，
+ * deploy.run 是配方 ID；空字符串表示对该工具的所有调用生效。deny 永远优先于 allow。
+ */
 export const PermissionRule = z.object({
   id: z.string(),
-  tool: z.literal("shell.run"),
-  prefix: z.string().min(1),
+  tool: z.string().min(1),
+  pattern: z.string(),
+  decision: z.enum(["allow", "deny"]),
   createdAt: z.string(),
 });
 export type PermissionRule = z.infer<typeof PermissionRule>;

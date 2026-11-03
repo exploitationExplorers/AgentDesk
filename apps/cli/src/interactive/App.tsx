@@ -41,9 +41,8 @@ export interface AppProps extends WelcomeProps {
 function findPendingApproval(live: Turn | null): ApprovalStep | null {
   if (!live) return null;
   return (
-    live.steps.find(
-      (step): step is ApprovalStep => step.kind === "approval" && !step.resolved,
-    ) ?? null
+    live.steps.find((step): step is ApprovalStep => step.kind === "approval" && !step.resolved) ??
+    null
   );
 }
 
@@ -334,15 +333,16 @@ export default function App({
     }
     if (pendingApproval) {
       if (key.ctrl && character === "d") setApprovalDebugExpanded((value) => !value);
-      else if (key.upArrow)
-        setApprovalMenuIndex((index) => Math.max(0, index - 1));
+      else if (key.upArrow) setApprovalMenuIndex((index) => Math.max(0, index - 1));
       else if (key.downArrow) {
         const count = approvalOptionsFor(pendingApproval.payload).length;
         setApprovalMenuIndex((index) => Math.min(count - 1, index + 1));
       } else if (key.return) {
         const options = approvalOptionsFor(pendingApproval.payload);
         const choice = options[approvalMenuIndex] ?? options[0] ?? { id: "no" as const };
-        answerLocally(choice.id !== "no", choice.id === "yes_remember");
+        const approved = choice.id === "yes" || choice.id === "yes_remember";
+        const remember = choice.id === "yes_remember" || choice.id === "no_remember";
+        answerLocally(approved, remember);
       } else if (/^y$/i.test(character)) answerLocally(true);
       else if (/^n$/i.test(character) || key.escape) answerLocally(false);
       return;

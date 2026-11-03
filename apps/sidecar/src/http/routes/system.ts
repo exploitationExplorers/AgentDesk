@@ -3,7 +3,7 @@ import { AppError, AppSettings, ErrorCode, type HealthInfo } from "@agentdesk/sh
 import type { Container } from "../../container";
 import { GLOBAL_CHANNEL } from "../../events";
 import { applyProxy, resolveProxy } from "../../proxy";
-import { prefixFor } from "../../services/permission-rules";
+import { defaultPatternFor } from "../../services/permission-rules";
 import { channelToSse } from "../sse";
 
 export function systemRoutes(container: Container) {
@@ -37,17 +37,13 @@ export function systemRoutes(container: Container) {
     const body = (await c.req.json()) as { approved?: boolean; remember?: boolean };
     const id = c.req.param("id");
     const approved = body.approved === true;
-    if (approved && body.remember === true) {
+    if (body.remember === true) {
       const pending = approvals.get(id);
       const payload = pending?.payload as { tool?: string; args?: unknown } | undefined;
-      const command =
-        payload?.tool === "shell.run" &&
-        typeof payload.args === "object" &&
-        payload.args !== null &&
-        typeof (payload.args as Record<string, unknown>).command === "string"
-          ? ((payload.args as Record<string, unknown>).command as string)
-          : undefined;
-      if (command) permissionRules.add(prefixFor(command));
+      const pattern = payload?.tool ? defaultPatternFor(payload.tool, payload.args) : undefined;
+      if (payload?.tool && pattern !== undefined) {
+        permissionRules.add(payload.tool, pattern, approved ? "allow" : "deny");
+      }
     }
     return c.json(approvals.resolve(id, approved));
   });
