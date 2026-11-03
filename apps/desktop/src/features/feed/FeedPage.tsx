@@ -13,6 +13,7 @@ import {
 import { useState } from "react";
 import type { FeedItem, FeedSource, FeedTag } from "@agentdesk/shared";
 import {
+  AnimatePresence,
   Badge,
   Button,
   Card,
@@ -23,6 +24,8 @@ import {
   Select,
   Spinner,
   cn,
+  gridItemVariants,
+  motion,
 } from "@agentdesk/ui";
 import { Markdown } from "../../components/Markdown";
 import { api } from "../../lib/api";
@@ -254,9 +257,20 @@ export function FeedPage() {
           <Spinner />
         ) : items.data?.length ? (
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {items.data.map((item) => (
-              <FeedCard key={item.id} item={item} onExplain={() => explain(item)} />
-            ))}
+            <AnimatePresence initial={false}>
+              {items.data.map((item) => (
+                <motion.div
+                  key={item.id}
+                  layout
+                  variants={gridItemVariants}
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
+                >
+                  <FeedCard item={item} onExplain={() => explain(item)} />
+                </motion.div>
+              ))}
+            </AnimatePresence>
           </div>
         ) : (
           <EmptyState

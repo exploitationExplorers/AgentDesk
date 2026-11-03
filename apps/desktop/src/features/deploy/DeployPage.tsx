@@ -10,7 +10,19 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { DeployRecipe, Server } from "@agentdesk/shared";
-import { Badge, Button, Card, EmptyState, PageHeader, Segmented, Spinner, cn } from "@agentdesk/ui";
+import {
+  AnimatePresence,
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  PageHeader,
+  Segmented,
+  Spinner,
+  cn,
+  gridItemVariants,
+  motion,
+} from "@agentdesk/ui";
 import { api } from "../../lib/api";
 import { timeAgo } from "../../lib/format";
 import { RecipeDialog } from "./RecipeDialog";
@@ -37,42 +49,53 @@ function ServersView() {
       </div>
       {servers.data?.length ? (
         <div className="grid gap-3 md:grid-cols-2">
-          {servers.data.map((s) => (
-            <Card key={s.id} className="p-4">
-              <div className="flex items-start gap-3">
-                <div className="grid h-9 w-9 place-items-center rounded-xl bg-surface-2 text-muted">
-                  <ServerIcon className="h-4 w-4" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[14px] font-semibold">{s.name}</p>
-                  <p className="truncate font-mono text-[11.5px] text-subtle">{s.panelUrl}</p>
-                  <div className="mt-2 flex gap-1.5">
-                    <Badge>{s.username || "未设置用户名"}</Badge>
-                    <Badge tone={s.hasPassword ? "success" : "warning"}>
-                      {s.hasPassword ? "已保存密码" : "无密码"}
-                    </Badge>
+          <AnimatePresence initial={false}>
+            {servers.data.map((s) => (
+              <motion.div
+                key={s.id}
+                layout
+                variants={gridItemVariants}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+              >
+                <Card className="p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="grid h-9 w-9 place-items-center rounded-xl bg-surface-2 text-muted">
+                      <ServerIcon className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[14px] font-semibold">{s.name}</p>
+                      <p className="truncate font-mono text-[11.5px] text-subtle">{s.panelUrl}</p>
+                      <div className="mt-2 flex gap-1.5">
+                        <Badge>{s.username || "未设置用户名"}</Badge>
+                        <Badge tone={s.hasPassword ? "success" : "warning"}>
+                          {s.hasPassword ? "已保存密码" : "无密码"}
+                        </Badge>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
-              <div className="mt-3 flex gap-1.5 border-t pt-3">
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  loading={open.isPending && open.variables === s.id}
-                  onClick={() => open.mutate(s.id)}
-                >
-                  <ExternalLink className="h-3.5 w-3.5" />
-                  自动登录并打开面板
-                </Button>
-                <Button size="sm" variant="ghost" onClick={() => setEditing(s)}>
-                  <Pencil className="h-3.5 w-3.5" />
-                </Button>
-                <Button size="sm" variant="ghost" onClick={() => remove.mutate(s.id)}>
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            </Card>
-          ))}
+                  <div className="mt-3 flex gap-1.5 border-t pt-3">
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      loading={open.isPending && open.variables === s.id}
+                      onClick={() => open.mutate(s.id)}
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      自动登录并打开面板
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => setEditing(s)}>
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => remove.mutate(s.id)}>
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </Card>
+              </motion.div>
+            ))}
+          </AnimatePresence>
         </div>
       ) : (
         <EmptyState
@@ -133,38 +156,54 @@ function RecipesView() {
         </div>
         {recipes.isLoading ? <Spinner /> : null}
         <div className="grid gap-2">
-          {recipes.data?.map((r) => (
-            <Card key={r.id} className="p-3.5">
-              <div className="flex items-center gap-2">
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[13.5px] font-semibold">{r.name}</p>
-                  <p className="truncate text-[11.5px] text-subtle">
-                    {serverName(r.serverId)} · {r.steps.length} 步
-                  </p>
-                </div>
-                <Button
-                  size="sm"
-                  variant="primary"
-                  loading={run.isPending && run.variables === r.id}
-                  onClick={() => run.mutate(r.id)}
-                >
-                  <Play className="h-3 w-3 fill-current" />
-                  部署
-                </Button>
-                <Button size="icon" variant="ghost" onClick={() => setEditing(r)} aria-label="编辑">
-                  <Pencil className="h-3.5 w-3.5" />
-                </Button>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  onClick={() => remove.mutate(r.id)}
-                  aria-label="删除"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            </Card>
-          ))}
+          <AnimatePresence initial={false}>
+            {recipes.data?.map((r) => (
+              <motion.div
+                key={r.id}
+                layout
+                variants={gridItemVariants}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+              >
+                <Card className="p-3.5">
+                  <div className="flex items-center gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[13.5px] font-semibold">{r.name}</p>
+                      <p className="truncate text-[11.5px] text-subtle">
+                        {serverName(r.serverId)} · {r.steps.length} 步
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      loading={run.isPending && run.variables === r.id}
+                      onClick={() => run.mutate(r.id)}
+                    >
+                      <Play className="h-3 w-3 fill-current" />
+                      部署
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => setEditing(r)}
+                      aria-label="编辑"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => remove.mutate(r.id)}
+                      aria-label="删除"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </Card>
+              </motion.div>
+            ))}
+          </AnimatePresence>
           {recipes.data?.length === 0 ? (
             <EmptyState
               title="还没有部署配方"

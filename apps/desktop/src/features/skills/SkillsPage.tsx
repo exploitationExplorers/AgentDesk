@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, MessageCircle, RefreshCw, Sparkles, Wand2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
+  AnimatePresence,
   Badge,
   Button,
   Card,
@@ -12,6 +13,8 @@ import {
   Select,
   Spinner,
   cn,
+  gridItemVariants,
+  motion,
 } from "@agentdesk/ui";
 import { useApiUrl } from "../../hooks/useApiUrl";
 import { api, type SkillInfo, type WechatReportJob } from "../../lib/api";
@@ -314,9 +317,20 @@ export function SkillsPage() {
         {skills.isLoading ? <Spinner /> : null}
         {skills.data?.length ? (
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {skills.data.map((s) => (
-              <SkillCard key={s.name} skill={s} onOpen={() => setActive(s.name)} />
-            ))}
+            <AnimatePresence initial={false}>
+              {skills.data.map((s) => (
+                <motion.div
+                  key={s.name}
+                  layout
+                  variants={gridItemVariants}
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
+                >
+                  <SkillCard skill={s} onOpen={() => setActive(s.name)} />
+                </motion.div>
+              ))}
+            </AnimatePresence>
           </div>
         ) : skills.isFetched ? (
           <EmptyState

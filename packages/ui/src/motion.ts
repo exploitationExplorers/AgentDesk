@@ -45,6 +45,13 @@ export const listItemVariants: Variants = {
   },
 };
 
+/** 转场：网格/卡片列表的增删，不做高度塌缩（网格场景下高度动画会导致错位），只做淡入淡出+轻微缩放。 */
+export const gridItemVariants: Variants = {
+  hidden: { opacity: 0, scale: 0.97 },
+  visible: { opacity: 1, scale: 1, transition: { duration: 0.16, ease: easeOut } },
+  exit: { opacity: 0, scale: 0.97, transition: { duration: 0.1, ease: "easeIn" } },
+};
+
 /** 反馈：短促确认动效，例如复制成功、保存成功的小弹跳。 */
 export const popVariants: Variants = {
   initial: { scale: 0.92, opacity: 0 },

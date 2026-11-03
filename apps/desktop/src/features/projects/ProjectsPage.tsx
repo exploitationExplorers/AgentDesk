@@ -28,6 +28,7 @@ import type {
   StarredRepo,
 } from "@agentdesk/shared";
 import {
+  AnimatePresence,
   Badge,
   Button,
   Card,
@@ -43,6 +44,8 @@ import {
   Textarea,
   Tooltip,
   cn,
+  gridItemVariants,
+  motion,
 } from "@agentdesk/ui";
 import { api } from "../../lib/api";
 import { compactNumber, timeAgo } from "../../lib/format";
@@ -1074,14 +1077,24 @@ export function ProjectsPage() {
           <Spinner />
         ) : visible.length ? (
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {visible.map((p) => (
-              <ProjectCard
-                key={p.id}
-                project={p}
-                onOpen={() => setOpenId(p.id)}
-                onAiCommit={() => setAiCommitId(p.id)}
-              />
-            ))}
+            <AnimatePresence initial={false}>
+              {visible.map((p) => (
+                <motion.div
+                  key={p.id}
+                  layout
+                  variants={gridItemVariants}
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
+                >
+                  <ProjectCard
+                    project={p}
+                    onOpen={() => setOpenId(p.id)}
+                    onAiCommit={() => setAiCommitId(p.id)}
+                  />
+                </motion.div>
+              ))}
+            </AnimatePresence>
           </div>
         ) : (
           <EmptyState
