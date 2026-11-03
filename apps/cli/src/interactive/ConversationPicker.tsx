@@ -1,5 +1,7 @@
 import { Box, Text } from "ink";
 import type { Conversation } from "@agentdesk/shared";
+import Select from "./Select.js";
+import type { AccessibilityTheme } from "./theme.js";
 
 const MAX_TITLE_LENGTH = 40;
 
@@ -30,16 +32,18 @@ function formatRelativeTime(iso: string) {
 export default function ConversationPicker({
   conversations,
   selectedIndex,
+  theme,
 }: {
   conversations: Conversation[];
   selectedIndex: number;
+  theme: AccessibilityTheme;
 }) {
-  const items = [
-    { id: null, label: "新建对话", time: "" },
+  const options = [
+    { id: "new", label: "新建对话" },
     ...conversations.map((conversation) => ({
       id: conversation.id,
       label: truncateTitle(conversation.title),
-      time: formatRelativeTime(conversation.updatedAt),
+      meta: formatRelativeTime(conversation.updatedAt),
     })),
   ];
   return (
@@ -47,19 +51,7 @@ export default function ConversationPicker({
       <Text bold>选择会话</Text>
       <Text dimColor>↑↓ 或 j/k 选择 · Enter 确认 · Esc 取消并退出</Text>
       <Box flexDirection="column" marginTop={1}>
-        {items.map((item, index) => {
-          const focused = index === selectedIndex;
-          return (
-            <Box key={item.id ?? "new"}>
-              <Text color="cyan">{focused ? "▌" : " "}</Text>
-              <Text bold={focused} inverse={focused}>
-                {" "}
-                {item.label}
-              </Text>
-              {item.time ? <Text dimColor> · {item.time}</Text> : null}
-            </Box>
-          );
-        })}
+        <Select options={options} focusedIndex={selectedIndex} theme={theme} />
       </Box>
     </Box>
   );

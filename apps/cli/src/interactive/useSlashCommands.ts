@@ -17,6 +17,7 @@ import { THEME_PALETTES, writePreferences, type ThemePalette } from "../preferen
 import type { CommandPanelData } from "./CommandPanel.js";
 import type { HistoryMessage } from "./types.js";
 import type { AccessibilityTheme } from "./theme.js";
+import { resolveThemeChoice, themeChoiceMessage, themePanelItems } from "./theme-controller.js";
 import {
   defaultModelOption,
   modelOptions,
@@ -394,49 +395,18 @@ export function useSlashCommands(options: Options) {
         }
         case "theme": {
           const choose = (id: string) => {
-            if (THEME_PALETTES.includes(id as ThemePalette)) {
-              setTheme({ ...theme, palette: id as ThemePalette });
+            const next = resolveThemeChoice(id, { theme, initialTheme: options.initialTheme });
+            setTheme(next);
+            if (THEME_PALETTES.includes(id as ThemePalette))
               writePreferences(home, { theme: id as ThemePalette });
-              setPanel(null);
-              info(`配色方案：${id}`);
-              return;
-            }
-            if (id !== "plain" && id !== "default")
-              throw new Error(`用法：/theme [default | plain | ${THEME_PALETTES.join(" | ")}]`);
-            setTheme(
-              id === "plain"
-                ? { ...theme, color: false, motion: false, emoji: false }
-                : { ...options.initialTheme, palette: theme.palette },
-            );
             setPanel(null);
-            info(`终端主题：${id}`);
+            info(themeChoiceMessage(id));
           };
           if (args) choose(args);
           else
             setPanel({
               title: "终端主题",
-              items: [
-                { id: "default", label: "默认", detail: "遵循启动参数和环境设置" },
-                { id: "plain", label: "纯文本", detail: "关闭配色、动画与 Emoji" },
-                {
-                  id: "dark",
-                  label: "深色配色",
-                  detail: "适合深色终端背景",
-                  current: theme.palette === "dark",
-                },
-                {
-                  id: "light",
-                  label: "浅色配色",
-                  detail: "适合浅色终端背景",
-                  current: theme.palette === "light",
-                },
-                {
-                  id: "colorblind",
-                  label: "色盲友好配色",
-                  detail: "成功/新增用蓝，警告/错误用橙",
-                  current: theme.palette === "colorblind",
-                },
-              ],
+              items: themePanelItems(theme),
               onSelect: choose,
             });
           break;

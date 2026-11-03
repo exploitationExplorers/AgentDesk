@@ -465,7 +465,11 @@ export default function App({
         }}
       </Static>
       {uiMode === "picker" ? (
-        <ConversationPicker conversations={conversations} selectedIndex={pickerIndex} />
+        <ConversationPicker
+          conversations={conversations}
+          selectedIndex={pickerIndex}
+          theme={theme}
+        />
       ) : (
         <Box
           flexDirection="column"
