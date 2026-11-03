@@ -26,6 +26,7 @@ const ACTIONS: Record<string, string> = {
   "disk.scan": "扫描磁盘",
   "disk.clean": "清理磁盘",
   "tasks.ask_user": "向你确认",
+  "skills.load": "加载技能",
 };
 
 function record(value: unknown): Record<string, unknown> {
@@ -46,6 +47,7 @@ export function toolLabel(name: string, args: unknown) {
   else if (name === "shell.run") target = text(fields.command).replace(/\s+/g, " ");
   else if (name === "fs.search") target = text(fields.query);
   else if (name === "agents.delegate") target = text(fields.agent);
+  else if (name === "skills.load") target = text(fields.name);
   else if (name.startsWith("fs.") || name.startsWith("projects.")) target = path;
   else if (name.startsWith("browser.")) target = text(fields.url) || text(fields.sessionId);
   return { action, target };
