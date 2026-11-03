@@ -19,7 +19,16 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useRef } from "react";
-import { Kbd, StatusDot, Tooltip, TooltipProvider, cn } from "@agentdesk/ui";
+import {
+  AnimatePresence,
+  Kbd,
+  StatusDot,
+  Tooltip,
+  TooltipProvider,
+  cn,
+  crossfadeVariants,
+  motion,
+} from "@agentdesk/ui";
 import { useGlobalEvents } from "../hooks/useGlobalEvents";
 import { api } from "../lib/api";
 import { saveAvatar } from "../lib/avatar";
@@ -64,10 +73,17 @@ function NavItem({
       to={to}
       className={cn(
         "relative flex h-9 items-center gap-3 rounded-xl px-2.5 text-[13px] font-medium transition-colors",
-        active ? "bg-surface-2 text-fg" : "text-muted hover:bg-surface-2/60 hover:text-fg",
+        active ? "text-fg" : "text-muted hover:bg-surface-2/60 hover:text-fg",
         collapsed && "justify-center px-0",
       )}
     >
+      {active ? (
+        <motion.span
+          layoutId="nav-active-indicator"
+          className="absolute inset-0 -z-10 rounded-xl bg-surface-2"
+          transition={{ type: "spring", stiffness: 500, damping: 40 }}
+        />
+      ) : null}
       <Icon className="h-[17px] w-[17px] shrink-0" />
       {collapsed ? null : <span className="truncate">{label}</span>}
       {badge ? (
@@ -95,6 +111,8 @@ function NavItem({
 export function AppShell() {
   useGlobalEvents();
   const { theme, setTheme, sidebarCollapsed: collapsed, toggleSidebar, setPaletteOpen } = useUi();
+  const routeSection =
+    useRouterState({ select: (s) => s.location.pathname }).split("/")[1] || "home";
   const health = useQuery({
     queryKey: ["health"],
     queryFn: api.health,
@@ -250,7 +268,18 @@ export function AppShell() {
         </aside>
 
         <main className="min-w-0 flex-1 overflow-hidden">
-          <Outlet />
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={routeSection}
+              variants={crossfadeVariants}
+              initial="hidden"
+              animate="visible"
+              exit="exit"
+              className="h-full"
+            >
+              <Outlet />
+            </motion.div>
+          </AnimatePresence>
         </main>
       </div>
       <LowDiskDialog status={disk.data} />
