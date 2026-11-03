@@ -1,7 +1,10 @@
 node_modules
 # 根目录 Markdown 仅公开 README，其余文档保留在本机。
+# AGENTS.md/CLAUDE.md 是跨工具协作规范（提交信息语言等），必须公开，排除在外。
 /*.[mM][dD]
 !/README.md
+!/AGENTS.md
+!/CLAUDE.md
 dist
 bin
 .turbo

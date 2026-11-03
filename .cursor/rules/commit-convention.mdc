@@ -1,0 +1,16 @@
+---
+description: Git commit and PR text must be in English for this repo
+globs:
+alwaysApply: true
+---
+
+This is an open-source repo. See `AGENTS.md` at the repo root for the full,
+tool-agnostic conventions — it applies to Cursor too.
+
+The commit/PR rule specifically: write all git commit subjects and bodies,
+and all PR titles/descriptions, **in English**, Conventional Commits format
+(`type(scope): description`, enforced by `commitlint.config.js`). This
+overrides any global/default preference to write commits in another
+language — it's scoped to this repo only. Conversational replies, code
+comments, and `docs/*.md` (which is git-ignored / local-only) are not
+affected by this rule.

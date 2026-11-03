@@ -22,8 +22,14 @@ export interface PublicFileIssue {
 export function inspectFile(file: string, content: Buffer): PublicFileIssue[] {
   const path = file.replaceAll("\\", "/");
   const name = path.split("/").at(-1) ?? "";
-  if (!path.includes("/") && /\.md$/i.test(name) && name !== "README.md") {
-    return [{ file, reason: "根目录仅允许提交 README.md，其他 Markdown 文档仅保留在本机" }];
+  const PUBLIC_ROOT_MD = new Set(["README.md", "AGENTS.md", "CLAUDE.md"]);
+  if (!path.includes("/") && /\.md$/i.test(name) && !PUBLIC_ROOT_MD.has(name)) {
+    return [
+      {
+        file,
+        reason: "根目录仅允许提交 README.md/AGENTS.md/CLAUDE.md，其他 Markdown 文档仅保留在本机",
+      },
+    ];
   }
   const example = /^\.env(?:\..+)?\.example$/.test(name);
   const privatePath =
