@@ -138,13 +138,13 @@ fix(sidecar): 修复长会话压缩后工具调用与结果配对丢失的问题
 
 > 这是"模式→规则"在具体任务上的检查单；每项都标注了现状差距来源（`docs/claude-code-parity/*.md`），动手前请先用 Grep/Read 核实差距是否依然存在。
 
-- [ ] 工具执行顺序：只读工具可并发，写操作是否已形成顺序屏障？（`core.md` 曾记录 `agent.ts` 对全部调用 `Promise.all`，需核实是否已修复）
-- [ ] Shell 风险分类：`git branch -D/-m`、`git fetch` 等是否仍被宽泛前缀白名单误判为安全？（`agents/tools.ts`）
-- [ ] 权限规则是否仍只覆盖 `shell.run`，缺少 `fs.write`/`deploy.run` 等其他高风险工具的持久规则？
-- [ ] 长会话压缩是否已有"失败熔断/分级回退"，而不是压缩失败就崩溃？
-- [ ] 子代理委派的工具集中是否意外包含了"派生子代理"的工具（递归爆炸风险）？
-- [ ] 技能 `allowed-tools` 字段解析成功是否被误当成"工具权限已强制执行"？（两者是不同层次，解析元数据 ≠ 运行时沙箱）
-- [ ] 跨端（CLI/桌面）审批是否存在重复提交、或一端处理后另一端仍在等待本地输入的问题？
+- [x] 工具执行顺序：只读工具可并发，写操作是否已形成顺序屏障？——**2026-11-03 核实已修复**：`packages/agent-core/src/agent.ts` 已用 `toolCallBatches()` 按 `tools.ts:75` 的 `isConcurrencySafe` 字段分批，连续只读工具攒批 `Promise.allSettled`（上限 `MAX_CONCURRENT_TOOLS = 8`），一遇写操作立即 flush 并单独成批，批次间顺序 `await`；全仓库 `packages/agent-core/src` 已无裸 `Promise.all`。单测：`packages/agent-core/test/tool-scheduling.test.ts`。
+- [x] Shell 风险分类：`git branch -D/-m`、`git fetch` 等是否仍被宽泛前缀白名单误判为安全？——**2026-11-03 核实已修复**：`apps/sidecar/src/agents/shell-policy.ts` 按子命令+参数级白名单判断（`GIT_READONLY_FLAGS` 等），非简单 `git` 前缀匹配；`branch` 白名单不含 `-D/--delete/-m`，`fetch` 根本不在只读表中，二者均判定为 `dangerous`。单测：`apps/sidecar/test/shell-risk.test.ts:39-84`（显式覆盖这三个命令）。
+- [ ] 权限规则是否仍只覆盖 `shell.run`，缺少 `fs.write`/`deploy.run` 等其他高风险工具的持久规则？——**2026-11-03 核实：仍是真实待办**。`packages/shared/src/contracts/approval.ts:17-23` 的 `PermissionRule.tool` 在 zod schema 层硬编码为 `z.literal("shell.run")`，`apps/sidecar/src/services/permission-rules.ts:41-46` 的 `match()`/`add()` 同样硬编码；规则模型没有 `decision: allow|deny|ask`，只有隐式 allow 前缀匹配，无 deny 语义。**注意**：这只影响"记住规则跳过审批"这条路径——即时 risk 三级分类（`AgentTool.risk` 在 `tools.ts:71` 为必填字段，37 个工具全部显式声明，无隐式默认值）本身已全覆盖所有工具，fail-closed 原则在即时审批层已经成立，缺口具体在"持久化规则"的覆盖面。
+- [ ] 长会话压缩是否已有"失败熔断/分级回退"，而不是压缩失败就崩溃？（尚未在本轮核实，`conversation-context.ts` 文档描述已有该能力，建议下次重构前重新核实代码而非直接采信此条）
+- [ ] 子代理委派的工具集中是否意外包含了"派生子代理"的工具（递归爆炸风险）？（尚未核实）
+- [ ] 技能 `allowed-tools` 字段解析成功是否被误当成"工具权限已强制执行"？（两者是不同层次，解析元数据 ≠ 运行时沙箱；尚未核实）
+- [x] 跨端（CLI/桌面）审批是否存在重复提交、或一端处理后另一端仍在等待本地输入的问题？——**2026-11-03 核实已解决**：`apps/sidecar/src/services/approvals.ts:84-97` 的 `resolve()` 对非 pending 状态直接幂等返回；CLI 端 `useApprovalWaiter.ts` 轮询检测远端决定并标记 `source: "remote"` 时跳过本地 POST；桌面端走 SSE + 15s 轮询兜底；快照恢复不重放旧事件，本地 `resolvedApprovals` Map 去重。集成测试：`apps/cli/test/interactive-task.test.ts:44-103,316-375`。小缺口：sidecar 层缺一个直接针对 `resolve()` 二次调用幂等性的单元测试（非功能性风险，锦上添花项）。
 
 ## 7. 这份文档怎么用
 
