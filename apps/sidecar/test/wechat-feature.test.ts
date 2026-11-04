@@ -25,6 +25,7 @@ function writeSkill(base: string, directory: string, name = directory): void {
 for (const name of [
   "bt-deploy",
   "project-triage",
+  "reach-research",
   "tech-explain",
   "wechat-daily-report",
   "personal-skill",
@@ -137,5 +138,10 @@ it("公开构建只复制公开技能，不复制私有包、环境文件和解�
   writeFileSync(join(privateDir, "contact.db"), "private data");
   const destination = join(root, "public-skills");
   copyPublicSkills(skillsDir, destination);
-  expect(readdirSync(destination).sort()).toEqual(["bt-deploy", "project-triage", "tech-explain"]);
+  expect(readdirSync(destination).sort()).toEqual([
+    "bt-deploy",
+    "project-triage",
+    "reach-research",
+    "tech-explain",
+  ]);
 });

@@ -138,8 +138,19 @@ try {
   assert.deepEqual(skills.map((skill) => skill.name).sort(), [
     "bt-deploy",
     "project-triage",
+    "reach-research",
     "tech-explain",
   ]);
+  const reach = await (
+    await apiRequest<{ channels: Array<{ id: string }> }>(initial, "/reach/capabilities")
+  ).json();
+  assert.deepEqual(
+    reach.channels.map((channel) => channel.id),
+    ["web", "github", "v2ex"],
+  );
+  const tools = await (await apiRequest<Array<{ name: string }>>(initial, "/tools")).json();
+  assert.ok(tools.some((tool) => tool.name === "reach.search"));
+  assert.ok(tools.some((tool) => tool.name === "reach.read"));
   await command(["start"]);
   assert.equal(readState(home)?.pid, initial.pid);
   const modelAddress = model.address();

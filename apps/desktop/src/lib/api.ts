@@ -27,6 +27,11 @@ import type {
   ProviderCandidate,
   ProviderInput,
   RecipeStep,
+  ReachCapabilities,
+  ReachRequestInput,
+  ReachResult,
+  ReachSettings,
+  ReachStatus,
   RemoteActivity,
   RemoteRepo,
   BrowserSessionState,
@@ -111,6 +116,12 @@ export const api = {
   startWechatReport: (body: { chatroom: string; date?: string }) =>
     http.post<WechatReportJob>("/skills/wechat/reports", body),
   tools: () => http.get<ToolInfo[]>("/tools"),
+  reachCapabilities: () => http.get<ReachCapabilities>("/reach/capabilities"),
+  reachStatus: () => http.get<ReachStatus>("/reach/status"),
+  reachSettings: () => http.get<ReachSettings>("/reach/settings"),
+  updateReachSettings: (settings: ReachSettings) =>
+    http.put<ReachSettings>("/reach/settings", settings),
+  runReach: (input: ReachRequestInput) => http.post<ReachResult>("/reach/run", input),
   memories: () => http.get<Memory[]>("/memories"),
   deleteMemory: (id: string) =>
     http.delete<{ id: string; deleted: true }>(`/memories/${encodeURIComponent(id)}`),

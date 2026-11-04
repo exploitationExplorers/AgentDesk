@@ -9,6 +9,7 @@ import { GeneralTab } from "./GeneralTab";
 import { GitAccountsTab } from "./GitAccountsTab";
 import { MemoryTab } from "./MemoryTab";
 import { ProvidersTab } from "./ProvidersTab";
+import { ReachTab } from "./ReachTab";
 
 function SkillsTab() {
   const { data = [] } = useQuery({ queryKey: ["skills"], queryFn: api.skills });
@@ -53,7 +54,7 @@ export function SettingsPage() {
         <PageHeader
           icon={<Settings className="h-5 w-5" />}
           title="设置"
-          description="模型、Git 平台、项目扫描、记忆与外观"
+          description="模型、Git 平台、跨平台检索、项目扫描、记忆与外观"
         />
         <Tabs
           value={tab}
@@ -63,6 +64,7 @@ export function SettingsPage() {
             <TabsTrigger value="providers">模型 Provider</TabsTrigger>
             <TabsTrigger value="bindings">Agent 模型</TabsTrigger>
             <TabsTrigger value="git">Git 平台</TabsTrigger>
+            <TabsTrigger value="reach">跨平台检索</TabsTrigger>
             <TabsTrigger value="general">通用</TabsTrigger>
             <TabsTrigger value="skills">技能</TabsTrigger>
             <TabsTrigger value="memory">记忆</TabsTrigger>
@@ -75,6 +77,9 @@ export function SettingsPage() {
           </TabsContent>
           <TabsContent value="git">
             <GitAccountsTab />
+          </TabsContent>
+          <TabsContent value="reach">
+            <ReachTab />
           </TabsContent>
           <TabsContent value="general">
             <GeneralTab />

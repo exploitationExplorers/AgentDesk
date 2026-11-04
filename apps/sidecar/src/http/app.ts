@@ -9,6 +9,7 @@ import { chatRoutes } from "./routes/chat";
 import { cliMonitorRoutes } from "./routes/cli-monitor";
 import { deployRoutes } from "./routes/deploy";
 import { feedRoutes } from "./routes/feed";
+import { reachRoutes } from "./routes/reach";
 import { memoryRoutes } from "./routes/memory";
 import { projectRoutes } from "./routes/projects";
 import { providerRoutes } from "./routes/providers";
@@ -63,6 +64,7 @@ export function createApp(container: Container, options: { webRoot?: string } = 
   app.route("/api", providerRoutes(container));
   app.route("/api", projectRoutes(container));
   app.route("/api", feedRoutes(container));
+  app.route("/api", reachRoutes(container));
   app.route("/api", memoryRoutes(container));
   app.route("/api", diskRoutes(container));
   app.route("/api", deployRoutes(container));

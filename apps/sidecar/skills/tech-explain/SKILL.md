@@ -1,15 +1,15 @@
 ---
 name: tech-explain
 description: 深入讲解一个开源项目或前沿技术，并结合用户自己的项目给出落地建议
-version: 1.0.0
+version: 1.1.0
 agents: [research]
 triggers: [讲解, 深入, 原理, 怎么用, 值得学]
-allowed_tools: [web.fetch, feed.search, feed.today]
+allowed_tools: [reach.*, web.fetch, feed.search, feed.today]
 ---
 
 # 技术讲解模板
 
-先用 `web.fetch` 读取项目 README 或官方文档，信息不足再读一篇介绍文章。输出结构：
+先用 `reach.read` 读取项目 README 或官方文档，信息不足时用 `reach.search` 搜索补充来源。遵守渠道开关和终止错误，不换工具绕过。输出结构：
 
 1. **一句话定位**：它是什么，属于哪一类工具。
 2. **解决的问题**：之前的痛点是什么。

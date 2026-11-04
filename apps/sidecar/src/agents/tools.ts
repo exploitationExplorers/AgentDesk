@@ -22,11 +22,14 @@ import type { SettingsService } from "../services/settings";
 import type { WorkflowService } from "../services/workflows";
 import { localDate } from "../util";
 import { runCheckedShell, shellRisk } from "./shell-policy";
+import { registerReachTools } from "./reach-tools";
+import type { ReachService } from "../services/reach";
 export { shellRisk } from "./shell-policy";
 
 export interface ToolDeps {
   projects: ProjectService;
   feed: FeedService;
+  reach: ReachService;
   memory: MemoryService;
   disk: DiskService;
   deploy: DeployService;
@@ -49,6 +52,7 @@ function htmlToText(html: string): string {
 export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
   const { projects, feed, memory, disk, deploy, browser, settings, hub } = deps;
   const registry = new ToolRegistry();
+  registerReachTools(registry, deps.reach);
 
   const projectRoot = (ref: string) => projects.find(ref).path;
 

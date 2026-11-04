@@ -22,6 +22,7 @@ import { ProjectInsightService } from "./services/project-insights";
 import { DeployService } from "./services/deploy";
 import { DiskService } from "./services/disk";
 import { FeedService } from "./services/feed";
+import { ReachService } from "./services/reach";
 import { MemoryService } from "./services/memory";
 import { ProjectService } from "./services/projects";
 import { ProjectInstructionService } from "./services/project-instructions";
@@ -46,6 +47,7 @@ export interface Container {
   projects: ProjectService;
   projectInstructions: ProjectInstructionService;
   feed: FeedService;
+  reach: ReachService;
   memory: MemoryService;
   disk: DiskService;
   deploy: DeployService;
@@ -83,6 +85,7 @@ export async function createContainer(
   const projects = new ProjectService(db, secrets, settings, providers, config.dataDir, hub);
   const projectInstructions = new ProjectInstructionService(projects);
   const feed = new FeedService(db, settings, providers, hub);
+  const reach = new ReachService(db, secrets);
   const memory = new MemoryService(dbHandle.raw, providers);
   const disk = new DiskService(settings, providers, { extraProtected: [config.dataDir] });
   const browserManager = new BrowserSessionManager(
@@ -114,6 +117,7 @@ export async function createContainer(
   const registry = buildToolRegistry({
     projects,
     feed,
+    reach,
     memory,
     disk,
     deploy,
@@ -188,6 +192,7 @@ export async function createContainer(
     projects,
     projectInstructions,
     feed,
+    reach,
     memory,
     disk,
     deploy,
@@ -203,6 +208,7 @@ export async function createContainer(
     scheduler,
     registry,
     dispose: async () => {
+      reach.dispose();
       scheduler.stop();
       await insights.dispose();
       await browserManager.closeAll();

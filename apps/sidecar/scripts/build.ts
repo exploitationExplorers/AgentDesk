@@ -86,6 +86,11 @@ const resolved = new Map<string, string>();
 for (const [name, parent] of RUNTIME_PACKAGES)
   resolved.set(name, copyPackage(name, parent ? resolved.get(parent) : undefined));
 copyPublicSkills(join(root, "skills"), join(dist, "skills"));
+mkdirSync(join(dist, "licenses"), { recursive: true });
+cpSync(
+  resolve(root, "../../packages/integrations/src/reach/Agent-Reach-LICENSE.txt"),
+  join(dist, "licenses/Agent-Reach-LICENSE.txt"),
+);
 mkdirSync(join(dist, "scripts"), { recursive: true });
 await build({
   entryPoints: [join(root, "scripts/ai-commit-worker.ts")],

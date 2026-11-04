@@ -28,3 +28,4 @@ export * from "./fs/file-change";
 export * from "./baota/browser";
 export * from "./baota/runner";
 export * from "./baota/presets";
+export * from "./reach";
