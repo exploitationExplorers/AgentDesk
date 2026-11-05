@@ -166,19 +166,34 @@ test("产物事件打开右侧逐页预览，刷新仍可查看且下载真实 P
   await expect(panel).toBeVisible();
   await expect(page.getByText("agents.delegate", { exact: false })).toHaveCount(0);
   await expect(page.getByText("This operation was aborted", { exact: false })).toHaveCount(0);
-  await expect(panel.getByText("第 1 / 2 页")).toBeVisible();
-  const frame = panel.frameLocator('iframe[title="HTML 成果预览"]');
-  await expect(frame.getByText("研发团队季度计划", { exact: true })).toBeVisible();
+  await expect(panel.getByRole("button", { name: "进入全屏" })).toBeVisible();
+  await expect(panel.getByRole("button", { name: "收起右侧面板" })).toBeVisible();
+  const preview = panel.locator('iframe[aria-label="PPTX 成果预览"]');
+  await expect(preview).toBeVisible({ timeout: 30_000 });
+  await expect(preview).toHaveAttribute("src", /slide\/pc\.html/);
+  await expect(panel.getByText("正在打开演示文稿…")).toHaveCount(0, { timeout: 45_000 });
+  await expect(
+    page.frameLocator('iframe[aria-label="PPTX 成果预览"]').locator("#pre-container"),
+  ).toBeVisible({
+    timeout: 45_000,
+  });
   await page.screenshot({ path: testInfo.outputPath("chat-ppt-desktop.png") });
-  await panel.getByRole("button", { name: "下一页" }).click();
-  await expect(frame.getByText("分阶段推进")).toBeVisible();
-  await expect(panel.getByText("第 2 / 2 页", { exact: true })).toBeVisible();
+  await panel.getByRole("button", { name: "进入全屏" }).click();
+  await expect(panel.getByRole("button", { name: "退出全屏" })).toBeVisible();
+  await panel.getByRole("button", { name: "退出全屏" }).click();
+  await panel.getByRole("button", { name: "收起右侧面板" }).click();
+  await expect(panel.getByRole("button", { name: "展开右侧面板" })).toBeVisible();
+  await panel.getByRole("button", { name: "展开右侧面板" }).click();
+  await expect(panel.locator('iframe[aria-label="PPTX 成果预览"]')).toBeVisible();
   const downloadEvent = page.waitForEvent("download");
   await panel.getByRole("link", { name: "下载", exact: true }).click();
   const download = await downloadEvent;
   expect((await readFile((await download.path())!)).subarray(0, 2).toString()).toBe("PK");
   await page.reload();
   await expect(panel).toBeVisible();
+  await expect(panel.locator('iframe[aria-label="PPTX 成果预览"]')).toBeVisible({
+    timeout: 45_000,
+  });
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(panel).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(

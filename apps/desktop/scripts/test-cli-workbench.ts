@@ -78,7 +78,7 @@ try {
     }
   });
   await page.goto(link.url);
-  await expect(page.getByRole("link", { name: "编码现场", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "编码", exact: true })).toBeVisible();
   assert.ok(!page.url().includes("ticket="));
   const session = (await context.cookies()).find(
     (cookie) => cookie.name === `agentdesk-web-${instance.port}`,
@@ -86,7 +86,7 @@ try {
   assert.ok(session?.httpOnly);
   assert.equal(session.sameSite, "Strict");
   await page.reload();
-  await page.getByRole("link", { name: "编码现场", exact: true }).click();
+  await page.getByRole("link", { name: "编码", exact: true }).click();
   await expect(page.getByText("与 CLI 同步", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "CLI 会话", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: new RegExp(taskTitle) })).toBeVisible();
@@ -148,7 +148,7 @@ try {
   assert.equal((await context.request.get(`${origin}/api/health`)).status(), 401);
   const fresh = JSON.parse((await command(["web", "--json"])).stdout) as { url: string };
   await page.goto(fresh.url);
-  await expect(page.getByRole("link", { name: "编码现场", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "编码", exact: true })).toBeVisible();
   console.info(
     JSON.stringify(
       {

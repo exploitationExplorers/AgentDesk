@@ -25,6 +25,8 @@ import { DeployService } from "./services/deploy";
 import { DiskService } from "./services/disk";
 import { FeedService } from "./services/feed";
 import { ReachService } from "./services/reach";
+import { LearningService } from "./services/learning";
+import { LearningLibraryService } from "./services/learning-library";
 import { MemoryService } from "./services/memory";
 import { ProjectService } from "./services/projects";
 import { ProjectInstructionService } from "./services/project-instructions";
@@ -50,6 +52,8 @@ export interface Container {
   projectInstructions: ProjectInstructionService;
   feed: FeedService;
   reach: ReachService;
+  learning: LearningService;
+  library: LearningLibraryService;
   memory: MemoryService;
   disk: DiskService;
   deploy: DeployService;
@@ -89,6 +93,8 @@ export async function createContainer(
   const feed = new FeedService(db, settings, providers, hub);
   const reach = new ReachService(db, secrets);
   const memory = new MemoryService(dbHandle.raw, providers);
+  const learning = new LearningService(db, providers);
+  const library = new LearningLibraryService(db, providers);
   const disk = new DiskService(settings, providers, { extraProtected: [config.dataDir] });
   const browserManager = new BrowserSessionManager(
     join(config.dataDir, "browser-profiles"),
@@ -198,6 +204,8 @@ export async function createContainer(
     projectInstructions,
     feed,
     reach,
+    learning,
+    library,
     memory,
     disk,
     deploy,

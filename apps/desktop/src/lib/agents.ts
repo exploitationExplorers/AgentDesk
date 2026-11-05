@@ -26,6 +26,7 @@ export const AGENT_META: Record<
 };
 
 export const TOOL_LABELS: Record<string, string> = {
+  "tasks.ask_user": "询问需求",
   "presentations.create": "制作演示文稿",
   "presentations.start": "准备演示文稿",
   "presentations.append": "撰写演示页面",

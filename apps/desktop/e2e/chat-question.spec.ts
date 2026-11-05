@@ -70,8 +70,7 @@ test("追问卡片直接提交选项且不会出现全局审批浮窗", async ({
   await expect(page).toHaveURL(/c=demo-question/);
   const question = page.getByRole("region", { name: "待回答的问题" });
   await expect(question).toBeVisible();
-  await expect(page.locator(".chat-light")).toBeVisible();
-  await expect(question.getByText("1/2")).toBeVisible();
+  await expect(question.getByText("1 / 2")).toBeVisible();
   await page.reload();
   await expect(question).toBeVisible();
   await expect(page.getByText("批准执行")).toHaveCount(0);
@@ -92,7 +91,7 @@ test("追问卡片直接提交选项且不会出现全局审批浮窗", async ({
   await expect(question).toHaveCount(0);
   pending = true;
   await page.reload();
-  await question.getByRole("button", { name: "跳过" }).click();
+  await question.getByRole("button", { name: "关闭" }).click();
   await expect.poll(() => answer).toBe("跳过");
 });
 
@@ -230,9 +229,15 @@ test("已处理的本机操作不留技术审批卡片", async ({ page }) => {
   await expect(page.getByText("private diagnostic output", { exact: false })).toHaveCount(0);
 });
 
-test("Bot 对话可切换回深色工作区", async ({ page }) => {
+test("主题切换在全局生效", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      "agentdesk-ui",
+      JSON.stringify({ state: { theme: "light", sidebarCollapsed: false }, version: 0 }),
+    );
+  });
   await page.goto("/");
-  await expect(page.locator(".chat-light")).toBeVisible();
-  await page.getByRole("button", { name: "切换主题" }).click();
-  await expect(page.locator(".chat-light")).toHaveCount(0);
+  await expect(page.locator("html.dark")).toHaveCount(0);
+  await page.getByRole("button", { name: "切换主题" }).first().click();
+  await expect(page.locator("html.dark")).toHaveCount(1);
 });

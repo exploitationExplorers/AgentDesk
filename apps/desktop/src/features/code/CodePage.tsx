@@ -16,6 +16,7 @@ import {
   ShieldCheck,
   Square,
   Terminal,
+  Trash2,
   X,
   XCircle,
 } from "lucide-react";
@@ -26,6 +27,7 @@ import { Markdown } from "../../components/Markdown";
 import { TOOL_LABELS } from "../../lib/agents";
 import { approvalDisplay } from "../../lib/approval-display";
 import { isCliWorkbench } from "../../lib/tauri";
+import { toast } from "../../lib/toast";
 import { codeRoute } from "../../router";
 import { codeApi, type CodeSource } from "./api";
 import { outputText, projectActivity, stepHint, type CodeStep } from "./activity";
@@ -48,6 +50,13 @@ const STATUS: Record<Task["status"], string> = {
   closed: "已归档",
 };
 const activeTask = (task: Task) => ["queued", "planning", "running"].includes(task.status);
+/** 可归档：终态 + 待验收（清空侧栏历史）；进行中的执行不清理。 */
+const CLEARABLE: ReadonlySet<Task["status"]> = new Set([
+  "completed",
+  "failed",
+  "cancelled",
+  "awaiting_review",
+]);
 const fileName = (path: string) => path.replace(/\\/g, "/").split("/").at(-1) ?? path;
 const time = (date: string) =>
   new Date(date).toLocaleTimeString("zh-CN", {
@@ -700,9 +709,33 @@ export function CodePage() {
     retry: false,
   });
   const sorted = useMemo(
-    () => [...(tasks.data ?? [])].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
+    () =>
+      [...(tasks.data ?? [])]
+        .filter((task) => task.status !== "closed")
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
     [tasks.data],
   );
+  const clearable = useMemo(() => sorted.filter((task) => CLEARABLE.has(task.status)), [sorted]);
+  const clearTasks = useMutation({
+    mutationFn: async () => {
+      const results = await Promise.allSettled(
+        clearable.map((task) => codeApi(source).close(task.id)),
+      );
+      const closed = results.filter((r) => r.status === "fulfilled").length;
+      const failed = results.length - closed;
+      return { closed, failed, skipped: sorted.length - clearable.length };
+    },
+    onSuccess: async ({ closed, failed, skipped }) => {
+      const clearedSelected = Boolean(search.task && clearable.some((t) => t.id === search.task));
+      await client.invalidateQueries({ queryKey: ["code", source] });
+      if (clearedSelected) void navigate({ to: "/code", search: { source } });
+      const parts = [`已归档 ${closed} 项`];
+      if (skipped) parts.push(`${skipped} 项仍在进行中，未清理`);
+      if (failed) parts.push(`${failed} 项归档失败`);
+      toast(parts.join("；"), { tone: failed ? "warning" : "success" });
+    },
+    onError: (error: Error) => toast(error.message || "清空失败", { tone: "danger" }),
+  });
   const selected =
     sorted.find((t) =>
       search.task ? t.id === search.task : search.c ? t.conversationId === search.c : false,
@@ -713,10 +746,10 @@ export function CodePage() {
   };
   return (
     <div className="flex h-full flex-col bg-bg">
-      <header className="flex shrink-0 flex-wrap items-center gap-4 border-b px-6 py-5">
+      <header className="flex shrink-0 flex-wrap items-center gap-4 border-b px-6 py-5 pr-16">
         <AppMark alt="AgentDesk" className="h-10 w-10 shrink-0" />
         <div>
-          <h1 className="text-lg font-semibold tracking-tight">编码现场</h1>
+          <h1 className="text-lg font-semibold tracking-tight">编码</h1>
           <p className="mt-0.5 text-xs text-muted">从读文件到验证，每一步都在这里。</p>
         </div>
         <div className="ml-auto flex items-center gap-3">
@@ -760,14 +793,38 @@ export function CodePage() {
             <span className="text-[11px] font-medium text-muted">
               任务与会话 <span className="ml-1 text-subtle">{sorted.length}</span>
             </span>
-            <button
-              type="button"
-              onClick={() => void tasks.refetch()}
-              aria-label="刷新任务"
-              className="rounded p-1 text-subtle hover:bg-surface-2"
-            >
-              <RefreshCw className={cn("h-3 w-3", tasks.isFetching && "animate-spin")} />
-            </button>
+            <div className="flex items-center gap-0.5">
+              <button
+                type="button"
+                onClick={() => {
+                  if (!clearable.length) {
+                    toast("没有可归档的任务（待验收 / 已完成 / 失败 / 已停止）", { tone: "info" });
+                    return;
+                  }
+                  if (
+                    !window.confirm(
+                      `将归档 ${clearable.length} 项任务（含待验收 / 已完成 / 失败 / 已停止）。进行中的任务会保留。确定清空？`,
+                    )
+                  )
+                    return;
+                  clearTasks.mutate();
+                }}
+                disabled={clearTasks.isPending || !sorted.length}
+                aria-label="清空终态任务"
+                title="清空终态任务"
+                className="rounded p-1 text-subtle hover:bg-surface-2 hover:text-fg disabled:opacity-40"
+              >
+                <Trash2 className={cn("h-3 w-3", clearTasks.isPending && "animate-pulse")} />
+              </button>
+              <button
+                type="button"
+                onClick={() => void tasks.refetch()}
+                aria-label="刷新任务"
+                className="rounded p-1 text-subtle hover:bg-surface-2"
+              >
+                <RefreshCw className={cn("h-3 w-3", tasks.isFetching && "animate-spin")} />
+              </button>
+            </div>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto px-2">
             {sorted.map((task) => (

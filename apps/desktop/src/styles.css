@@ -1,34 +1,24 @@
 @import "@agentdesk/ui/styles.css";
 @import "@xyflow/react/dist/style.css";
 
-.chat-light {
-  --ad-bg: #ffffff;
-  --ad-surface: #ffffff;
-  --ad-surface-2: #f3f3f3;
-  --ad-elevated: #ffffff;
-  --ad-border: #e8e8e8;
-  --ad-border-strong: #d8d8d8;
-  --ad-fg: #202124;
-  --ad-muted: #64676b;
-  --ad-subtle: #94989d;
-  --ad-accent: #202124;
-  --ad-accent-fg: #ffffff;
-  --ad-brand: #188977;
-  --color-bg: var(--ad-bg);
-  --color-surface: var(--ad-surface);
-  --color-surface-2: var(--ad-surface-2);
-  --color-elevated: var(--ad-elevated);
-  --color-border: var(--ad-border);
-  --color-border-strong: var(--ad-border-strong);
-  --color-fg: var(--ad-fg);
-  --color-muted: var(--ad-muted);
-  --color-subtle: var(--ad-subtle);
-  --color-accent: var(--ad-accent);
-  --color-accent-fg: var(--ad-accent-fg);
-  --color-brand: var(--ad-brand);
-  background: var(--ad-bg);
-  color: var(--ad-fg);
-  color-scheme: light;
+/* 主题圆形扩散：由 toggleThemeWithTransition 驱动 clip-path */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+::view-transition-old(root) {
+  z-index: 1;
+}
+::view-transition-new(root) {
+  z-index: 2;
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
 }
 
 .react-flow {
@@ -43,4 +33,36 @@
   --xy-minimap-background-color: var(--ad-surface);
   --xy-handle-background-color: var(--ad-brand);
   --xy-handle-border-color: var(--ad-bg);
+}
+
+/* 编码现场流程图：卡片入场 + 沿路径流动的数据包（对齐成长页 RouteFlow） */
+.code-flow-card {
+  animation: code-flow-card-in 0.28s ease-out;
+}
+.code-flow-packet {
+  fill: var(--ad-brand);
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--ad-brand) 55%, transparent));
+  pointer-events: none;
+}
+.code-flow-packet.is-live {
+  fill: var(--ad-brand);
+}
+.code-flow-wire-live {
+  animation: wire-flow 0.7s linear infinite;
+}
+@keyframes code-flow-card-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92) translateX(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateX(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .code-flow-card,
+  .code-flow-wire-live {
+    animation: none;
+  }
 }

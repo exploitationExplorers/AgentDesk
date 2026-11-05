@@ -7,13 +7,17 @@ import { api } from "../../lib/api";
 import { saveAvatar } from "../../lib/avatar";
 import { toast } from "../../lib/toast";
 import { checkForUpdates, isTauri } from "../../lib/tauri";
-import { useUi } from "../../stores/ui";
+import { applyTheme, useUi, type Theme } from "../../stores/ui";
 
 export function GeneralTab() {
   const queryClient = useQueryClient();
   const { data } = useQuery({ queryKey: ["settings"], queryFn: api.settings });
   const health = useQuery({ queryKey: ["health"], queryFn: api.health });
   const { theme, setTheme } = useUi();
+  const changeTheme = (next: Theme) => {
+    setTheme(next);
+    applyTheme(next);
+  };
   const [form, setForm] = useState<AppSettings | null>(null);
   /** 单独编辑，避免 onChange 时 filter 空行导致无法按回车换行 */
   const [scanRootsText, setScanRootsText] = useState("");
@@ -174,7 +178,7 @@ export function GeneralTab() {
           <Field label="主题">
             <Segmented
               value={theme}
-              onChange={setTheme}
+              onChange={changeTheme}
               options={[
                 { value: "dark", label: "深色" },
                 { value: "light", label: "浅色" },

@@ -23,6 +23,7 @@ export const codeApi = (source: CodeSource) => {
         workspace,
       }),
     cancel: (id: string) => http.post(`${prefix}/tasks/${encodeURIComponent(id)}/cancel`),
+    close: (id: string) => http.post<Task>(`${prefix}/tasks/${encodeURIComponent(id)}/close`),
     review: (id: string) =>
       http.post(`${prefix}/tasks/${encodeURIComponent(id)}/review`, { approved: true }),
     followup: (id: string, message: string, trigger: "followup" | "resume" | "continue") =>

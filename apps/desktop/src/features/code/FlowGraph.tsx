@@ -4,8 +4,6 @@ import {
   Handle,
   Position,
   ReactFlow,
-  type Edge,
-  type Node,
   type NodeProps,
 } from "@xyflow/react";
 import {
@@ -17,100 +15,97 @@ import {
   type ErrorInfo,
   type ReactNode,
 } from "react";
-import type { RunNode, Step } from "@agentdesk/shared";
+import type { RunNode } from "@agentdesk/shared";
 import { Button, cn } from "@agentdesk/ui";
+import {
+  Bot,
+  CheckCircle2,
+  ClipboardCheck,
+  Loader2,
+  Route,
+  ShieldAlert,
+  Wrench,
+  XCircle,
+  type LucideIcon,
+} from "lucide-react";
 import { AGENT_META, TOOL_LABELS } from "../../lib/agents";
+import { FluidEdge } from "./FluidEdge";
+import { buildFlowGraph, type FlowCardData, type FlowCardNode } from "./flow-layout";
 
-const COLUMN_WIDTH = 260;
-const ROW_HEIGHT = 110;
-
-type DisplayStatus = RunNode["runStatus"] | "awaiting-approval";
-
-const STATUS_RING: Record<DisplayStatus, string> = {
-  queued: "",
-  running: "ring-2 ring-info shadow-[0_0_24px_-4px_var(--ad-info)]",
-  succeeded: "ring-2 ring-success/70",
-  failed: "ring-2 ring-danger",
-  cancelled: "opacity-60",
-  "awaiting-approval": "ring-2 ring-warning shadow-[0_0_24px_-4px_var(--ad-warning)]",
+const KIND_ICON: Record<FlowCardData["kind"], LucideIcon> = {
+  run: Bot,
+  tool: Wrench,
+  route: Route,
+  approval: ShieldAlert,
+  note: CheckCircle2,
+  delegate: ClipboardCheck,
 };
 
-function displayStatus(run: RunNode): DisplayStatus {
-  if (!run.done && run.steps.some((step) => step.kind === "approval" && !step.resolved))
-    return "awaiting-approval";
-  return run.runStatus;
-}
+const STATUS_RING: Record<FlowCardData["status"], string> = {
+  queued: "",
+  running: "ring-2 ring-info shadow-[0_0_24px_-4px_var(--ad-info)]",
+  done: "ring-2 ring-success/50",
+  error: "ring-2 ring-danger",
+  waiting: "ring-2 ring-warning shadow-[0_0_24px_-4px_var(--ad-warning)]",
+  rejected: "ring-2 ring-danger/70",
+};
 
-function stepArgHint(args: unknown): string {
-  const record = args && typeof args === "object" ? (args as Record<string, unknown>) : {};
-  const value = record.path ?? record.command ?? record.query ?? record.task ?? record.project;
-  return typeof value === "string" ? value : "";
-}
+const FlowCardView = memo(function FlowCardView({ data, selected }: NodeProps<FlowCardNode>) {
+  const RunIcon =
+    data.kind === "run"
+      ? (AGENT_META[data.agent as keyof typeof AGENT_META]?.icon ?? Bot)
+      : KIND_ICON[data.kind];
+  const StatusIcon =
+    data.status === "running"
+      ? Loader2
+      : data.status === "error" || data.status === "rejected"
+        ? XCircle
+        : data.status === "waiting"
+          ? ShieldAlert
+          : null;
 
-/** 没有真实思维链时，用最近一步结构化信息拼出"正在做什么"的一句话摘要。 */
-function actionSummary(run: RunNode): string {
-  const last: Step | undefined = run.steps.at(-1);
-  if (!last) return run.done ? "" : "正在理解任务、读取项目上下文…";
-  if (last.kind === "tool") {
-    const label = TOOL_LABELS[last.name] ?? last.name;
-    const hint = stepArgHint(last.args);
-    return hint ? `${label} · ${hint}` : label;
-  }
-  if (last.kind === "approval")
-    return last.resolved
-      ? last.approved
-        ? "已批准，继续执行"
-        : "已拒绝"
-      : `等待审批：${last.title}`;
-  if (last.kind === "route") return `委派理由：${last.reason}`;
-  if (last.kind === "delegate")
-    return `委派给 ${AGENT_META[last.agent]?.label ?? last.agent} Agent`;
-  if (last.kind === "note") return last.text;
-  return "";
-}
-
-export interface FlowRunData extends Record<string, unknown> {
-  run: RunNode;
-}
-type FlowRunNode = Node<FlowRunData, "run">;
-
-const FlowRunNodeView = memo(function FlowRunNodeView({ data, selected }: NodeProps<FlowRunNode>) {
-  const { run } = data;
-  const meta = AGENT_META[run.agent];
-  const Icon = meta?.icon;
-  const status = displayStatus(run);
-  const text = actionSummary(run);
   return (
     <div
       className={cn(
-        "w-[220px] rounded-2xl border bg-surface shadow-lg transition-shadow",
+        "code-flow-card w-[220px] rounded-2xl border bg-surface shadow-lg transition-shadow",
         selected ? "border-fg/40" : "border-border",
-        STATUS_RING[status],
+        STATUS_RING[data.status],
       )}
     >
-      {run.parentRunId ? (
-        <Handle
-          type="target"
-          position={Position.Left}
-          className="!h-2.5 !w-2.5 !border-2 !border-surface !bg-subtle"
-        />
-      ) : null}
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="!h-2.5 !w-2.5 !border-2 !border-surface !bg-subtle"
+      />
       <div className="flex items-center gap-2 px-3 pt-2.5 pb-2">
         <span className="grid h-6 w-6 place-items-center rounded-lg bg-brand/15 text-brand">
-          {Icon ? <Icon className="h-3.5 w-3.5" /> : null}
+          <RunIcon className="h-3.5 w-3.5" />
         </span>
-        <div className="min-w-0">
-          <p className="truncate text-[12.5px] font-semibold">{meta?.label ?? run.agent}</p>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[12.5px] font-semibold">{data.title}</p>
           <p className="text-[10.5px] text-subtle">
-            {run.parentRunId ? "委派任务" : "总控"} · {run.trigger}
+            {data.subtitle}
+            {data.kind === "run" && data.detail ? ` · ${data.detail}` : null}
           </p>
         </div>
+        {StatusIcon ? (
+          <StatusIcon
+            className={cn(
+              "h-3.5 w-3.5 shrink-0",
+              data.status === "running" && "animate-spin text-info",
+              (data.status === "error" || data.status === "rejected") && "text-danger",
+              data.status === "waiting" && "text-warning",
+            )}
+          />
+        ) : null}
       </div>
-      {text ? (
+      {data.detail && data.kind !== "run" ? (
         <p className="mx-3 mb-2.5 line-clamp-2 rounded-lg bg-surface-2 px-2 py-1 font-mono text-[10.5px] text-muted">
-          {text}
+          {data.detail}
         </p>
-      ) : null}
+      ) : (
+        <div className="h-2" />
+      )}
       <Handle
         type="source"
         position={Position.Right}
@@ -120,9 +115,10 @@ const FlowRunNodeView = memo(function FlowRunNodeView({ data, selected }: NodePr
   );
 });
 
-const nodeTypes = { run: FlowRunNodeView };
+const nodeTypes = { card: FlowCardView };
+const edgeTypes = { fluid: FluidEdge };
 
-/** React19 + xyflow 偶发 panZoom 清理异常时，吞掉错误并允许重挂载画布（照搬工作流编辑器的处理）。 */
+/** React19 + xyflow 偶发 panZoom 清理异常时，吞掉错误并允许重挂载画布。 */
 class FlowErrorBoundary extends Component<
   { children: ReactNode; resetKey: string },
   { error: Error | null; generation: number }
@@ -166,29 +162,6 @@ class FlowErrorBoundary extends Component<
   }
 }
 
-/** 按委派顺序（parentRunId -> 子 Run.steps 里的 DelegateStep）做简单的递归树布局，不需要自动布局库。 */
-function layoutTree(runsById: Record<string, RunNode>, rootOrder: string[]) {
-  const childrenOf = (runId: string): string[] =>
-    (runsById[runId]?.steps ?? [])
-      .filter((step): step is Extract<Step, { kind: "delegate" }> => step.kind === "delegate")
-      .map((step) => step.runId)
-      .filter((childId) => runsById[childId] !== undefined);
-
-  const positions = new Map<string, { x: number; y: number }>();
-  let leafCount = 0;
-  const place = (runId: string, depth: number): number => {
-    const children = childrenOf(runId);
-    const y =
-      children.length === 0
-        ? leafCount++ * ROW_HEIGHT
-        : children.reduce((sum, childId) => sum + place(childId, depth + 1), 0) / children.length;
-    positions.set(runId, { x: depth * COLUMN_WIDTH, y });
-    return y;
-  };
-  for (const rootId of rootOrder) place(rootId, 0);
-  return positions;
-}
-
 export function FlowGraph({
   runsById,
   rootOrder,
@@ -200,26 +173,14 @@ export function FlowGraph({
   selectedRunId: string | null;
   onSelectRun: (runId: string) => void;
 }) {
-  const { nodes, edges } = useMemo(() => {
-    const positions = layoutTree(runsById, rootOrder);
-    const nodeList: FlowRunNode[] = Object.values(runsById).map((run) => ({
-      id: run.runId,
-      type: "run",
-      position: positions.get(run.runId) ?? { x: 0, y: 0 },
-      data: { run },
-      selected: run.runId === selectedRunId,
-    }));
-    const edgeList: Edge[] = Object.values(runsById)
-      .filter((run) => run.parentRunId && runsById[run.parentRunId])
-      .map((run) => ({
-        id: `${run.parentRunId}->${run.runId}`,
-        source: run.parentRunId as string,
-        target: run.runId,
-        animated: run.runStatus === "running",
-        style: { strokeWidth: 1.6 },
-      }));
-    return { nodes: nodeList, edges: edgeList };
-  }, [runsById, rootOrder, selectedRunId]);
+  const { nodes, edges } = useMemo(
+    () =>
+      buildFlowGraph(runsById, rootOrder, selectedRunId, {
+        agentLabel: (agent) => AGENT_META[agent as keyof typeof AGENT_META]?.label ?? agent,
+        toolLabel: (name) => TOOL_LABELS[name] ?? name,
+      }),
+    [runsById, rootOrder, selectedRunId],
+  );
 
   // 延迟两帧挂载画布：父容器（标签页切换）需先完成布局，否则首帧 panZoom 清理会抛异常。
   const [canvasReady, setCanvasReady] = useState(false);
@@ -245,12 +206,16 @@ export function FlowGraph({
   return (
     <div className="absolute inset-0">
       {canvasReady ? (
-        <FlowErrorBoundary resetKey={rootOrder.join(",")}>
+        <FlowErrorBoundary resetKey={`${rootOrder.join(",")}:${nodes.length}`}>
           <ReactFlow
             nodes={nodes}
             edges={edges}
             nodeTypes={nodeTypes}
-            onNodeClick={(_, node) => onSelectRun(node.id)}
+            edgeTypes={edgeTypes}
+            onNodeClick={(_, node) => {
+              const runId = (node.data as FlowCardData).runId;
+              if (runId) onSelectRun(runId);
+            }}
             nodesDraggable={false}
             nodesConnectable={false}
             elementsSelectable

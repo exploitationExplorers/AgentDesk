@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
-import { AlertTriangle, Code2, Menu, PanelRight, Files } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
+import { AlertTriangle, Menu, PanelRight, Files } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { chatMessageContent, type AgentName } from "@agentdesk/shared";
 import { http } from "../../lib/http";
@@ -145,7 +145,13 @@ export function ChatPage() {
       ? (pendingQuestion.payload as Record<string, unknown>)
       : null;
   const questionOptions = Array.isArray(questionPayload?.options)
-    ? questionPayload.options.filter((option): option is string => typeof option === "string")
+    ? questionPayload.options.filter(
+        (option): option is string | { title: string; description?: string } =>
+          typeof option === "string" ||
+          (typeof option === "object" &&
+            option !== null &&
+            typeof (option as { title?: unknown }).title === "string"),
+      )
     : [];
   const questionIndex =
     typeof questionPayload?.index === "number" ? questionPayload.index : undefined;
@@ -289,14 +295,6 @@ export function ChatPage() {
                     <PanelRight className="h-3.5 w-3.5" />
                     <span className="hidden sm:inline">会话状态</span>
                   </button>
-                  <Link
-                    to="/code"
-                    search={{ c: conversationId, source: "workbench" }}
-                    className="hidden items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted hover:bg-surface-2 hover:text-fg sm:flex"
-                  >
-                    <Code2 className="h-3.5 w-3.5" />
-                    在编码现场查看
-                  </Link>
                 </div>
               </div>
             )}

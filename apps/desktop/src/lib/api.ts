@@ -19,8 +19,17 @@ import type {
   DeployRun,
   FeedItem,
   GitAccount,
+  GradeResult,
   HealthInfo,
+  ImportSourceInput,
   LaunchTarget,
+  LearningActivity,
+  LearningPlan,
+  LearningPlanInput,
+  LearningProfile,
+  LearningProfileInput,
+  LearningSource,
+  LearningToday,
   Memory,
   Project,
   Provider,
@@ -37,6 +46,10 @@ import type {
   BrowserSessionState,
   Server,
   ServerInput,
+  KnowledgeUnit,
+  ReviewQueue,
+  ReviewRating,
+  SkillSuggestionResult,
   StarredRepo,
 } from "@agentdesk/shared";
 import type { Workflow, WorkflowInput, WorkflowRun } from "@agentdesk/workflow/dsl";
@@ -274,4 +287,24 @@ export const api = {
   browserReveal: (id: string) =>
     http.post<BrowserSessionState>(`/browser/sessions/${encodeURIComponent(id)}/reveal`),
   browserClose: (id: string) => http.delete(`/browser/sessions/${encodeURIComponent(id)}`),
+
+  learningToday: (date?: string) => http.get<LearningToday>("/learning/today", { date }),
+  learningProfiles: () => http.get<LearningProfile[]>("/learning/profiles"),
+  createLearningProfile: (input: LearningProfileInput) =>
+    http.post<LearningProfile>("/learning/profiles", input),
+  suggestSkills: (profession: string, targetRole?: string | null) =>
+    http.post<SkillSuggestionResult>("/learning/skill-suggestions", { profession, targetRole }),
+  learningPlans: (profileId?: string) => http.get<LearningPlan[]>("/learning/plans", { profileId }),
+  createLearningPlan: (input: LearningPlanInput) =>
+    http.post<LearningPlan>("/learning/plans", input),
+  setActivityStatus: (id: string, status: "pending" | "done" | "skipped") =>
+    http.post<LearningActivity>(`/learning/activities/${id}/status`, { status }),
+
+  learningSources: () => http.get<LearningSource[]>("/learning/sources"),
+  importSource: (input: ImportSourceInput) => http.post<LearningSource>("/learning/sources", input),
+  sourceUnits: (id: string) => http.get<KnowledgeUnit[]>(`/learning/sources/${id}/units`),
+  deleteSource: (id: string) => http.delete(`/learning/sources/${id}`),
+  reviewQueue: (date?: string) => http.get<ReviewQueue>("/learning/review", { date }),
+  gradeReview: (id: string, rating: ReviewRating) =>
+    http.post<GradeResult>(`/learning/review/${id}/grade`, { rating }),
 };

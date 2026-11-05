@@ -29,6 +29,21 @@ afterEach(async () => {
   await rm(home, { recursive: true, force: true });
 });
 
+it("允许 POST /tasks/:id/close 归档终态任务", async () => {
+  const fetcher = vi
+    .fn()
+    .mockResolvedValueOnce(Response.json({ instanceId: state.instanceId, pid: state.pid }))
+    .mockResolvedValueOnce(Response.json({ id: "task-1", status: "closed" }));
+  vi.stubGlobal("fetch", fetcher);
+  const response = await app.request("/api/cli-monitor/tasks/task-1/close", {
+    method: "POST",
+    body: "{}",
+  });
+  expect(response.status).toBe(200);
+  expect(fetcher.mock.calls[1]?.[0]).toBe("http://127.0.0.1:17891/api/tasks/task-1/close?");
+  expect(fetcher.mock.calls[1]?.[1].method).toBe("POST");
+});
+
 it("核对 CLI 实例身份，只连接回环地址并保留令牌在服务端", async () => {
   const fetcher = vi
     .fn()

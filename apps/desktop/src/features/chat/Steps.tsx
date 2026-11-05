@@ -1,11 +1,15 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle2,
+  ChevronLeft,
   ChevronRight,
   CornerDownRight,
+  CornerDownLeft,
   Loader2,
   MessageCircleQuestion,
-  ArrowRight,
+  Plus,
+  Send,
+  X,
   XCircle,
 } from "lucide-react";
 import { useState } from "react";
@@ -52,6 +56,27 @@ function ToolStep({
   );
 }
 
+export type QuestionOption = string | { title: string; description?: string };
+
+function normalizeOption(option: QuestionOption): {
+  title: string;
+  description?: string;
+  value: string;
+} {
+  if (typeof option === "string") {
+    const split = option
+      .split(/\n+| — |：|: /)
+      .map((part) => part.trim())
+      .filter(Boolean);
+    if (split.length >= 2) {
+      return { title: split[0]!, description: split.slice(1).join(" "), value: option };
+    }
+    return { title: option, value: option };
+  }
+  return { title: option.title, description: option.description, value: option.title };
+}
+
+/** 豆包风格：底部大卡片，多步 ‹ n / n ›，编号选项标题+副文案，自定义描述。 */
 export function QuestionPrompt({
   approvalId,
   detail,
@@ -61,11 +86,12 @@ export function QuestionPrompt({
 }: {
   approvalId: string;
   detail: string;
-  options: string[];
+  options: QuestionOption[];
   index?: number;
   total?: number;
 }) {
   const [answer, setAnswer] = useState("");
+  const [step, setStep] = useState(index && index > 0 ? index : 1);
   const queryClient = useQueryClient();
   const answerQuestion = useMutation({
     mutationFn: (text: string) => http.post<Approval>(`/approvals/${approvalId}/answer`, { text }),
@@ -79,76 +105,115 @@ export function QuestionPrompt({
   const send = (text: string) => {
     if (text.trim() && !busy) answerQuestion.mutate(text.trim());
   };
+  const normalized = options.map(normalizeOption);
+  const stepTotal = total && total > 1 ? total : 1;
+  const stepIndex = Math.min(Math.max(step, 1), stepTotal);
+
   return (
     <section
       aria-label="待回答的问题"
-      className="rounded-lg border bg-surface p-4 shadow-[0_10px_30px_-20px_rgba(0,0,0,0.35)]"
+      className="overflow-hidden rounded-2xl border border-[#d6e4ff] bg-surface shadow-[0_12px_40px_-24px_rgba(37,99,235,0.45)]"
     >
-      <div className="mb-3 flex items-start gap-2">
-        <MessageCircleQuestion className="mt-0.5 h-4 w-4 shrink-0 text-brand" />
-        <h2 className="min-w-0 flex-1 whitespace-pre-wrap text-[14px] font-medium leading-6">
+      <div className="flex items-start gap-3 border-b border-border/70 px-4 py-3.5">
+        <h2 className="min-w-0 flex-1 whitespace-pre-wrap text-[14px] font-medium leading-6 text-fg">
           {detail}
         </h2>
-        {total && total > 1 ? (
-          <span className="shrink-0 text-xs text-subtle">
-            {index ?? 1}/{total}
-          </span>
-        ) : null}
+        <div className="flex shrink-0 items-center gap-0.5 pt-0.5 text-subtle">
+          {stepTotal > 1 ? (
+            <>
+              <button
+                type="button"
+                aria-label="上一个"
+                disabled={busy || stepIndex <= 1}
+                onClick={() => setStep((s) => Math.max(1, s - 1))}
+                className="grid h-7 w-7 place-items-center rounded-md hover:bg-surface-2 disabled:opacity-30"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <span className="min-w-[2.75rem] text-center text-xs tabular-nums">
+                {stepIndex} / {stepTotal}
+              </span>
+              <button
+                type="button"
+                aria-label="下一个"
+                disabled={busy || stepIndex >= stepTotal}
+                onClick={() => setStep((s) => Math.min(stepTotal, s + 1))}
+                className="grid h-7 w-7 place-items-center rounded-md hover:bg-surface-2 disabled:opacity-30"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </>
+          ) : null}
+          <button
+            type="button"
+            aria-label="关闭"
+            disabled={busy}
+            onClick={() => skip.mutate()}
+            className="grid h-7 w-7 place-items-center rounded-md hover:bg-surface-2 disabled:opacity-50"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
       </div>
-      {options.length > 0 ? (
-        <div className="divide-y" role="group" aria-label="回答选项">
-          {options.map((option, index) => (
+
+      {normalized.length > 0 ? (
+        <div className="px-2 py-1" role="group" aria-label="回答选项">
+          {normalized.map((option, optionIndex) => (
             <button
-              key={`${index}-${option}`}
+              key={`${optionIndex}-${option.value}`}
               type="button"
               disabled={busy}
-              onClick={() => send(option)}
-              className="group flex min-h-10 w-full items-center gap-3 rounded-md px-2 py-1.5 text-left text-[13px] hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-brand disabled:opacity-50"
+              onClick={() => send(option.value)}
+              className="group flex w-full items-start gap-3 rounded-xl px-2 py-2.5 text-left hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-brand disabled:opacity-50"
             >
-              <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-surface-2 text-xs text-muted">
-                {index + 1}
+              <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-surface-2 text-[12px] text-muted">
+                {optionIndex + 1}
               </span>
-              <span className="min-w-0 flex-1">{option}</span>
-              <ArrowRight className="h-4 w-4 shrink-0 text-subtle opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100" />
+              <span className="min-w-0 flex-1">
+                <span className="block text-[13.5px] font-medium text-fg">{option.title}</span>
+                {option.description ? (
+                  <span className="mt-0.5 block text-[12.5px] leading-5 text-muted">
+                    {option.description}
+                  </span>
+                ) : null}
+              </span>
+              <CornerDownLeft className="mt-1 h-4 w-4 shrink-0 text-subtle opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100" />
             </button>
           ))}
         </div>
       ) : null}
-      <div className="mt-2 flex items-center gap-2 border-t pt-3">
+
+      <div className="flex items-end gap-2 border-t border-border/70 px-3 py-2.5">
+        <span className="mb-1.5 grid h-7 w-7 shrink-0 place-items-center text-subtle" aria-hidden>
+          <Plus className="h-4 w-4" />
+        </span>
         <input
-          aria-label="其他补充"
+          aria-label="自定义描述"
           value={answer}
           disabled={busy}
           onChange={(event) => setAnswer(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.nativeEvent.isComposing) send(answer);
           }}
-          placeholder="其他补充…"
-          className="min-w-0 flex-1 bg-transparent px-2 py-1.5 text-sm outline-none placeholder:text-subtle"
+          placeholder="自定义描述…"
+          className="min-h-9 min-w-0 flex-1 bg-transparent py-1.5 text-sm outline-none placeholder:text-subtle"
         />
         {answer.trim() ? (
           <Button
-            size="sm"
+            size="icon"
             variant="primary"
+            aria-label="发送"
             loading={answerQuestion.isPending}
             disabled={busy}
             onClick={() => send(answer)}
+            className="mb-0.5"
           >
-            发送
+            <Send className="h-4 w-4" />
           </Button>
         ) : null}
-        <Button
-          size="sm"
-          variant="ghost"
-          disabled={busy}
-          loading={skip.isPending}
-          onClick={() => skip.mutate()}
-        >
-          跳过
-        </Button>
       </div>
       {answerQuestion.error || skip.error ? (
-        <p role="alert" className="mt-2 text-xs text-danger">
+        <p role="alert" className="px-4 pb-3 text-xs text-danger">
           {(answerQuestion.error ?? skip.error)?.message}
         </p>
       ) : null}

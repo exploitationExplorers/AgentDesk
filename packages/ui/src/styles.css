@@ -32,6 +32,43 @@
 
   --animate-fade-in: fade-in 0.25s ease-out;
   --animate-pulse-soft: pulse-soft 1.6s ease-in-out infinite;
+  --animate-wire-flow: wire-flow 0.7s linear infinite;
+  --animate-node-tick: node-tick 0.4s ease-out;
+  --animate-row-shake: row-shake 0.45s;
+  --animate-dot-live: dot-live 1.8s infinite;
+
+  @keyframes wire-flow {
+    to {
+      stroke-dashoffset: -8;
+    }
+  }
+  @keyframes node-tick {
+    40% {
+      transform: scale(1.04);
+    }
+  }
+  @keyframes row-shake {
+    20% {
+      transform: translateX(-5px);
+    }
+    40% {
+      transform: translateX(4px);
+    }
+    60% {
+      transform: translateX(-2px);
+    }
+    80% {
+      transform: translateX(1px);
+    }
+  }
+  @keyframes dot-live {
+    70% {
+      box-shadow: 0 0 0 7px transparent;
+    }
+    100% {
+      box-shadow: 0 0 0 0 transparent;
+    }
+  }
 
   @keyframes fade-in {
     from {
@@ -161,13 +198,63 @@
     @apply bg-transparent p-0;
   }
   .ad-prose table {
-    @apply my-3 w-full border-collapse text-[13px];
+    @apply my-3 w-full overflow-hidden rounded-xl border border-collapse text-[13px];
+  }
+  .ad-prose thead {
+    @apply bg-surface-2/60;
   }
   .ad-prose th,
   .ad-prose td {
-    @apply border px-2 py-1 text-left;
+    @apply border-b border-border px-3 py-2 text-left align-top;
+  }
+  .ad-prose th {
+    @apply font-medium text-muted;
+  }
+  .ad-prose tr:last-child td {
+    @apply border-b-0;
+  }
+  .ad-prose img {
+    @apply my-3 max-h-80 max-w-full rounded-xl border object-cover;
   }
   .ad-prose blockquote {
     @apply my-2 border-l-2 border-border-strong pl-3 text-muted;
+  }
+}
+
+/* RouteFlow：连线与节点的动效。几何由 JS 按真实 DOM 盒子测量后写入 path 的 d。 */
+@layer components {
+  .rf-wire {
+    fill: none;
+    stroke: var(--ad-border);
+    stroke-width: 1.5;
+    transition: opacity 0.3s;
+  }
+  .rf-wire.is-live {
+    stroke: var(--ad-brand);
+    stroke-dasharray: 3 5;
+    animation: var(--animate-wire-flow);
+  }
+  .rf-wire.is-dormant {
+    stroke-dasharray: 2 6;
+    opacity: 0.4;
+  }
+  .rf-packet {
+    fill: var(--ad-brand);
+  }
+  .rf-packet.is-back {
+    fill: var(--ad-surface);
+    stroke: var(--ad-brand);
+    stroke-width: 2;
+  }
+  .rf-dot-live {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--ad-brand) 40%, transparent);
+    animation: var(--animate-dot-live);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .rf-wire.is-live,
+    .rf-dot-live {
+      animation: none;
+    }
   }
 }

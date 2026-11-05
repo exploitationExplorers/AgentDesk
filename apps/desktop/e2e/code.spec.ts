@@ -148,9 +148,15 @@ test("编码现场增量展示读取、文件差异和命令输出，刷新可�
     return route.continue();
   });
   await page.goto("/#/code?task=coding-demo");
-  await expect(page.getByRole("heading", { name: "编码现场" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "编码" })).toBeVisible();
   await expect(page.getByText("代码改动会出现在这里")).toBeVisible();
   await expect(page.getByRole("button", { name: /读取文件.*session.ts/ })).toBeVisible();
+  await page.getByRole("tab", { name: "流程图" }).click();
+  // run 根卡 + fs.read 思考卡（后续 tool 步骤会继续长出卡片）
+  const flowNodes = page.locator(".react-flow__node");
+  await expect(flowNodes).toHaveCount(2, { timeout: 10_000 });
+  await expect(flowNodes.getByText("读取文件", { exact: true })).toBeVisible();
+  await page.getByRole("tab", { name: "执行过程" }).click();
   stage = 1;
   await expect(page.getByTestId("code-diff")).toContainText('sessionStorage.getItem("session")');
   await expect(page.getByText("确认完成", { exact: true })).toBeVisible();
@@ -172,7 +178,7 @@ test("编码现场增量展示读取、文件差异和命令输出，刷新可�
       .filter({ hasText: "session.ts" }),
   ).toHaveCount(1);
   await page.setViewportSize({ width: 980, height: 800 });
-  await expect(page.getByRole("heading", { name: "编码现场" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "编码" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   );

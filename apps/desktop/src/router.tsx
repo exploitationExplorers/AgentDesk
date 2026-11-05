@@ -11,6 +11,10 @@ import { CodePage } from "./features/code/CodePage";
 import { DeployPage } from "./features/deploy/DeployPage";
 import { DiskPage } from "./features/disk/DiskPage";
 import { FeedPage } from "./features/feed/FeedPage";
+import { CareerMapPage } from "./features/learning/CareerMapPage";
+import { LearningPage } from "./features/learning/LearningPage";
+import { LibraryPage } from "./features/learning/LibraryPage";
+import { ReviewPage } from "./features/learning/ReviewPage";
 import { ProjectsPage } from "./features/projects/ProjectsPage";
 import { SettingsPage } from "./features/settings/SettingsPage";
 import { SkillsPage } from "./features/skills/SkillsPage";
@@ -55,6 +59,26 @@ const feedRoute = createRoute({
   path: "/feed",
   component: FeedPage,
 });
+const learningRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/learning",
+  component: LearningPage,
+});
+const learningCareerRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/learning/career",
+  component: CareerMapPage,
+});
+const learningLibraryRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/learning/library",
+  component: LibraryPage,
+});
+const learningReviewRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/learning/review",
+  component: ReviewPage,
+});
 const workflowsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/workflows",
@@ -84,6 +108,10 @@ const routeTree = rootRoute.addChildren([
   deployRoute,
   diskRoute,
   feedRoute,
+  learningRoute,
+  learningCareerRoute,
+  learningLibraryRoute,
+  learningReviewRoute,
   workflowsRoute,
   workflowEditorRoute,
   skillsRoute,

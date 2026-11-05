@@ -2,6 +2,7 @@ import {
   index,
   integer,
   primaryKey,
+  real,
   sqliteTable,
   text,
   uniqueIndex,
@@ -161,6 +162,166 @@ export const artifacts = sqliteTable(
   (t) => [index("artifacts_task_kind_idx").on(t.taskId, t.kind, t.version)],
 );
 
+/** 成长中心：一个职业画像，同一个人可有多个（例如同时提升职业英语和算法）。 */
+export const learningProfiles = sqliteTable("learning_profiles", {
+  id: text("id").primaryKey(),
+  profession: text("profession").notNull(),
+  targetRole: text("target_role"),
+  dailyBudgetMin: integer("daily_budget_min").notNull(),
+  createdAt: text("created_at").notNull(),
+});
+
+/** 学习计划主记录，内容快照在 learning_plan_versions 里，这里只存指针。 */
+export const learningPlans = sqliteTable(
+  "learning_plans",
+  {
+    id: text("id").primaryKey(),
+    profileId: text("profile_id").notNull(),
+    skillName: text("skill_name").notNull(),
+    status: text("status", {
+      enum: ["draft", "active", "paused", "completed", "abandoned"],
+    }).notNull(),
+    currentVersionId: text("current_version_id").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [index("learning_plans_profile_idx").on(t.profileId, t.status)],
+);
+
+/** 计划版本快照，不可变。调整目标时新插一条，而不是覆盖历史。 */
+export const learningPlanVersions = sqliteTable(
+  "learning_plan_versions",
+  {
+    id: text("id").primaryKey(),
+    planId: text("plan_id").notNull(),
+    goal: text("goal").notNull(),
+    milestones: text("milestones", { mode: "json" })
+      .$type<Array<{ label: string; focus: string }>>()
+      .notNull(),
+    durationDays: integer("duration_days").notNull(),
+    changeReason: text("change_reason"),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [index("learning_plan_versions_plan_idx").on(t.planId, t.createdAt)],
+);
+
+/** 某一天要做的一件具体的事。永远指向生成它的那个计划版本。 */
+export const learningActivities = sqliteTable(
+  "learning_activities",
+  {
+    id: text("id").primaryKey(),
+    planId: text("plan_id").notNull(),
+    planVersionId: text("plan_version_id").notNull(),
+    date: text("date").notNull(),
+    orderIndex: integer("order_index").notNull(),
+    title: text("title").notNull(),
+    detail: text("detail").notNull(),
+    type: text("type", { enum: ["reading", "practice", "quiz", "review"] }).notNull(),
+    estMinutes: integer("est_minutes").notNull(),
+    status: text("status", { enum: ["pending", "done", "skipped"] }).notNull(),
+    completedAt: text("completed_at"),
+  },
+  (t) => [index("learning_activities_date_idx").on(t.date, t.planId, t.orderIndex)],
+);
+
+/** 每个自然日的打卡聚合，只有产生过有效学习会话才写入。 */
+export const learningCheckins = sqliteTable("learning_checkins", {
+  date: text("date").primaryKey(),
+  effectiveMinutes: integer("effective_minutes").notNull(),
+  activitiesDone: integer("activities_done").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+/** 导入的一份学习资料（网页链接、粘贴的正文等）。 */
+export const learningSources = sqliteTable("learning_sources", {
+  id: text("id").primaryKey(),
+  kind: text("kind", { enum: ["url", "text"] }).notNull(),
+  /** URL 或「粘贴文本」。 */
+  originRef: text("origin_ref").notNull(),
+  title: text("title").notNull(),
+  currentVersionId: text("current_version_id").notNull(),
+  createdAt: text("created_at").notNull(),
+});
+
+/** 每次抓取/粘贴的不可变快照。同一来源更新时新增版本，不覆盖旧版。 */
+export const sourceVersions = sqliteTable(
+  "source_versions",
+  {
+    id: text("id").primaryKey(),
+    sourceId: text("source_id").notNull(),
+    contentHash: text("content_hash").notNull(),
+    charCount: integer("char_count").notNull(),
+    blockCount: integer("block_count").notNull(),
+    /** 解析质量：ok 正常，partial 可能缺内容。 */
+    parseQuality: text("parse_quality", { enum: ["ok", "partial"] }).notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [index("source_versions_source_idx").on(t.sourceId, t.createdAt)],
+);
+
+/** 资料解析后最小的可引用单元。知识单元和练习都必须能回溯到某个块。 */
+export const contentBlocks = sqliteTable(
+  "content_blocks",
+  {
+    id: text("id").primaryKey(),
+    sourceVersionId: text("source_version_id").notNull(),
+    orderIndex: integer("order_index").notNull(),
+    text: text("text").notNull(),
+  },
+  (t) => [index("content_blocks_version_idx").on(t.sourceVersionId, t.orderIndex)],
+);
+
+/** 从内容块提炼出的一个知识点。blockId 是它的原文出处，不允许为空。 */
+export const knowledgeUnits = sqliteTable(
+  "knowledge_units",
+  {
+    id: text("id").primaryKey(),
+    sourceVersionId: text("source_version_id").notNull(),
+    /** 该知识点所依据的内容块——「点一下看原文」靠这个字段。 */
+    blockId: text("block_id").notNull(),
+    orderIndex: integer("order_index").notNull(),
+    title: text("title").notNull(),
+    summary: text("summary").notNull(),
+    /** 自测问题，用于复习时出题。 */
+    question: text("question").notNull(),
+    answer: text("answer").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [index("knowledge_units_version_idx").on(t.sourceVersionId, t.orderIndex)],
+);
+
+/** 每个知识点的 FSRS 记忆状态。 */
+export const reviewItems = sqliteTable(
+  "review_items",
+  {
+    id: text("id").primaryKey(),
+    knowledgeUnitId: text("knowledge_unit_id").notNull().unique(),
+    /** 稳定性（天）。null 表示还没复习过。 */
+    stability: real("stability"),
+    difficulty: real("difficulty"),
+    /** 下次到期的本地日期 YYYY-MM-DD。 */
+    dueDate: text("due_date").notNull(),
+    lastReviewedAt: text("last_reviewed_at"),
+    reps: integer("reps").notNull(),
+    lapses: integer("lapses").notNull(),
+  },
+  (t) => [index("review_items_due_idx").on(t.dueDate)],
+);
+
+/** 每一次复习的评分记录，将来做个性化权重优化的训练数据，完全留在本地。 */
+export const reviewLogs = sqliteTable(
+  "review_logs",
+  {
+    id: text("id").primaryKey(),
+    reviewItemId: text("review_item_id").notNull(),
+    rating: integer("rating").notNull(),
+    elapsedDays: integer("elapsed_days").notNull(),
+    retrievability: real("retrievability").notNull(),
+    stabilityAfter: real("stability_after").notNull(),
+    reviewedAt: text("reviewed_at").notNull(),
+  },
+  (t) => [index("review_logs_item_idx").on(t.reviewItemId, t.reviewedAt)],
+);
+
 export const BOOTSTRAP_SQL = `
 CREATE TABLE IF NOT EXISTS documents (
   collection TEXT NOT NULL,
@@ -282,4 +443,108 @@ CREATE TABLE IF NOT EXISTS artifacts (
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS artifacts_task_kind_idx ON artifacts(task_id, kind, version);
+CREATE TABLE IF NOT EXISTS learning_profiles (
+  id TEXT PRIMARY KEY,
+  profession TEXT NOT NULL,
+  target_role TEXT,
+  daily_budget_min INTEGER NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS learning_plans (
+  id TEXT PRIMARY KEY,
+  profile_id TEXT NOT NULL,
+  skill_name TEXT NOT NULL,
+  status TEXT NOT NULL,
+  current_version_id TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS learning_plans_profile_idx ON learning_plans(profile_id, status);
+CREATE TABLE IF NOT EXISTS learning_plan_versions (
+  id TEXT PRIMARY KEY,
+  plan_id TEXT NOT NULL,
+  goal TEXT NOT NULL,
+  milestones TEXT NOT NULL,
+  duration_days INTEGER NOT NULL,
+  change_reason TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS learning_plan_versions_plan_idx ON learning_plan_versions(plan_id, created_at);
+CREATE TABLE IF NOT EXISTS learning_activities (
+  id TEXT PRIMARY KEY,
+  plan_id TEXT NOT NULL,
+  plan_version_id TEXT NOT NULL,
+  date TEXT NOT NULL,
+  order_index INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  detail TEXT NOT NULL,
+  type TEXT NOT NULL,
+  est_minutes INTEGER NOT NULL,
+  status TEXT NOT NULL,
+  completed_at TEXT
+);
+CREATE INDEX IF NOT EXISTS learning_activities_date_idx ON learning_activities(date, plan_id, order_index);
+CREATE TABLE IF NOT EXISTS learning_checkins (
+  date TEXT PRIMARY KEY,
+  effective_minutes INTEGER NOT NULL,
+  activities_done INTEGER NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS learning_sources (
+  id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL,
+  origin_ref TEXT NOT NULL,
+  title TEXT NOT NULL,
+  current_version_id TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS source_versions (
+  id TEXT PRIMARY KEY,
+  source_id TEXT NOT NULL,
+  content_hash TEXT NOT NULL,
+  char_count INTEGER NOT NULL,
+  block_count INTEGER NOT NULL,
+  parse_quality TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS source_versions_source_idx ON source_versions(source_id, created_at);
+CREATE TABLE IF NOT EXISTS content_blocks (
+  id TEXT PRIMARY KEY,
+  source_version_id TEXT NOT NULL,
+  order_index INTEGER NOT NULL,
+  text TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS content_blocks_version_idx ON content_blocks(source_version_id, order_index);
+CREATE TABLE IF NOT EXISTS knowledge_units (
+  id TEXT PRIMARY KEY,
+  source_version_id TEXT NOT NULL,
+  block_id TEXT NOT NULL,
+  order_index INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  question TEXT NOT NULL,
+  answer TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS knowledge_units_version_idx ON knowledge_units(source_version_id, order_index);
+CREATE TABLE IF NOT EXISTS review_items (
+  id TEXT PRIMARY KEY,
+  knowledge_unit_id TEXT NOT NULL UNIQUE,
+  stability REAL,
+  difficulty REAL,
+  due_date TEXT NOT NULL,
+  last_reviewed_at TEXT,
+  reps INTEGER NOT NULL DEFAULT 0,
+  lapses INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS review_items_due_idx ON review_items(due_date);
+CREATE TABLE IF NOT EXISTS review_logs (
+  id TEXT PRIMARY KEY,
+  review_item_id TEXT NOT NULL,
+  rating INTEGER NOT NULL,
+  elapsed_days INTEGER NOT NULL,
+  retrievability REAL NOT NULL,
+  stability_after REAL NOT NULL,
+  reviewed_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS review_logs_item_idx ON review_logs(review_item_id, reviewed_at);
 `;

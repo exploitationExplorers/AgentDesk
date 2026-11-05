@@ -1,8 +1,11 @@
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
 const host = process.env.TAURI_DEV_HOST;
+const root = dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig(({ mode }) => ({
   plugins: [react(), tailwindcss()],
@@ -28,6 +31,13 @@ export default defineConfig(({ mode }) => ({
     target: "es2022",
     minify: !process.env.TAURI_ENV_DEBUG ? "esbuild" : false,
     sourcemap: !!process.env.TAURI_ENV_DEBUG,
-    chunkSizeWarningLimit: 1500,
+    chunkSizeWarningLimit: 3500,
+    // WorkBuddy 同款：独立 /slide/pc.html 供 iframe 嵌入 PPT 编辑器。
+    rollupOptions: {
+      input: {
+        main: resolve(root, "index.html"),
+        slide: resolve(root, "slide/pc.html"),
+      },
+    },
   },
 }));

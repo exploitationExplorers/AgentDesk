@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import {
   FolderGit2,
+  GraduationCap,
   Code2,
   HardDrive,
   MessageSquare,
@@ -22,7 +23,6 @@ import {
 import { useEffect, useRef, useState } from "react";
 import {
   AnimatePresence,
-  Kbd,
   StatusDot,
   Tooltip,
   TooltipProvider,
@@ -34,7 +34,7 @@ import { useGlobalEvents } from "../hooks/useGlobalEvents";
 import { api } from "../lib/api";
 import { saveAvatar } from "../lib/avatar";
 import { toast } from "../lib/toast";
-import { applyTheme, useUi } from "../stores/ui";
+import { applyTheme, isDarkTheme, toggleThemeWithTransition, useUi } from "../stores/ui";
 import { AppMark, useAppAvatar } from "./AppMark";
 import { LowDiskDialog } from "../features/disk/LowDiskDialog";
 import { ApprovalToasts } from "./ApprovalToasts";
@@ -43,10 +43,11 @@ import { Toasts } from "./Toasts";
 
 const NAV: Array<{ to: string; label: string; icon: LucideIcon }> = [
   { to: "/", label: "Bot", icon: MessageSquare },
-  { to: "/code", label: "编码现场", icon: Code2 },
+  { to: "/code", label: "编码", icon: Code2 },
   { to: "/projects", label: "项目", icon: FolderGit2 },
   { to: "/deploy", label: "部署", icon: Rocket },
   { to: "/feed", label: "热榜", icon: Newspaper },
+  { to: "/learning", label: "成长", icon: GraduationCap },
   { to: "/workflows", label: "工作流", icon: Workflow },
   { to: "/skills", label: "技能", icon: Sparkles },
   { to: "/disk", label: "磁盘", icon: HardDrive },
@@ -74,19 +75,19 @@ function NavItem({
       to={to}
       aria-label={collapsed ? label : undefined}
       className={cn(
-        "relative flex h-9 items-center gap-3 rounded-xl px-2.5 text-[13px] font-medium transition-colors",
-        active ? "text-fg" : "text-muted hover:bg-surface-2/60 hover:text-fg",
+        "relative flex h-9 items-center gap-3 rounded-lg px-2.5 text-[13px] font-medium transition-colors",
+        active ? "text-fg" : "text-muted hover:bg-surface-2/70 hover:text-fg",
         collapsed && "justify-center px-0",
       )}
     >
       {active ? (
         <motion.span
           layoutId="nav-active-indicator"
-          className="absolute inset-0 -z-10 rounded-xl bg-surface-2"
+          className="absolute inset-0 -z-10 rounded-lg bg-surface-2"
           transition={{ type: "spring", stiffness: 500, damping: 40 }}
         />
       ) : null}
-      <Icon className="h-[17px] w-[17px] shrink-0" />
+      <Icon className="h-4 w-4 shrink-0" strokeWidth={1.75} />
       {collapsed ? null : <span className="truncate">{label}</span>}
       {badge ? (
         <span
@@ -112,15 +113,7 @@ function NavItem({
 
 export function AppShell() {
   useGlobalEvents();
-  const {
-    theme,
-    setTheme,
-    chatLight,
-    toggleChatTheme,
-    sidebarCollapsed: collapsed,
-    toggleSidebar,
-    setPaletteOpen,
-  } = useUi();
+  const { theme, sidebarCollapsed: collapsed, toggleSidebar, setPaletteOpen } = useUi();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const routeSection =
     useRouterState({ select: (s) => s.location.pathname }).split("/")[1] || "home";
@@ -159,13 +152,25 @@ export function AppShell() {
   useEffect(() => setMobileNavOpen(false), [routeSection]);
 
   const navCollapsed = (collapsed || routeSection === "home") && !mobileNavOpen;
-  const lightWorkspace = routeSection === "home" && chatLight;
+  const dark = isDarkTheme(theme);
+
+  const themeToggle = (
+    <Tooltip content={dark ? "切换到浅色" : "切换到深色"}>
+      <button
+        type="button"
+        className="grid h-9 w-9 place-items-center rounded-xl border border-border/80 bg-surface/90 text-muted shadow-sm backdrop-blur-md hover:bg-surface-2 hover:text-fg"
+        onClick={(event) => toggleThemeWithTransition(event.nativeEvent)}
+        aria-label="切换主题"
+      >
+        {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+      </button>
+    </Tooltip>
+  );
 
   return (
     <TooltipProvider>
-      <div
-        className={cn("flex h-full min-w-0 flex-col lg:flex-row", lightWorkspace && "chat-light")}
-      >
+      <div className="relative flex h-full min-w-0 flex-col lg:flex-row">
+        <div className="absolute right-3 top-3 z-40 hidden lg:block">{themeToggle}</div>
         <div className="flex h-12 shrink-0 items-center gap-2 border-b bg-surface px-3 lg:hidden">
           <button
             type="button"
@@ -178,6 +183,7 @@ export function AppShell() {
           </button>
           <AppMark src={avatar} className="h-6 w-6" />
           <span className="text-sm font-semibold">AgentDesk</span>
+          <div className="ml-auto">{themeToggle}</div>
         </div>
         {mobileNavOpen ? (
           <button
@@ -196,7 +202,7 @@ export function AppShell() {
         >
           <div
             className={cn(
-              "mb-4 flex items-center gap-2.5 px-1.5",
+              "mb-3 flex items-center gap-2 px-1.5",
               navCollapsed && "justify-center px-0",
             )}
           >
@@ -222,29 +228,40 @@ export function AppShell() {
               }}
             />
             {navCollapsed ? null : (
-              <div className="leading-tight">
-                <p className="text-[14px] font-semibold tracking-tight">AgentDesk</p>
-                <p className="text-[11px] text-subtle">个人 Agent 工作台</p>
+              <div className="min-w-0 flex-1 leading-tight">
+                <p className="truncate text-[14px] font-semibold tracking-tight">AgentDesk</p>
+                <p className="truncate text-[11px] text-subtle">个人 Agent 工作台</p>
               </div>
             )}
+            <div className={cn("flex shrink-0 items-center", navCollapsed && "flex-col gap-1")}>
+              {routeSection !== "home" ? (
+                <Tooltip content={navCollapsed ? "展开侧栏" : "收起侧栏"}>
+                  <button
+                    type="button"
+                    className="grid h-8 w-8 place-items-center rounded-lg text-muted hover:bg-surface-2 hover:text-fg"
+                    onClick={toggleSidebar}
+                    aria-label={navCollapsed ? "展开侧栏" : "收起侧栏"}
+                  >
+                    {navCollapsed ? (
+                      <PanelLeftOpen className="h-4 w-4" />
+                    ) : (
+                      <PanelLeftClose className="h-4 w-4" />
+                    )}
+                  </button>
+                </Tooltip>
+              ) : null}
+              <Tooltip content="搜索或跳转">
+                <button
+                  type="button"
+                  onClick={() => setPaletteOpen(true)}
+                  aria-label="搜索或跳转"
+                  className="grid h-8 w-8 place-items-center rounded-lg text-muted hover:bg-surface-2 hover:text-fg"
+                >
+                  <Search className="h-4 w-4" />
+                </button>
+              </Tooltip>
+            </div>
           </div>
-
-          <button
-            type="button"
-            onClick={() => setPaletteOpen(true)}
-            className={cn(
-              "mb-3 flex h-9 items-center gap-2 rounded-xl border bg-surface-2/60 px-2.5 text-[12.5px] text-subtle hover:text-muted",
-              navCollapsed && "justify-center px-0",
-            )}
-          >
-            <Search className="h-4 w-4" />
-            {navCollapsed ? null : (
-              <>
-                <span className="flex-1 text-left">搜索或跳转</span>
-                <Kbd>Ctrl K</Kbd>
-              </>
-            )}
-          </button>
 
           <nav className="flex flex-col gap-0.5" onClick={() => setMobileNavOpen(false)}>
             {NAV.map((n) => (
@@ -285,64 +302,42 @@ export function AppShell() {
               </div>
             ) : null}
             <NavItem to="/settings" label="设置" icon={Settings} collapsed={navCollapsed} />
-            <div className={cn("mt-1 flex items-center gap-1 px-1", navCollapsed && "flex-col")}>
-              <Tooltip
-                content={
-                  health.data
-                    ? `sidecar 运行中 · ${health.data.providers} 个模型 Provider`
-                    : "正在连接 sidecar…"
-                }
-              >
-                <span className="flex h-8 flex-1 items-center gap-2 px-1.5 text-[11.5px] text-subtle">
-                  <StatusDot
-                    status={health.data ? "success" : health.isError ? "error" : "running"}
-                  />
-                  {navCollapsed ? null : health.data ? `v${health.data.version}` : "连接中"}
-                </span>
-              </Tooltip>
-              <button
-                type="button"
-                className="grid h-8 w-8 place-items-center rounded-lg text-muted hover:bg-surface-2 hover:text-fg"
-                onClick={() =>
-                  lightWorkspace || routeSection === "home"
-                    ? toggleChatTheme()
-                    : setTheme(theme === "dark" ? "light" : "dark")
-                }
-                aria-label="切换主题"
-              >
-                {lightWorkspace || (routeSection !== "home" && theme === "light") ? (
-                  <Moon className="h-4 w-4" />
-                ) : (
-                  <Sun className="h-4 w-4" />
+            <Tooltip
+              content={
+                health.data
+                  ? `sidecar 运行中 · ${health.data.providers} 个模型 Provider`
+                  : "正在连接 sidecar…"
+              }
+            >
+              <span
+                className={cn(
+                  "mt-1 flex h-8 items-center gap-2 px-2.5 text-[11.5px] text-subtle",
+                  navCollapsed && "justify-center px-0",
                 )}
-              </button>
-              {routeSection !== "home" ? (
-                <button
-                  type="button"
-                  className="grid h-8 w-8 place-items-center rounded-lg text-muted hover:bg-surface-2 hover:text-fg"
-                  onClick={toggleSidebar}
-                  aria-label="折叠侧栏"
-                >
-                  {navCollapsed ? (
-                    <PanelLeftOpen className="h-4 w-4" />
-                  ) : (
-                    <PanelLeftClose className="h-4 w-4" />
-                  )}
-                </button>
-              ) : null}
-            </div>
+              >
+                <StatusDot
+                  status={health.data ? "success" : health.isError ? "error" : "running"}
+                />
+                {navCollapsed ? null : health.data ? `v${health.data.version}` : "连接中"}
+              </span>
+            </Tooltip>
           </div>
         </aside>
 
-        <main className="min-h-0 min-w-0 flex-1 overflow-hidden">
-          <AnimatePresence mode="wait" initial={false}>
+        <main className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
+          {/*
+            路由层必须 absolute 叠放：若进出页都参与文档流，退出页在 opacity:0 时仍占满
+            h-full，新页被挤到 overflow:hidden 视口外，看起来就像白屏，刷新才好。
+            同时不用 mode="wait"，避免复杂页（Bot）exit 不收尾时主区一直空等。
+          */}
+          <AnimatePresence initial={false}>
             <motion.div
               key={routeSection}
               variants={crossfadeVariants}
               initial="hidden"
               animate="visible"
               exit="exit"
-              className="h-full"
+              className="absolute inset-0 h-full w-full"
             >
               <Outlet />
             </motion.div>

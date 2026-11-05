@@ -26,7 +26,7 @@ export function cliMonitorRoutes(
         path,
       );
     const writable =
-      /^\/(tasks|projects)$|^\/tasks\/[^/]+\/(cancel|runs|review)$|^\/approvals\/[^/]+(?:\/answer)?$/.test(
+      /^\/(tasks|projects)$|^\/tasks\/[^/]+\/(cancel|close|runs|review)$|^\/approvals\/[^/]+(?:\/answer)?$/.test(
         path,
       );
     if (!(c.req.method === "GET" && readable) && !(c.req.method === "POST" && writable))

@@ -34,7 +34,7 @@ const TASK_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
   // running 执行路径（见 executeRun），只是它的成功结果会被 RunOutcome.nextTaskStatus
   // 覆盖为 awaiting_plan_approval，而不是默认的 awaiting_review。
   running: ["awaiting_review", "awaiting_plan_approval", "failed", "cancelled"],
-  awaiting_review: ["completed", "running", "failed"],
+  awaiting_review: ["completed", "running", "failed", "closed"],
   completed: ["closed"],
   failed: ["queued", "closed"],
   cancelled: ["queued", "closed"],

@@ -8,6 +8,7 @@ import {
   Pin,
   Search,
   Settings2,
+  Trash2,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { Conversation, ConversationGroup, ConversationPatch } from "@agentdesk/shared";
@@ -24,6 +25,7 @@ import {
 } from "@agentdesk/ui";
 import { api } from "../../lib/api";
 import { timeAgo } from "../../lib/format";
+import { toast } from "../../lib/toast";
 import { conversationsApi } from "./conversations-api";
 
 export function ConversationList({ activeId }: { activeId?: string }) {
@@ -35,6 +37,7 @@ export function ConversationList({ activeId }: { activeId?: string }) {
   const [groupId, setGroupId] = useState("");
   const [editing, setEditing] = useState<Conversation | null>(null);
   const [groupEditor, setGroupEditor] = useState<ConversationGroup | "new" | null>(null);
+  const [confirmClear, setConfirmClear] = useState(false);
   const groups = useQuery({ queryKey: ["conversation-groups"], queryFn: conversationsApi.groups });
   const projects = useQuery({ queryKey: ["projects"], queryFn: api.projects });
   const approvals = useQuery({
@@ -81,6 +84,35 @@ export function ConversationList({ activeId }: { activeId?: string }) {
       await refresh();
     },
   });
+  const clearAll = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const failures: string[] = [];
+      for (const id of ids) {
+        try {
+          await conversationsApi.remove(id);
+        } catch {
+          failures.push(id);
+        }
+      }
+      return { cleared: ids.length - failures.length, failed: failures.length };
+    },
+    onSuccess: async (result, ids) => {
+      setConfirmClear(false);
+      if (activeId && ids.includes(activeId)) void navigate({ to: "/", search: {} });
+      await refresh();
+      toast(
+        result.failed
+          ? `已清空 ${result.cleared} 个会话，${result.failed} 个失败`
+          : `已清空 ${result.cleared} 个会话`,
+        { tone: result.failed ? "warning" : "success" },
+      );
+    },
+    onError: (error: Error) => toast(error.message || "清空失败", { tone: "danger" }),
+  });
+  const clearableIds = useMemo(
+    () => (conversations.data ?? []).map((item) => item.id),
+    [conversations.data],
+  );
   const sections = useMemo(() => {
     const list = conversations.data ?? [];
     const result = [{ id: "pinned", name: "置顶", items: list.filter((item) => item.pinned) }];
@@ -109,27 +141,27 @@ export function ConversationList({ activeId }: { activeId?: string }) {
 
   return (
     <aside
-      className="flex w-[248px] shrink-0 flex-col border-r bg-surface/30"
+      className="flex w-[260px] shrink-0 flex-col border-r bg-surface/40"
       aria-label="会话列表"
     >
-      <div className="grid gap-3 border-b p-3">
+      <div className="grid gap-2.5 border-b p-3">
         <Button
           variant="secondary"
-          className="justify-start"
+          className="h-9 justify-start rounded-full"
           onClick={() => void navigate({ to: "/", search: {} })}
         >
-          <MessageSquarePlus className="h-4 w-4" />
+          <MessageSquarePlus className="h-4 w-4" strokeWidth={1.75} />
           新对话
         </Button>
         <div className="relative">
-          <Search className="pointer-events-none absolute left-2.5 top-2.5 h-3.5 w-3.5 text-subtle" />
+          <Search className="pointer-events-none absolute left-3 top-2.5 h-3.5 w-3.5 text-subtle" />
           <Input
             aria-label="搜索会话"
             placeholder="搜索标题或正文"
             value={search}
             maxLength={200}
             onChange={(event) => setSearch(event.target.value)}
-            className="pl-8 text-xs"
+            className="h-9 rounded-full pl-9 text-xs"
           />
         </div>
         <div className="flex items-center gap-1">
@@ -170,18 +202,34 @@ export function ConversationList({ activeId }: { activeId?: string }) {
             </button>
           ) : null}
         </div>
-        <button
-          type="button"
-          aria-pressed={archived}
-          onClick={() => setArchived((value) => !value)}
-          className={cn(
-            "flex items-center gap-2 rounded-lg px-2 py-1 text-xs",
-            archived ? "bg-surface-2 text-fg" : "text-muted hover:text-fg",
-          )}
-        >
-          <Archive className="h-3.5 w-3.5" />
-          {archived ? "正在查看已归档 · 返回会话" : "查看已归档"}
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            aria-pressed={archived}
+            onClick={() => setArchived((value) => !value)}
+            className={cn(
+              "flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1 text-xs",
+              archived ? "bg-surface-2 text-fg" : "text-muted hover:text-fg",
+            )}
+          >
+            <Archive className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">
+              {archived ? "正在查看已归档 · 返回会话" : "查看已归档"}
+            </span>
+          </button>
+          {!archived ? (
+            <button
+              type="button"
+              aria-label="一键清空会话"
+              title="一键清空"
+              disabled={!clearableIds.length || clearAll.isPending}
+              onClick={() => setConfirmClear(true)}
+              className="rounded-lg p-2 text-muted hover:bg-surface-2 hover:text-danger disabled:opacity-40"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          ) : null}
+        </div>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
         {error ? (
@@ -199,7 +247,9 @@ export function ConversationList({ activeId }: { activeId?: string }) {
         ) : null}
         {sections.map((section) => (
           <section key={section.id} aria-label={section.name} className="mb-3">
-            <h2 className="px-2.5 py-1.5 text-[11px] font-medium text-subtle">{section.name}</h2>
+            <h2 className="px-3 py-1.5 text-[11px] font-medium tracking-wide text-subtle">
+              {section.name === "未分组" && !groupId && !query ? "最近" : section.name}
+            </h2>
             <AnimatePresence initial={false}>
               {section.items.map((conversation) => (
                 <motion.div
@@ -210,26 +260,28 @@ export function ConversationList({ activeId }: { activeId?: string }) {
                   animate="visible"
                   exit="exit"
                   className={cn(
-                    "group flex items-center gap-1 overflow-hidden rounded-lg",
+                    "group flex items-center gap-1 overflow-hidden rounded-xl",
                     conversation.id === activeId
                       ? "bg-surface-2 text-fg"
-                      : "text-muted hover:bg-surface-2/60",
+                      : "text-muted hover:bg-surface-2/70",
                   )}
                 >
                   <button
                     type="button"
                     onClick={() => void navigate({ to: "/", search: { c: conversation.id } })}
-                    className="min-w-0 flex-1 px-2.5 py-2 text-left"
+                    className="min-w-0 flex-1 px-3 py-2.5 text-left"
                     aria-current={conversation.id === activeId ? "page" : undefined}
                   >
-                    <span className="flex items-center gap-1.5 text-[12.5px]">
+                    <span className="flex items-center gap-1.5 text-[13px] font-medium">
                       {conversation.pinned ? <Pin className="h-3 w-3 shrink-0 text-brand" /> : null}
                       <span className="truncate">{conversation.title}</span>
                       {waiting.has(conversation.id) ? (
-                        <span className="ml-auto shrink-0 text-[10px] text-brand">待回复</span>
+                        <span className="ml-auto shrink-0 text-[10px] font-normal text-brand">
+                          待回复
+                        </span>
                       ) : null}
                     </span>
-                    <span className="mt-0.5 block truncate text-[11px] text-subtle">
+                    <span className="mt-1 block truncate text-[11px] font-normal text-subtle">
                       {projects.data?.find((project) => project.id === conversation.projectId)
                         ?.name ?? timeAgo(conversation.updatedAt)}
                     </span>
@@ -278,6 +330,41 @@ export function ConversationList({ activeId }: { activeId?: string }) {
             await refresh();
           }}
         />
+      ) : null}
+      {confirmClear ? (
+        <Dialog
+          open
+          onOpenChange={(open) => {
+            if (!open && !clearAll.isPending) setConfirmClear(false);
+          }}
+          title="一键清空会话"
+          description={`将永久删除当前列表中的 ${clearableIds.length} 个会话及其消息，此操作不可恢复。`}
+          footer={
+            <>
+              <Button
+                variant="ghost"
+                disabled={clearAll.isPending}
+                onClick={() => setConfirmClear(false)}
+              >
+                取消
+              </Button>
+              <Button
+                variant="danger"
+                loading={clearAll.isPending}
+                disabled={!clearableIds.length || clearAll.isPending}
+                onClick={() => clearAll.mutate(clearableIds)}
+              >
+                确认清空
+              </Button>
+            </>
+          }
+        >
+          <p className="text-sm text-muted">
+            {groupId || query
+              ? "仅清空当前筛选结果中的会话；其他分组不受影响。"
+              : "清空后可在「查看已归档」之外重新开始对话。已归档会话不会被删除。"}
+          </p>
+        </Dialog>
       ) : null}
     </aside>
   );
