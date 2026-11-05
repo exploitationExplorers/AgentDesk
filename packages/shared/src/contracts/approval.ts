@@ -30,6 +30,7 @@ export type PermissionRule = z.infer<typeof PermissionRule>;
 /** ActionDraft：危险操作先落草稿，人工确认后再执行。 */
 export const Approval = z.object({
   id: z.string(),
+  conversationId: z.string().optional(),
   kind: z.enum(["tool", "deploy", "workflow", "question", "plan", "review"]),
   title: z.string(),
   detail: z.string(),

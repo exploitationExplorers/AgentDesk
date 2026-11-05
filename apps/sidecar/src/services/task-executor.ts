@@ -20,7 +20,8 @@ import type { ConversationContextService } from "./conversation-context";
 import { acquireConversation } from "./conversation-activity";
 import type { ProjectInstructionService } from "./project-instructions";
 import type { RunExecutor, RunOutcome, TaskService } from "./tasks";
-import { failedRunMessage, readRunToolHistory, summarizeToolCalls } from "./run-tool-history";
+import { readRunToolHistory, summarizeToolCalls } from "./run-tool-history";
+import { runFailureMessage, emptyChatProgress, reduceChatProgress } from "@agentdesk/shared";
 
 /**
  * requestAnswer 的通用实现：用 kind='question' 的审批记录承载问题，等待用户通过
@@ -31,11 +32,12 @@ function createRequestAnswer(
   approvals: ApprovalService,
   signal: AbortSignal,
   onCreated: (approval: Approval) => void,
+  conversationId?: string,
 ): (request: ApprovalRequest) => Promise<string> {
   return async (request: ApprovalRequest) => {
     let approvalId = "";
     const approved = await approvals.request(
-      { kind: "question", ...request },
+      { kind: "question", ...request, conversationId },
       signal,
       (approval) => {
         approvalId = approval.id;
@@ -93,16 +95,23 @@ export function createDelegateHandler(deps: {
     tasks.startRunDirect(childRun.id);
 
     const requestApproval = (request: ApprovalRequest) =>
-      approvals.request({ kind: "tool", ...request }, signal, (approval) =>
-        emit({
-          type: "approval_required",
-          approvalId: approval.id,
-          title: approval.title,
-          detail: approval.detail,
-          risk: approval.risk,
-          payload: approval.payload,
-          reason: approval.reason,
-        }),
+      approvals.request(
+        {
+          kind: "tool",
+          ...request,
+          conversationId: tasks.get(taskId)?.conversationId ?? undefined,
+        },
+        signal,
+        (approval) =>
+          emit({
+            type: "approval_required",
+            approvalId: approval.id,
+            title: approval.title,
+            detail: approval.detail,
+            risk: approval.risk,
+            payload: approval.payload,
+            reason: approval.reason,
+          }),
       );
 
     const done = (result: { text: string; toolCalls: ToolCallRecord[] } | { error: string }) => {
@@ -192,8 +201,16 @@ export function createOrchestratorExecutor(deps: RealExecutorDeps): RunExecutor 
         createdAt: nowIso(),
       });
 
-      const emit = (event: TaskStreamEvent) =>
-        tasks.appendEvent({ taskId: task.id, runId: run.id, parentRunId: run.parentRunId, event });
+      let progress = emptyChatProgress();
+      const emit = (event: TaskStreamEvent) => {
+        progress = reduceChatProgress(progress, event);
+        return tasks.appendEvent({
+          taskId: task.id,
+          runId: run.id,
+          parentRunId: run.parentRunId,
+          event,
+        });
+      };
       // 委派子 Run 由 createDelegateHandler 在创建时立即补发 run_started；根 Run 此前没有任何地方
       // 发过这条事件（真实执行只会看到 agent_start/text_delta/agent_end/run_ended），导致 CLI 的
       // task-reducer.mjs（只在收到 run_started 时才建根 Run 节点）在交互式 TaskView 里对根 Run 一直
@@ -206,7 +223,24 @@ export function createOrchestratorExecutor(deps: RealExecutorDeps): RunExecutor 
         trigger: run.trigger,
       });
       const requestApproval = (request: ApprovalRequest) =>
-        approvals.request({ kind: "tool", ...request }, signal, (approval) =>
+        approvals.request(
+          { kind: "tool", ...request, conversationId: task.conversationId ?? undefined },
+          signal,
+          (approval) =>
+            emit({
+              type: "approval_required",
+              approvalId: approval.id,
+              title: approval.title,
+              detail: approval.detail,
+              risk: approval.risk,
+              payload: approval.payload,
+              reason: approval.reason,
+            }),
+        );
+      const requestAnswer = createRequestAnswer(
+        approvals,
+        signal,
+        (approval) =>
           emit({
             type: "approval_required",
             approvalId: approval.id,
@@ -216,17 +250,7 @@ export function createOrchestratorExecutor(deps: RealExecutorDeps): RunExecutor 
             payload: approval.payload,
             reason: approval.reason,
           }),
-        );
-      const requestAnswer = createRequestAnswer(approvals, signal, (approval) =>
-        emit({
-          type: "approval_required",
-          approvalId: approval.id,
-          title: approval.title,
-          detail: approval.detail,
-          risk: approval.risk,
-          payload: approval.payload,
-          reason: approval.reason,
-        }),
+        task.conversationId ?? undefined,
       );
       const onDelegate = createDelegateHandler({
         tasks,
@@ -321,6 +345,7 @@ export function createOrchestratorExecutor(deps: RealExecutorDeps): RunExecutor 
           conversationId: task.conversationId,
           role: "assistant",
           content: result.text,
+          display: progress.blocks,
           agent: result.agent,
           toolCalls: result.toolCalls,
           createdAt: nowIso(),
@@ -396,7 +421,11 @@ export function createOrchestratorExecutor(deps: RealExecutorDeps): RunExecutor 
           id: newId(),
           conversationId: task.conversationId,
           role: "assistant",
-          content: failedRunMessage(message, toolCalls),
+          content: runFailureMessage(message, signal.aborted),
+          display: [
+            ...progress.blocks,
+            { kind: "text", text: runFailureMessage(message, signal.aborted) },
+          ],
           agent: run.agent,
           toolCalls,
           createdAt: nowIso(),

@@ -64,7 +64,7 @@ afterAll(async () => {
 });
 
 describe("tasks.ask_user 追问阻塞与回答", () => {
-  it("模型调用 tasks.ask_user 后阻塞，经过两次审批（执行门禁 + 回答问题）后拿到回答文本继续推理", async () => {
+  it("模型调用 tasks.ask_user 后只创建一条追问，回答后继续推理", async () => {
     faux.setResponses([
       fauxAssistantMessage(
         fauxToolCall(toWireName("tasks.ask_user"), { question: "请提供数据库密码" }),
@@ -78,21 +78,12 @@ describe("tasks.ask_user 追问阻塞与回答", () => {
       body: JSON.stringify({ goal: "需要澄清的任务" }),
     });
 
-    // 第一次审批：executeToolCall 对 risk!=='safe' 工具的通用执行门禁（kind='tool'）。
-    await waitFor(() => container.approvals.list("pending").length >= 1);
-    const gate = container.approvals.list("pending")[0]!;
-    expect(gate.kind).toBe("tool");
-    const gateRes = await call(`/approvals/${gate.id}`, {
-      method: "POST",
-      body: JSON.stringify({ approved: true }),
-    });
-    expect(gateRes.status).toBe(200);
-
-    // 第二次审批：ask_user 内部通过 ctx.requestAnswer 创建的 kind='question' 审批，承载真正的问题。
     await waitFor(() => container.approvals.list("pending").length >= 1);
     const question = container.approvals.list("pending")[0]!;
     expect(question.kind).toBe("question");
+    expect(question.conversationId).toBe(container.tasks.get(task.id)?.conversationId);
     expect(question.detail).toBe("请提供数据库密码");
+    expect(container.approvals.list().filter((item) => item.kind === "tool")).toHaveLength(0);
     const answerRes = await call(`/approvals/${question.id}/answer`, {
       method: "POST",
       body: JSON.stringify({ text: "密码是 s3cr3t" }),
@@ -129,14 +120,6 @@ describe("tasks.ask_user 追问阻塞与回答", () => {
     });
 
     await waitFor(() => container.approvals.list("pending").length >= 1);
-    const gate = container.approvals.list("pending")[0]!;
-    expect(gate.kind).toBe("tool");
-    await call(`/approvals/${gate.id}`, {
-      method: "POST",
-      body: JSON.stringify({ approved: true }),
-    });
-
-    await waitFor(() => container.approvals.list("pending").length >= 1);
     const question = container.approvals.list("pending")[0]!;
     expect(question.kind).toBe("question");
     await call(`/approvals/${question.id}`, {
@@ -151,6 +134,51 @@ describe("tasks.ask_user 追问阻塞与回答", () => {
       (c) => c.name === "tasks.ask_user",
     );
     expect(askCall?.isError).toBe(true);
+  });
+
+  it("一组选择题逐题等待，返回带问题上下文的回答", async () => {
+    faux.setResponses([
+      fauxAssistantMessage(
+        fauxToolCall(toWireName("tasks.ask_user"), {
+          questions: [
+            { question: "预算范围？", options: ["50 万以内", "50-150 万"] },
+            { question: "团队规模？", options: ["3-5 人", "6-10 人"] },
+          ],
+        }),
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage(fauxText("已记录约束")),
+    ]);
+    const task = await json<{ id: string }>("/tasks", {
+      method: "POST",
+      body: JSON.stringify({ goal: "规划知识库" }),
+    });
+    await waitFor(() => container.approvals.list("pending").length === 1);
+    const first = container.approvals.list("pending")[0]!;
+    expect(first.kind).toBe("question");
+    expect(first.payload).toMatchObject({
+      index: 1,
+      total: 2,
+      options: ["50 万以内", "50-150 万"],
+    });
+    await call(`/approvals/${first.id}/answer`, {
+      method: "POST",
+      body: JSON.stringify({ text: "50-150 万" }),
+    });
+    await waitFor(() => container.approvals.list("pending").some((item) => item.id !== first.id));
+    const second = container.approvals.list("pending")[0]!;
+    expect(second.payload).toMatchObject({ index: 2, total: 2 });
+    await call(`/approvals/${second.id}/answer`, {
+      method: "POST",
+      body: JSON.stringify({ text: "3-5 人" }),
+    });
+    await waitFor(() => container.tasks.get(task.id)?.status === "awaiting_review");
+    const [run] = container.tasks.listRuns(task.id);
+    const askCall = (run!.toolCalls as Array<{ name: string; result: unknown }>)!.find(
+      (item) => item.name === "tasks.ask_user",
+    );
+    expect(askCall?.result).toBe("1. 预算范围？: 50-150 万\n2. 团队规模？: 3-5 人");
+    expect(container.approvals.list().filter((item) => item.kind === "tool")).toHaveLength(0);
   });
 });
 

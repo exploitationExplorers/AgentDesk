@@ -13,6 +13,18 @@ export const ToolCallRecord = z.object({
 });
 export type ToolCallRecord = z.infer<typeof ToolCallRecord>;
 
+export const ChatDisplayBlock = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("text"), text: z.string() }),
+  z.object({
+    kind: z.literal("activity"),
+    id: z.string(),
+    name: z.string(),
+    agent: AgentName,
+    status: z.enum(["running", "complete", "failed"]),
+  }),
+]);
+export type ChatDisplayBlock = z.infer<typeof ChatDisplayBlock>;
+
 export const ChatMessage = z.object({
   id: z.string(),
   conversationId: z.string(),
@@ -20,6 +32,7 @@ export const ChatMessage = z.object({
   content: z.string(),
   agent: AgentName.nullable(),
   toolCalls: z.array(ToolCallRecord),
+  display: z.array(ChatDisplayBlock).optional(),
   createdAt: z.string(),
 });
 export type ChatMessage = z.infer<typeof ChatMessage>;
@@ -67,6 +80,26 @@ export const ConversationGroupInput = z.object({ name: z.string().trim().min(1).
 
 /** SSE 事件：对话和工作流执行共用的流式事件协议。 */
 export type AgentStreamEvent =
+  | { type: "document_preview"; title: string; content: string; completed: number; total: number }
+  | { type: "response_start"; agent: AgentName }
+  | { type: "response_status"; agent: AgentName; message: string }
+  | {
+      type: "presentation_slide";
+      title: string;
+      index: number;
+      total: number;
+      svg: string;
+      deckTitle: string;
+      presentationId?: string;
+    }
+  | {
+      type: "presentation_status";
+      phase: "starting" | "rendering" | "saving";
+      message: string;
+      presentationId?: string;
+      deckTitle?: string;
+    }
+  | { type: "artifact_ready"; artifactId: string; title: string }
   | {
       type: "model_usage";
       purpose?: "response" | "compaction" | "analysis";

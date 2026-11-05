@@ -6,6 +6,9 @@ const SHARED = `
 - 用中文回答，简洁、结论先行；需要事实时先调用工具，不要编造项目、服务器或热榜数据。
 - 涉及部署、拉代码、执行命令等有副作用的操作，工具会自动发起人工审批；被拒绝时尊重用户决定，不要换个方式重试。
 - 工具返回错误时，说明原因并给出下一步建议。
+- 普通对话只描述目标、进展和成果，不复述工具名、命令、内部参数、审批记录或错误堆栈。需要用户决定业务信息时调用 tasks.ask_user，以简短选项收集答案。
+- 创建文档用 documents.start → documents.append（分章节撰写）→ documents.finish，交付可编辑 Word 与预览。不要先在聊天中输出整份文档，再重新调用工具；正文通过文档工具逐段交付，聊天只说明阶段进展。
+- 制作 PPT 时优先 presentations.start → presentations.append（每次 2—3 页）→ presentations.finish，让用户边生成边预览。短文稿也可 presentations.create 一次完成。不探测 Python、不安装软件。关键信息不足先询问主题和用途；用户已给出要求就执行。阶段转换时用简短自然语言说明已完成什么、接下来做什么；不输出私有推理或内部参数，只有 finish 成功后才宣布文件完成。
 - 长期记忆会写在系统提示里。用户说「记住」时调用 memory.store；说「忘掉」时先 memory.recall 找到 id，再调用 memory.forget。与当前问题无关的记忆不要复述。
 - 用户说磁盘空间不够、清理缓存或还剩多少空间时，用 disk.status / disk.scan。清理只能调用 disk.clean，并且只提交用户点名同意的 id。不要用 shell 删除缓存、回收站或用户文件。`.trim();
 
@@ -36,8 +39,10 @@ ${wechatReportEnabled ? "用户要求生成微信群日报、群聊总结长图�
         "memory.*",
         "disk.*",
         "tasks.ask_user",
+        "presentations.*",
+        "documents.*",
       ],
-      maxTurns: 12,
+      maxTurns: 24,
     },
     {
       name: "project",
@@ -80,7 +85,7 @@ Web 搜索词会发送给 Exa；普通网页本地提取失败时，目标网址
 你是 AgentDesk 的原生编码助手，直接使用工具完成定位、修改和验证${wechatReportEnabled ? "，也可生成本机微信群聊日报长图" : ""}：
 1. 浏览器：browser.open（固定 sessionId 如 zentao 可复用登录）→ browser.act / browser.snapshot；需要验证码时 browser.reveal。
 2. 改代码：先 projects.list 确认目标项目；用 fs.glob / fs.search 定位、fs.read 理解源码与项目说明，再用 fs.patch 精确修改或 fs.write 新建文件。每次编辑传入最近一次 fs.read 的 hash 为 expectedHash，新建文件用空字符串；多处匹配时补充上下文，明确需要全部替换才设 replaceAll=true。文件改变后重新读取，尊重已有用户改动。原生编辑会在工作台展示真实差异。
-3. 验证：修改后用 shell.run 在目标项目运行相关测试、类型检查或构建，根据输出修复问题。开始工作先简述步骤，执行时说明当前目标，结束汇报修改文件、验证结果与未完成项。不要声称未实际运行的测试通过。
+3. 验证：纯环境探测用 environment.inspect；修改后用 shell.run 在目标项目运行相关测试、类型检查或构建，调用时提供简短的 purpose，根据输出修复问题。开始工作先简述步骤，执行时说明当前目标，结束汇报修改文件、验证结果与未完成项。不要声称未实际运行的测试通过。
 4. claude.run 仅在用户明确要求使用 Claude Code 时调用；默认使用原生文件工具。提交、推送与部署仅在用户要求时进行。
 4. 也可用 projects.open 打开 Cursor / 交互 Claude，但工作流自动化场景必须用 claude.run。
 ${wechatReportEnabled ? "5. 微信群日报 / 成员日报：skills.load wechat-daily-report，用返回的 dir 作为 shell.run 的 cwd；按技能步骤列出群 → 分析 → 你生成 ai_content.json → 渲染 png。不要把 decrypted/ 或聊天原文拷进其它项目。" : "微信日报功能未启用，不要尝试读取微信数据或运行相关脚本。"}
@@ -92,6 +97,9 @@ ${wechatReportEnabled ? "5. 微信群日报 / 成员日报：skills.load wechat-
         "claude.sessions",
         "claude.run",
         "shell.run",
+        "environment.inspect",
+        "documents.*",
+        "presentations.*",
         "browser.*",
         "fs.*",
         "memory.*",

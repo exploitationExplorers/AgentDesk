@@ -200,15 +200,14 @@ async function fixture(page: Page, hasSummary = false) {
     return route.continue();
   });
   await page.goto(`/#/?c=${conversation.id}`);
+  await page.getByRole("button", { name: "会话状态", exact: true }).click();
   const panel = page.getByRole("complementary", { name: "会话状态" });
   await expect(panel.getByRole("heading", { name: "上下文预算" })).toBeVisible();
   return {
     panel,
     state,
     history,
-    composer: page.getByPlaceholder(
-      "问我任何事：部署 IM 项目、今天 GitHub 有什么新东西、哪些项目还没提交…",
-    ),
+    composer: page.getByRole("textbox", { name: "发送消息" }),
     finish: (failed = false) => release(failed),
     get compactRequests() {
       return compactRequests;
@@ -307,6 +306,7 @@ test("压缩失败显示错误，保留原始历史和已有摘要并允许再�
   await expect(page.getByText("最早一轮：请保留旧会话兼容性。", { exact: true })).toBeVisible();
   await expect(page.getByText("最后一轮：继续验证归档恢复。", { exact: true })).toBeVisible();
   await page.reload();
+  await page.getByRole("button", { name: "会话状态", exact: true }).click();
   await expect(view.panel.getByText("压缩失败，仍使用上次摘要。", { exact: true })).toBeVisible();
   await view.panel.getByText("查看会话摘要", { exact: true }).click();
   await expect(view.panel.getByText(summary.goal, { exact: true })).toBeVisible();

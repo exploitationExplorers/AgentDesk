@@ -1,6 +1,36 @@
 @import "@agentdesk/ui/styles.css";
 @import "@xyflow/react/dist/style.css";
 
+.chat-light {
+  --ad-bg: #ffffff;
+  --ad-surface: #ffffff;
+  --ad-surface-2: #f3f3f3;
+  --ad-elevated: #ffffff;
+  --ad-border: #e8e8e8;
+  --ad-border-strong: #d8d8d8;
+  --ad-fg: #202124;
+  --ad-muted: #64676b;
+  --ad-subtle: #94989d;
+  --ad-accent: #202124;
+  --ad-accent-fg: #ffffff;
+  --ad-brand: #188977;
+  --color-bg: var(--ad-bg);
+  --color-surface: var(--ad-surface);
+  --color-surface-2: var(--ad-surface-2);
+  --color-elevated: var(--ad-elevated);
+  --color-border: var(--ad-border);
+  --color-border-strong: var(--ad-border-strong);
+  --color-fg: var(--ad-fg);
+  --color-muted: var(--ad-muted);
+  --color-subtle: var(--ad-subtle);
+  --color-accent: var(--ad-accent);
+  --color-accent-fg: var(--ad-accent-fg);
+  --color-brand: var(--ad-brand);
+  background: var(--ad-bg);
+  color: var(--ad-fg);
+  color-scheme: light;
+}
+
 .react-flow {
   --xy-background-color: transparent;
   --xy-edge-stroke: var(--ad-border-strong);

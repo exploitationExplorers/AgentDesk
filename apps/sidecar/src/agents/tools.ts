@@ -22,6 +22,7 @@ import type { SettingsService } from "../services/settings";
 import type { WorkflowService } from "../services/workflows";
 import { localDate } from "../util";
 import { runCheckedShell, shellRisk } from "./shell-policy";
+import { inspectEnvironment } from "./environment";
 import { registerReachTools } from "./reach-tools";
 import type { ReachService } from "../services/reach";
 export { shellRisk } from "./shell-policy";
@@ -430,17 +431,43 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
     }),
 
     defineTool({
+      name: "environment.inspect",
+      description:
+        "只读查询用户目录、当前工作目录、程序及 Python/Node 模块是否可用；不执行用户脚本，也不导入被查询的模块。检查 PPT 依赖、输出位置时优先使用，无需审批",
+      parameters: Type.Object({
+        executables: Type.Optional(
+          Type.Array(Type.String({ description: "程序名，如 node、python、libreoffice" })),
+        ),
+        pythonModules: Type.Optional(
+          Type.Array(Type.String({ description: "顶层模块名，如 pptx、PIL" })),
+        ),
+        nodeModules: Type.Optional(
+          Type.Array(
+            Type.String({ description: "Node 包名，如 pptxgenjs、sharp、@resvg/resvg-js" }),
+          ),
+        ),
+      }),
+      isConcurrencySafe: true,
+      risk: "safe",
+      execute: ({ executables, pythonModules, nodeModules }, ctx) =>
+        inspectEnvironment(executables, pythonModules, ctx.signal, nodeModules),
+    }),
+    defineTool({
       name: "shell.run",
-      description: "在本地执行命令行（只读命令直接执行，其余需要审批）",
+      description:
+        "在本地执行命令行；调用时用 purpose 说明用户能理解的目的。纯环境探测优先用 environment.inspect",
       parameters: Type.Object({
         command: Type.String(),
         cwd: Type.Optional(Type.String({ description: "工作目录，或项目名称" })),
+        purpose: Type.Optional(
+          Type.String({ description: "面向用户的一句话执行目的，不要包含命令代码" }),
+        ),
       }),
       risk: "dangerous",
       riskFor: ({ command }) => shellRisk(command),
-      describeApproval: ({ command, cwd }) => ({
-        title: `执行命令：${command}`,
-        detail: `工作目录：${cwd ?? "(默认)"}`,
+      describeApproval: ({ command, cwd, purpose }) => ({
+        title: purpose?.trim() || "执行本地命令",
+        detail: `命令：${command}\n工作目录：${cwd ?? "(默认)"}`,
       }),
       execute: async ({ command, cwd }, ctx) => {
         let dir = cwd;
@@ -778,23 +805,46 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
   registry.register(
     defineTool({
       name: "tasks.ask_user",
-      description: "当需要用户进一步澄清或提供缺失信息时调用，会阻塞当前任务直到用户回答",
+      description: "需要用户澄清时调用；可一次提供单个问题或一组有选项的问题，逐题等待用户回答",
       parameters: Type.Object({
-        question: Type.String({ description: "需要用户回答的问题" }),
+        question: Type.Optional(Type.String({ description: "需要用户回答的单个问题" })),
+        options: Type.Optional(
+          Type.Array(Type.String(), { description: "可选的简短回答，用户仍可自由输入" }),
+        ),
+        questions: Type.Optional(
+          Type.Array(
+            Type.Object({
+              question: Type.String(),
+              options: Type.Optional(Type.Array(Type.String())),
+            }),
+            { description: "需要依次回答的多个问题" },
+          ),
+        ),
       }),
-      risk: "confirm",
-      describeApproval: ({ question }) => ({
-        title: "需要你补充信息",
-        detail: question,
-      }),
-      execute: async ({ question }, ctx) => {
+      risk: "safe",
+      execute: async ({ question, options, questions }, ctx) => {
         if (!ctx.requestAnswer) throw new Error("当前上下文不支持追问");
-        return ctx.requestAnswer({
-          title: "需要你补充信息",
-          detail: question,
-          risk: "confirm",
-          payload: { kind: "question", question },
-        });
+        const prompts = questions?.length ? questions : question ? [{ question, options }] : [];
+        if (!prompts.length) throw new Error("至少需要提供一个问题");
+        const answers: string[] = [];
+        for (const [index, prompt] of prompts.entries()) {
+          const answer = await ctx.requestAnswer({
+            title: "需要你补充信息",
+            detail: prompt.question,
+            risk: "confirm",
+            payload: {
+              kind: "question",
+              question: prompt.question,
+              options: prompt.options?.slice(0, 6),
+              index: index + 1,
+              total: prompts.length,
+            },
+          });
+          answers.push(
+            prompts.length === 1 ? answer : `${index + 1}. ${prompt.question}: ${answer}`,
+          );
+        }
+        return answers.join("\n");
       },
     }),
     defineTool({

@@ -59,6 +59,10 @@ export function artifactMime(artifact: Pick<Artifact, "filePath" | "mimeType" | 
     return artifact.mimeType === "application/json" ? "text/plain" : artifact.mimeType;
   }
   if (IMAGE_MIME[extension]) return IMAGE_MIME[extension];
+  if (extension === ".docx")
+    return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  if (extension === ".pptx")
+    return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
   if (extension === ".html" || extension === ".htm") return "text/html";
   if (extension === ".md" || !artifact.filePath) return "text/markdown";
   if (TEXT_EXTENSIONS.has(extension)) return "text/plain";
@@ -171,6 +175,6 @@ export async function artifactContent(
 export function artifactDownloadName(artifact: Artifact): string {
   const name = artifact.filePath
     ? `${basename(artifact.filePath)}${artifact.kind === "change" ? ".diff" : ""}`
-    : `${artifact.title || "成果"}.${artifact.kind === "change" ? "diff" : "md"}`;
+    : `${artifact.title || "成果"}.${artifact.kind === "change" ? "diff" : artifact.mimeType === "text/html" ? "html" : "md"}`;
   return name.replace(/[\r\n"\\/]/g, "_");
 }

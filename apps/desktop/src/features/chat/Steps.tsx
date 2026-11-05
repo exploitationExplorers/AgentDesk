@@ -1,185 +1,207 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle2,
   ChevronRight,
   CornerDownRight,
   Loader2,
-  ShieldAlert,
+  MessageCircleQuestion,
+  ArrowRight,
   XCircle,
 } from "lucide-react";
 import { useState } from "react";
-import type { ToolCallRecord } from "@agentdesk/shared";
+import type { Approval, ToolCallRecord } from "@agentdesk/shared";
 import { Button, cn } from "@agentdesk/ui";
 import { AGENT_META, TOOL_LABELS } from "../../lib/agents";
-import { api } from "../../lib/api";
+import { humanActionTitle } from "../../lib/approval-display";
+import { http } from "../../lib/http";
 import type { LiveStep } from "./useChatStream";
-
-function preview(value: unknown): string {
-  if (value === undefined) return "";
-  const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
-  return text.length > 4000 ? `${text.slice(0, 4000)}\n…` : text;
-}
 
 function friendlyToolHint(name: string, args: unknown): string | null {
   const a = (args ?? {}) as Record<string, unknown>;
-  if (name === "browser.open" && typeof a.url === "string") return a.url;
-  if (name === "browser.act" && typeof a.kind === "string")
-    return `${a.kind}${a.target ? ` ${a.target}` : ""}`;
-  if (
-    (name === "fs.write" || name === "fs.patch" || name === "fs.read") &&
-    typeof a.path === "string"
-  )
-    return String(a.path);
-  if (name === "fs.search" && typeof a.query === "string") return a.query;
-  if (name === "claude.run" && typeof a.project === "string")
-    return `${a.project}${typeof a.prompt === "string" ? ` · ${a.prompt.slice(0, 80)}` : ""}`;
+  if (name === "shell.run") return humanActionTitle(a.purpose, "处理任务文件");
+  if (name === "agents.delegate" && typeof a.agent === "string")
+    return AGENT_META[a.agent as keyof typeof AGENT_META]?.label ?? a.agent;
   return null;
 }
 
 function ToolStep({
   name,
   args,
-  result,
   isError,
   done,
 }: {
   name: string;
   args: unknown;
-  result?: unknown;
   isError?: boolean;
   done: boolean;
 }) {
-  const [open, setOpen] = useState(false);
-  const label = TOOL_LABELS[name] ?? name;
-  const delegated = name === "agents.delegate" ? (args as { agent?: string; task?: string }) : null;
+  const label = TOOL_LABELS[name] ?? "处理任务";
   const hint = friendlyToolHint(name, args);
-  const shotUrl =
-    done && result && typeof result === "object" && "shotUrl" in (result as object)
-      ? String((result as { shotUrl?: string | null }).shotUrl ?? "")
-      : "";
   return (
-    <div className="text-[12.5px]">
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        className="flex w-full items-center gap-2 py-1 text-left text-muted hover:text-fg"
-      >
-        {!done ? (
-          <Loader2 className="h-3.5 w-3.5 animate-spin text-info" />
-        ) : isError ? (
-          <XCircle className="h-3.5 w-3.5 text-danger" />
-        ) : (
-          <CheckCircle2 className="h-3.5 w-3.5 text-success" />
-        )}
-        <span className="font-medium">{label}</span>
-        {delegated?.agent ? (
-          <span className="truncate text-subtle">
-            → {AGENT_META[delegated.agent as keyof typeof AGENT_META]?.label ?? delegated.agent}：
-            {delegated.task}
-          </span>
-        ) : hint ? (
-          <span className="truncate font-mono text-[11px] text-subtle">{hint}</span>
-        ) : (
-          <span className="truncate font-mono text-[11px] text-subtle">{name}</span>
-        )}
-        <ChevronRight
-          className={cn("ml-auto h-3.5 w-3.5 shrink-0 transition-transform", open && "rotate-90")}
-        />
-      </button>
-      {open ? (
-        <div className="mb-2 ml-5 grid gap-2">
-          <pre className="max-h-40 overflow-auto rounded-lg bg-surface-2 p-2 font-mono text-[11px] text-muted">
-            {preview(args)}
-          </pre>
-          {done ? (
-            <pre
-              className={cn(
-                "max-h-64 overflow-auto rounded-lg bg-surface-2 p-2 font-mono text-[11px]",
-                isError ? "text-danger" : "text-muted",
-              )}
-            >
-              {preview(result)}
-            </pre>
-          ) : null}
-          {shotUrl ? (
-            <p className="text-[11px] text-subtle">已更新实况截图（见右侧浏览器面板）</p>
-          ) : null}
-        </div>
-      ) : null}
+    <div className="flex min-w-0 items-center gap-2 py-1 text-[12.5px] text-muted">
+      {!done ? (
+        <Loader2 className="h-3.5 w-3.5 animate-spin text-info" />
+      ) : isError ? (
+        <XCircle className="h-3.5 w-3.5 text-danger" />
+      ) : (
+        <CheckCircle2 className="h-3.5 w-3.5 text-success" />
+      )}
+      <span className="font-medium">{label}</span>
+      {hint ? <span className="min-w-0 truncate text-subtle">{hint}</span> : null}
     </div>
   );
 }
 
-function ApprovalStep({
+export function QuestionPrompt({
   approvalId,
-  title,
   detail,
+  options,
+  index,
+  total,
 }: {
   approvalId: string;
-  title: string;
   detail: string;
+  options: string[];
+  index?: number;
+  total?: number;
 }) {
+  const [answer, setAnswer] = useState("");
   const queryClient = useQueryClient();
-  const { data } = useQuery({
-    queryKey: ["approvals", "pending"],
-    queryFn: () => api.approvals("pending"),
-  });
-  const pending = data?.some((a) => a.id === approvalId);
-  const resolve = useMutation({
-    mutationFn: (approved: boolean) => api.resolveApproval(approvalId, approved),
+  const answerQuestion = useMutation({
+    mutationFn: (text: string) => http.post<Approval>(`/approvals/${approvalId}/answer`, { text }),
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["approvals"] }),
   });
+  const skip = useMutation({
+    mutationFn: () => http.post<Approval>(`/approvals/${approvalId}/answer`, { text: "跳过" }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ["approvals"] }),
+  });
+  const busy = answerQuestion.isPending || skip.isPending;
+  const send = (text: string) => {
+    if (text.trim() && !busy) answerQuestion.mutate(text.trim());
+  };
   return (
-    <div className="my-2 rounded-xl border border-warning/40 bg-warning/5 p-3">
-      <div className="flex items-center gap-2 text-[13px] font-medium">
-        <ShieldAlert className="h-4 w-4 text-warning" />
-        {title}
-      </div>
-      {detail ? (
-        <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap font-mono text-[11.5px] text-muted">
+    <section
+      aria-label="待回答的问题"
+      className="rounded-lg border bg-surface p-4 shadow-[0_10px_30px_-20px_rgba(0,0,0,0.35)]"
+    >
+      <div className="mb-3 flex items-start gap-2">
+        <MessageCircleQuestion className="mt-0.5 h-4 w-4 shrink-0 text-brand" />
+        <h2 className="min-w-0 flex-1 whitespace-pre-wrap text-[14px] font-medium leading-6">
           {detail}
-        </pre>
+        </h2>
+        {total && total > 1 ? (
+          <span className="shrink-0 text-xs text-subtle">
+            {index ?? 1}/{total}
+          </span>
+        ) : null}
+      </div>
+      {options.length > 0 ? (
+        <div className="divide-y" role="group" aria-label="回答选项">
+          {options.map((option, index) => (
+            <button
+              key={`${index}-${option}`}
+              type="button"
+              disabled={busy}
+              onClick={() => send(option)}
+              className="group flex min-h-10 w-full items-center gap-3 rounded-md px-2 py-1.5 text-left text-[13px] hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-brand disabled:opacity-50"
+            >
+              <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-surface-2 text-xs text-muted">
+                {index + 1}
+              </span>
+              <span className="min-w-0 flex-1">{option}</span>
+              <ArrowRight className="h-4 w-4 shrink-0 text-subtle opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100" />
+            </button>
+          ))}
+        </div>
       ) : null}
-      {pending ? (
-        <div className="mt-3 flex gap-2">
+      <div className="mt-2 flex items-center gap-2 border-t pt-3">
+        <input
+          aria-label="其他补充"
+          value={answer}
+          disabled={busy}
+          onChange={(event) => setAnswer(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.nativeEvent.isComposing) send(answer);
+          }}
+          placeholder="其他补充…"
+          className="min-w-0 flex-1 bg-transparent px-2 py-1.5 text-sm outline-none placeholder:text-subtle"
+        />
+        {answer.trim() ? (
           <Button
             size="sm"
             variant="primary"
-            loading={resolve.isPending}
-            onClick={() => resolve.mutate(true)}
+            loading={answerQuestion.isPending}
+            disabled={busy}
+            onClick={() => send(answer)}
           >
-            批准执行
+            发送
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => resolve.mutate(false)}>
-            拒绝
-          </Button>
-        </div>
-      ) : (
-        <p className="mt-2 text-[12px] text-subtle">已处理</p>
-      )}
-    </div>
+        ) : null}
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={busy}
+          loading={skip.isPending}
+          onClick={() => skip.mutate()}
+        >
+          跳过
+        </Button>
+      </div>
+      {answerQuestion.error || skip.error ? (
+        <p role="alert" className="mt-2 text-xs text-danger">
+          {(answerQuestion.error ?? skip.error)?.message}
+        </p>
+      ) : null}
+    </section>
   );
 }
 
-export function LiveSteps({ steps }: { steps: LiveStep[] }) {
+export function LiveSteps({
+  steps,
+  waiting,
+}: {
+  steps: LiveStep[];
+  waiting?: "question" | "action";
+}) {
   if (steps.length === 0) return null;
+  const activity = steps.filter((step) => step.kind !== "approval");
+  const running = activity.some((step) => step.kind === "tool" && !step.done);
   return (
-    <div className="mb-3 rounded-xl border bg-surface/60 px-3 py-1.5">
-      {steps.map((step, i) => {
-        if (step.kind === "route") {
-          const meta = AGENT_META[step.agent];
-          return (
-            <div key={i} className="flex items-center gap-2 py-1 text-[12.5px] text-muted">
-              <CornerDownRight className="h-3.5 w-3.5 text-brand" />
-              <meta.icon className="h-3.5 w-3.5" />
-              <span className="font-medium text-fg">{meta.label} Agent</span>
-              <span className="truncate text-subtle">{step.reason}</span>
-            </div>
-          );
-        }
-        if (step.kind === "approval") return <ApprovalStep key={i} {...step} />;
-        return <ToolStep key={step.id} {...step} />;
-      })}
+    <div className="mb-3 space-y-1">
+      {activity.length ? (
+        <details className="group text-xs text-muted">
+          <summary className="flex cursor-pointer list-none items-center gap-1.5 py-1 hover:text-fg focus-visible:outline-2 focus-visible:outline-brand">
+            {running ? (
+              <Loader2 className={cn("h-3.5 w-3.5", !waiting && "animate-spin")} />
+            ) : (
+              <CheckCircle2 className="h-3.5 w-3.5" />
+            )}
+            {waiting ? "已准备" : running ? "正在处理" : "已处理"} {activity.length} 步
+            <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" />
+          </summary>
+          <div className="ml-2 border-l pl-3">
+            {activity.map((step, i) => {
+              if (step.kind === "route") {
+                const meta = AGENT_META[step.agent];
+                return (
+                  <div key={i} className="flex items-center gap-2 py-1 text-[12.5px] text-muted">
+                    <CornerDownRight className="h-3.5 w-3.5 text-brand" />
+                    <meta.icon className="h-3.5 w-3.5" />
+                    <span className="font-medium text-fg">{meta.label} Agent</span>
+                  </div>
+                );
+              }
+              return <ToolStep key={step.id} {...step} />;
+            })}
+          </div>
+        </details>
+      ) : null}
+      {waiting ? (
+        <div className="flex items-center gap-2 py-1 text-xs text-muted">
+          <MessageCircleQuestion className="h-3.5 w-3.5" />
+          {waiting === "question" ? "等待你的回答" : "等待你的确认"}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -195,19 +217,12 @@ export function SavedSteps({ calls }: { calls: ToolCallRecord[] }) {
         className="flex items-center gap-1.5 text-[12px] text-subtle hover:text-muted"
       >
         <ChevronRight className={cn("h-3.5 w-3.5 transition-transform", open && "rotate-90")} />
-        使用了 {calls.length} 个工具
+        已处理 {calls.length} 步
       </button>
       {open ? (
-        <div className="mt-1 rounded-xl border bg-surface/60 px-3 py-1.5">
+        <div className="mt-1 ml-2 border-l pl-3">
           {calls.map((c) => (
-            <ToolStep
-              key={c.id}
-              name={c.name}
-              args={c.args}
-              result={c.result}
-              isError={c.isError}
-              done
-            />
+            <ToolStep key={c.id} name={c.name} args={c.args} isError={c.isError} done />
           ))}
         </div>
       ) : null}

@@ -1,7 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRouterState } from "@tanstack/react-router";
 import { ShieldAlert } from "lucide-react";
 import { AnimatePresence, Badge, Button, motion, popVariants } from "@agentdesk/ui";
 import { api } from "../lib/api";
+import { chatActionDisplay } from "../lib/approval-display";
 
 const RISK_LABEL = { safe: "安全", confirm: "需确认", dangerous: "高风险" } as const;
 const KIND_LABEL = {
@@ -16,6 +18,7 @@ const KIND_LABEL = {
 /** 待审批固定在右下角：任意页面可见（不代表你刚点了执行）。 */
 export function ApprovalToasts() {
   const queryClient = useQueryClient();
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
   const { data = [] } = useQuery({
     queryKey: ["approvals", "pending"],
     queryFn: () => api.approvals("pending"),
@@ -28,17 +31,20 @@ export function ApprovalToasts() {
   });
   const dismissAll = useMutation({
     mutationFn: async () => {
-      await Promise.all(data.map((a) => api.resolveApproval(a.id, false)));
+      await Promise.all(
+        data.filter((a) => a.kind !== "question").map((a) => api.resolveApproval(a.id, false)),
+      );
     },
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["approvals"] }),
   });
 
-  if (data.length === 0) return null;
+  const pending = data.filter((approval) => approval.kind !== "question");
+  if (pending.length === 0 || pathname === "/" || pathname === "/code") return null;
   return (
     <div className="pointer-events-none fixed bottom-5 right-5 z-40 flex w-[380px] flex-col gap-2">
-      {data.length > 1 ? (
+      {pending.length > 1 ? (
         <div className="pointer-events-auto flex items-center justify-between rounded-xl border border-warning/30 bg-elevated/95 px-3 py-2 text-[12px] text-muted shadow-lg">
-          <span>{data.length} 个待审批（含未完成工作流残留）</span>
+          <span>{pending.length} 个待审批</span>
           <Button
             size="sm"
             variant="ghost"
@@ -50,7 +56,7 @@ export function ApprovalToasts() {
         </div>
       ) : null}
       <AnimatePresence initial={false}>
-        {data.slice(0, 3).map((a) => (
+        {pending.slice(0, 1).map((a) => (
           <motion.div
             key={a.id}
             layout
@@ -64,17 +70,13 @@ export function ApprovalToasts() {
               <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <p className="truncate text-[13px] font-semibold">{a.title}</p>
+                  <p className="truncate text-[13px] font-semibold">{chatActionDisplay(a).title}</p>
                   <Badge tone="neutral">{KIND_LABEL[a.kind] ?? a.kind}</Badge>
                   <Badge tone={a.risk === "dangerous" ? "danger" : "warning"}>
                     {RISK_LABEL[a.risk]}
                   </Badge>
                 </div>
-                {a.detail ? (
-                  <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap rounded-lg bg-surface-2 p-2 font-mono text-[11.5px] text-muted">
-                    {a.detail}
-                  </pre>
-                ) : null}
+                <p className="mt-2 text-xs leading-5 text-muted">{chatActionDisplay(a).detail}</p>
                 <div className="mt-3 flex justify-end gap-2">
                   <Button
                     size="sm"
@@ -96,9 +98,9 @@ export function ApprovalToasts() {
           </motion.div>
         ))}
       </AnimatePresence>
-      {data.length > 3 ? (
+      {pending.length > 1 ? (
         <p className="pointer-events-auto text-right text-[12px] text-muted">
-          还有 {data.length - 3} 个待审批
+          还有 {pending.length - 1} 个待审批
         </p>
       ) : null}
     </div>

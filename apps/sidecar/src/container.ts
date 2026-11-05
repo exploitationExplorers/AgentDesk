@@ -8,6 +8,8 @@ import {
 import { BrowserSessionManager } from "@agentdesk/integrations";
 import { createAgentDefinitions } from "./agents/definitions";
 import { buildToolRegistry } from "./agents/tools";
+import { registerPresentationTools } from "./agents/presentation-tools";
+import { registerDocumentTools } from "./agents/document-tools";
 import type { SidecarConfig } from "./config";
 import { openDatabase, type DbHandle } from "./db/client";
 import { EventHub } from "./events";
@@ -129,6 +131,9 @@ export async function createContainer(
       return lazy.workflows;
     },
   });
+  const artifactRoot = join(config.dataDir, "generated-artifacts");
+  registerPresentationTools(registry, artifactRoot);
+  registerDocumentTools(registry, artifactRoot);
   const orchestrator = new Orchestrator({
     agents: createAgentDefinitions(config.wechatReportEnabled),
     registry,
@@ -164,7 +169,7 @@ export async function createContainer(
     autoApprove,
     maskFactory,
   });
-  const tasks = new TaskService(db, hub, { executor: taskExecutor });
+  const tasks = new TaskService(db, hub, { executor: taskExecutor, artifactRoot });
   lazyTasks.current = tasks;
   const chat = new ChatService(
     db,
@@ -208,6 +213,7 @@ export async function createContainer(
     scheduler,
     registry,
     dispose: async () => {
+      await chat.dispose();
       reach.dispose();
       scheduler.stop();
       await insights.dispose();

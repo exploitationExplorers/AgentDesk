@@ -5,6 +5,7 @@ import {
   Code2,
   HardDrive,
   MessageSquare,
+  Menu,
   Moon,
   Newspaper,
   PanelLeftClose,
@@ -18,7 +19,7 @@ import {
   Workflow,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AnimatePresence,
   Kbd,
@@ -71,6 +72,7 @@ function NavItem({
   const content = (
     <Link
       to={to}
+      aria-label={collapsed ? label : undefined}
       className={cn(
         "relative flex h-9 items-center gap-3 rounded-xl px-2.5 text-[13px] font-medium transition-colors",
         active ? "text-fg" : "text-muted hover:bg-surface-2/60 hover:text-fg",
@@ -110,7 +112,16 @@ function NavItem({
 
 export function AppShell() {
   useGlobalEvents();
-  const { theme, setTheme, sidebarCollapsed: collapsed, toggleSidebar, setPaletteOpen } = useUi();
+  const {
+    theme,
+    setTheme,
+    chatLight,
+    toggleChatTheme,
+    sidebarCollapsed: collapsed,
+    toggleSidebar,
+    setPaletteOpen,
+  } = useUi();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const routeSection =
     useRouterState({ select: (s) => s.location.pathname }).split("/")[1] || "home";
   const health = useQuery({
@@ -123,6 +134,9 @@ export function AppShell() {
     queryKey: ["approvals", "pending"],
     queryFn: () => api.approvals("pending"),
   });
+  const pendingActions =
+    approvals.data?.filter((approval) => approval.kind !== "question").length ?? 0;
+  const pendingConversation = approvals.data?.find((approval) => approval.conversationId);
   const disk = useQuery({
     queryKey: ["disk-status"],
     queryFn: api.diskStatus,
@@ -142,20 +156,48 @@ export function AppShell() {
   });
 
   useEffect(() => applyTheme(theme), [theme]);
+  useEffect(() => setMobileNavOpen(false), [routeSection]);
+
+  const navCollapsed = (collapsed || routeSection === "home") && !mobileNavOpen;
+  const lightWorkspace = routeSection === "home" && chatLight;
 
   return (
     <TooltipProvider>
-      <div className="flex h-full">
+      <div
+        className={cn("flex h-full min-w-0 flex-col lg:flex-row", lightWorkspace && "chat-light")}
+      >
+        <div className="flex h-12 shrink-0 items-center gap-2 border-b bg-surface px-3 lg:hidden">
+          <button
+            type="button"
+            aria-label="打开主导航"
+            title="主导航"
+            onClick={() => setMobileNavOpen(true)}
+            className="rounded-md p-2 text-muted hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-brand"
+          >
+            <Menu className="h-4 w-4" />
+          </button>
+          <AppMark src={avatar} className="h-6 w-6" />
+          <span className="text-sm font-semibold">AgentDesk</span>
+        </div>
+        {mobileNavOpen ? (
+          <button
+            type="button"
+            aria-label="关闭主导航"
+            onClick={() => setMobileNavOpen(false)}
+            className="fixed inset-0 z-40 bg-fg/20 lg:hidden"
+          />
+        ) : null}
         <aside
           className={cn(
-            "flex shrink-0 flex-col border-r bg-surface/60 px-2.5 py-3 transition-[width]",
-            collapsed ? "w-[60px]" : "w-[216px]",
+            "fixed inset-y-0 left-0 z-50 shrink-0 flex-col border-r bg-surface px-2.5 py-3 shadow-xl lg:static lg:z-auto lg:flex lg:bg-surface/60 lg:shadow-none lg:transition-[width]",
+            mobileNavOpen ? "flex w-[240px]" : "hidden",
+            collapsed || routeSection === "home" ? "lg:w-[60px]" : "lg:w-[216px]",
           )}
         >
           <div
             className={cn(
               "mb-4 flex items-center gap-2.5 px-1.5",
-              collapsed && "justify-center px-0",
+              navCollapsed && "justify-center px-0",
             )}
           >
             <Tooltip content="更换头像">
@@ -179,7 +221,7 @@ export function AppShell() {
                 if (file) uploadAvatar.mutate(file);
               }}
             />
-            {collapsed ? null : (
+            {navCollapsed ? null : (
               <div className="leading-tight">
                 <p className="text-[14px] font-semibold tracking-tight">AgentDesk</p>
                 <p className="text-[11px] text-subtle">个人 Agent 工作台</p>
@@ -192,11 +234,11 @@ export function AppShell() {
             onClick={() => setPaletteOpen(true)}
             className={cn(
               "mb-3 flex h-9 items-center gap-2 rounded-xl border bg-surface-2/60 px-2.5 text-[12.5px] text-subtle hover:text-muted",
-              collapsed && "justify-center px-0",
+              navCollapsed && "justify-center px-0",
             )}
           >
             <Search className="h-4 w-4" />
-            {collapsed ? null : (
+            {navCollapsed ? null : (
               <>
                 <span className="flex-1 text-left">搜索或跳转</span>
                 <Kbd>Ctrl K</Kbd>
@@ -204,31 +246,46 @@ export function AppShell() {
             )}
           </button>
 
-          <nav className="flex flex-col gap-0.5">
+          <nav className="flex flex-col gap-0.5" onClick={() => setMobileNavOpen(false)}>
             {NAV.map((n) => (
               <NavItem
                 key={n.to}
                 {...n}
-                collapsed={collapsed}
+                collapsed={navCollapsed}
                 alert={n.to === "/disk" && disk.data?.low === true}
               />
             ))}
           </nav>
 
           <div className="mt-auto flex flex-col gap-0.5">
-            {approvals.data?.length ? (
+            {pendingConversation ? (
+              <Link
+                to="/"
+                search={{ c: pendingConversation.conversationId }}
+                title="查看等待回复的对话"
+                aria-label="查看等待回复的对话"
+                className={cn(
+                  "mb-2 flex items-center gap-2 rounded-xl bg-surface-2 px-2.5 py-2 text-xs text-brand",
+                  navCollapsed && "justify-center px-0",
+                )}
+                onClick={() => setMobileNavOpen(false)}
+              >
+                <MessageSquare className="h-4 w-4 shrink-0" />
+                {navCollapsed ? null : <span>有对话等待你的回复</span>}
+              </Link>
+            ) : pendingActions ? (
               <div
                 className={cn(
                   "mb-2 flex items-center gap-2 rounded-xl bg-warning/10 px-2.5 py-2 text-[12px] text-warning",
-                  collapsed && "justify-center px-0",
+                  navCollapsed && "justify-center px-0",
                 )}
               >
                 <ShieldAlert className="h-4 w-4 shrink-0" />
-                {collapsed ? null : <span>{approvals.data.length} 个操作待审批</span>}
+                {navCollapsed ? null : <span>{pendingActions} 个操作待审批</span>}
               </div>
             ) : null}
-            <NavItem to="/settings" label="设置" icon={Settings} collapsed={collapsed} />
-            <div className={cn("mt-1 flex items-center gap-1 px-1", collapsed && "flex-col")}>
+            <NavItem to="/settings" label="设置" icon={Settings} collapsed={navCollapsed} />
+            <div className={cn("mt-1 flex items-center gap-1 px-1", navCollapsed && "flex-col")}>
               <Tooltip
                 content={
                   health.data
@@ -240,34 +297,44 @@ export function AppShell() {
                   <StatusDot
                     status={health.data ? "success" : health.isError ? "error" : "running"}
                   />
-                  {collapsed ? null : health.data ? `v${health.data.version}` : "连接中"}
+                  {navCollapsed ? null : health.data ? `v${health.data.version}` : "连接中"}
                 </span>
               </Tooltip>
               <button
                 type="button"
                 className="grid h-8 w-8 place-items-center rounded-lg text-muted hover:bg-surface-2 hover:text-fg"
-                onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                onClick={() =>
+                  lightWorkspace || routeSection === "home"
+                    ? toggleChatTheme()
+                    : setTheme(theme === "dark" ? "light" : "dark")
+                }
                 aria-label="切换主题"
               >
-                {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-              </button>
-              <button
-                type="button"
-                className="grid h-8 w-8 place-items-center rounded-lg text-muted hover:bg-surface-2 hover:text-fg"
-                onClick={toggleSidebar}
-                aria-label="折叠侧栏"
-              >
-                {collapsed ? (
-                  <PanelLeftOpen className="h-4 w-4" />
+                {lightWorkspace || (routeSection !== "home" && theme === "light") ? (
+                  <Moon className="h-4 w-4" />
                 ) : (
-                  <PanelLeftClose className="h-4 w-4" />
+                  <Sun className="h-4 w-4" />
                 )}
               </button>
+              {routeSection !== "home" ? (
+                <button
+                  type="button"
+                  className="grid h-8 w-8 place-items-center rounded-lg text-muted hover:bg-surface-2 hover:text-fg"
+                  onClick={toggleSidebar}
+                  aria-label="折叠侧栏"
+                >
+                  {navCollapsed ? (
+                    <PanelLeftOpen className="h-4 w-4" />
+                  ) : (
+                    <PanelLeftClose className="h-4 w-4" />
+                  )}
+                </button>
+              ) : null}
             </div>
           </div>
         </aside>
 
-        <main className="min-w-0 flex-1 overflow-hidden">
+        <main className="min-h-0 min-w-0 flex-1 overflow-hidden">
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
               key={routeSection}

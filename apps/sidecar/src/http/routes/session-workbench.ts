@@ -52,6 +52,13 @@ export function sessionWorkbenchRoutes(container: Container) {
     } catch (error) {
       contextError = errorMessage(error);
     }
+    const pending = approvals
+      .list("pending")
+      .filter(
+        (approval) =>
+          approvalIds.has(approval.id) ||
+          (task && (approval.payload as { taskId?: string } | null)?.taskId === task.id),
+      );
     const result: SessionWorkbench = {
       conversation,
       workspace: chat.conversationWorkspace(id) ?? null,
@@ -61,13 +68,8 @@ export function sessionWorkbenchRoutes(container: Container) {
       usedTools: [
         ...new Set(events.filter((event) => event.type === "tool_call").map((event) => event.name)),
       ],
-      pendingApprovals: approvals
-        .list("pending")
-        .filter(
-          (approval) =>
-            approvalIds.has(approval.id) ||
-            (task && (approval.payload as { taskId?: string } | null)?.taskId === task.id),
-        ).length,
+      pendingApprovals: pending.length,
+      pendingApprovalIds: pending.map((approval) => approval.id),
       activity:
         conversationActivity(id) ??
         (task && ["running", "queued"].includes(task.status) ? "running" : null),

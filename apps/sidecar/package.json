@@ -17,9 +17,11 @@
     "@agentdesk/workflow": "workspace:*",
     "@hono/node-server": "^1.19.5",
     "better-sqlite3": "^12.4.1",
+    "docx": "9.5.1",
     "drizzle-orm": "^0.44.6",
     "hono": "^4.10.1",
     "node-html-parser": "^7.0.1",
+    "pptxgenjs": "4.0.1",
     "undici": "^7.30.1",
     "zod": "^4.1.12"
   },

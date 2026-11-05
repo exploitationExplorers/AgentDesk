@@ -2,6 +2,7 @@ import {
   stream,
   validateToolArguments,
   type AssistantMessage,
+  type AssistantMessageEvent,
   type Message,
   type ToolCall,
   type ToolResultMessage,
@@ -86,10 +87,66 @@ function stringifyResult(value: unknown): string {
  */
 /** 单次模型请求上限，避免中转站不可达时 Bot 一直转圈 */
 const MODEL_CALL_TIMEOUT_MS = 90_000;
+const MODEL_IDLE_TIMEOUT_MS = 30_000;
 
-function withTimeout(signal: AbortSignal | undefined, ms: number): AbortSignal {
-  const timeout = AbortSignal.timeout(ms);
-  return signal ? AbortSignal.any([signal, timeout]) : timeout;
+/** SDK 可能忽略 AbortSignal，因此本层也必须结束等待，并隔离迟到的输出。 */
+async function readModelAttempt(
+  candidate: ResolvedModel,
+  context: Parameters<typeof stream>[1],
+  onEvent: (event: AssistantMessageEvent) => void,
+  onSlow: () => void,
+  remainingMs: number,
+  signal?: AbortSignal,
+): Promise<AssistantMessage> {
+  signal?.throwIfAborted();
+  const controller = new AbortController();
+  let stopped = false;
+  let rejectAbort!: (error: Error) => void;
+  const aborted = new Promise<never>((_, reject) => {
+    rejectAbort = reject;
+  });
+  const abort = (error: Error) => {
+    stopped = true;
+    controller.abort();
+    rejectAbort(error);
+  };
+  const onCancel = () => abort(new Error("已取消"));
+  signal?.addEventListener("abort", onCancel, { once: true });
+  const deadline = setTimeout(() => abort(new Error("模型响应超时")), remainingMs);
+  let idle: ReturnType<typeof setTimeout>;
+  let slow: ReturnType<typeof setTimeout>;
+  const refresh = () => {
+    clearTimeout(idle);
+    clearTimeout(slow);
+    idle = setTimeout(() => abort(new Error("模型响应超时")), MODEL_IDLE_TIMEOUT_MS);
+    slow = setTimeout(() => {
+      if (!stopped) onSlow();
+    }, 12_000);
+  };
+  refresh();
+  const consume = async () => {
+    const events = stream(candidate.model, context, {
+      apiKey: candidate.apiKey,
+      signal: controller.signal,
+      maxTokens: candidate.model.maxTokens,
+    });
+    for await (const event of events) {
+      if (stopped) throw new Error("模型响应超时");
+      refresh();
+      onEvent(event);
+    }
+    return events.result();
+  };
+  try {
+    return await Promise.race([consume(), aborted]);
+  } finally {
+    stopped = true;
+    clearTimeout(deadline);
+    clearTimeout(idle!);
+    clearTimeout(slow!);
+    signal?.removeEventListener("abort", onCancel);
+    controller.abort();
+  }
 }
 
 async function callModel(
@@ -110,7 +167,10 @@ async function callModel(
       }
     : context;
   let lastError = "unknown error";
-  for (const candidate of models) {
+  const deadline = Date.now() + MODEL_CALL_TIMEOUT_MS;
+  for (const [candidateIndex, candidate] of models.entries()) {
+    if (candidateIndex > 0)
+      emit({ type: "response_status", agent, message: "正在重新连接，继续处理…" });
     const contextWindow = candidate.model.contextWindow || DEFAULT_CONTEXT_WINDOW;
     const estimatedInputTokens =
       estimateMessageTokens(outboundContext.messages) +
@@ -122,35 +182,37 @@ async function callModel(
     }
     for (let attempt = 0; attempt <= TRANSIENT_RETRIES; attempt++) {
       let produced = false;
-      const callSignal = withTimeout(signal, MODEL_CALL_TIMEOUT_MS);
-      const events = stream(candidate.model, outboundContext, {
-        apiKey: candidate.apiKey,
-        signal: callSignal,
-        maxTokens: candidate.model.maxTokens,
-      });
+      const remainingMs = deadline - Date.now();
+      if (remainingMs <= 0) throw new Error("模型响应超时");
       // 占位符可能被流式输出切断在两个 delta 之间，缓冲到确认安全（不是未闭合的占位符前缀）再展示。
       const unmasker = mask ? createStreamUnmasker(mask) : null;
-      for await (const event of events) {
-        if (event.type === "text_delta") {
-          produced = true;
-          const delta = unmasker ? unmasker.push(event.delta) : event.delta;
-          if (delta) emit({ type: "text_delta", agent, delta });
-        } else if (event.type === "toolcall_start") {
-          produced = true;
-        }
-      }
-      if (unmasker) {
-        const rest = unmasker.flush();
-        if (rest) emit({ type: "text_delta", agent, delta: rest });
-      }
-      const message = await events.result();
-      if (message.stopReason === "aborted") {
+      let message: AssistantMessage | undefined;
+      try {
+        message = await readModelAttempt(
+          candidate,
+          outboundContext,
+          (event) => {
+            if (event.type === "text_delta") {
+              const delta = unmasker ? unmasker.push(event.delta) : event.delta;
+              if (delta) {
+                produced ||= delta.trim().length > 0;
+                emit({ type: "text_delta", agent, delta });
+              }
+            }
+          },
+          () => emit({ type: "response_status", agent, message: "响应较慢，仍在等待回复…" }),
+          remainingMs,
+          signal,
+        );
+      } catch (error) {
         if (signal?.aborted) throw new Error("已取消");
-        lastError =
-          "请求超时：请检查 设置 → 通用 → HTTP 代理（Claude Code 能通时通常需要填写 Clash 等本地代理，如 http://127.0.0.1:7890）";
-        break;
+        lastError = error instanceof Error ? error.message : String(error);
       }
-      if (message.stopReason !== "error") {
+      if (message && message.stopReason !== "error" && message.stopReason !== "aborted") {
+        if (unmasker) {
+          const rest = unmasker.flush();
+          if (rest) emit({ type: "text_delta", agent, delta: rest });
+        }
         // 用量来自供应商响应；估算仅用于预算，不作为实际计费数据。
         emit({
           type: "model_usage",
@@ -173,10 +235,15 @@ async function callModel(
           providerId: candidate.providerId,
         };
       }
-      lastError = message.errorMessage ?? lastError;
+      if (signal?.aborted) throw new Error("已取消");
+      if (message)
+        lastError =
+          message.stopReason === "aborted" ? "模型响应超时" : (message.errorMessage ?? lastError);
       if (produced) throw new Error(`模型调用失败：${lastError}`);
+      if (Date.now() >= deadline) throw new Error("模型响应超时");
       if (!isTransient(lastError) || attempt === TRANSIENT_RETRIES) break;
-      await sleep(1000 * 2 ** attempt, signal);
+      emit({ type: "response_status", agent, message: "响应中断，正在自动重试…" });
+      await sleep(Math.min(1000 * 2 ** attempt, deadline - Date.now()), signal);
     }
   }
   throw new Error(`模型调用失败：${lastError}`);
@@ -187,22 +254,23 @@ const MAX_CONCURRENT_TOOLS = 8;
 
 /** 中转站常见的瞬时错误：过载、限流、网关超时等，值得原样重试 */
 export function isTransient(message: string): boolean {
-  return /overload|rate.?limit|too many requests|\b(429|500|502|503|504|529)\b|timeout|timed out|ECONNRESET|socket hang up|try again|retry your request|server_error|fetch failed/i.test(
+  return /overload|rate.?limit|too many requests|\b(429|500|502|503|504|529)\b|timeout|timed out|超时|ECONNRESET|socket hang up|try again|retry your request|server_error|fetch failed/i.test(
     message,
   );
 }
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  signal?.throwIfAborted();
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(resolve, ms);
-    signal?.addEventListener(
-      "abort",
-      () => {
-        clearTimeout(timer);
-        reject(new Error("已取消"));
-      },
-      { once: true },
-    );
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new Error("已取消"));
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
   });
 }
 
@@ -228,6 +296,7 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentRunResult
 
   for (let turn = 0; turn < maxTurns; turn++) {
     signal?.throwIfAborted();
+    emit({ type: "response_start", agent: definition.name });
     const { message, providerId: used } = await callModel(
       models,
       { systemPrompt, messages, tools: piTools.length > 0 ? piTools : undefined },

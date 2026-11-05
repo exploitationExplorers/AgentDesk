@@ -11,6 +11,8 @@ interface UiState {
   setChatPrefill: (prefill: UiState["chatPrefill"]) => void;
   theme: Theme;
   setTheme: (theme: Theme) => void;
+  chatLight: boolean;
+  toggleChatTheme: () => void;
   sidebarCollapsed: boolean;
   toggleSidebar: () => void;
   /** 内嵌浏览器实况面板 */
@@ -35,6 +37,8 @@ export const useUi = create<UiState>()(
       setChatPrefill: (chatPrefill) => set({ chatPrefill }),
       theme: "dark",
       setTheme: (theme) => set({ theme }),
+      chatLight: true,
+      toggleChatTheme: () => set((state) => ({ chatLight: !state.chatLight })),
       sidebarCollapsed: false,
       toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
       browserPanelOpen: false,
@@ -50,7 +54,11 @@ export const useUi = create<UiState>()(
     }),
     {
       name: "agentdesk-ui",
-      partialize: (s) => ({ theme: s.theme, sidebarCollapsed: s.sidebarCollapsed }),
+      partialize: (s) => ({
+        theme: s.theme,
+        chatLight: s.chatLight,
+        sidebarCollapsed: s.sidebarCollapsed,
+      }),
     },
   ),
 );

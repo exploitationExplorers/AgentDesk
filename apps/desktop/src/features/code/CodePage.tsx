@@ -24,6 +24,7 @@ import { Button, Tabs, TabsContent, TabsList, TabsTrigger, cn } from "@agentdesk
 import { AppMark } from "../../components/AppMark";
 import { Markdown } from "../../components/Markdown";
 import { TOOL_LABELS } from "../../lib/agents";
+import { approvalDisplay } from "../../lib/approval-display";
 import { isCliWorkbench } from "../../lib/tauri";
 import { codeRoute } from "../../router";
 import { codeApi, type CodeSource } from "./api";
@@ -72,6 +73,7 @@ function ApprovalCard({
   refresh: () => void;
 }) {
   const [answer, setAnswer] = useState("");
+  const display = approvalDisplay(approval);
   const action = useMutation({
     mutationFn: (approved: boolean) =>
       approval.kind === "question" && approved
@@ -80,14 +82,22 @@ function ApprovalCard({
     onSuccess: refresh,
   });
   return (
-    <div className="rounded-xl border border-warning/30 bg-warning/5 p-4">
+    <div className="rounded-md border border-warning/30 bg-warning/5 p-4">
       <p className="flex items-center gap-2 text-sm font-medium">
         <ShieldCheck className="h-4 w-4 text-warning" />
-        {approval.title}
+        {approval.kind === "question" ? "需要你补充信息" : `需要授权：${display.title}`}
       </p>
-      <pre className="my-3 max-h-40 overflow-auto whitespace-pre-wrap font-mono text-xs text-muted">
-        {approval.detail}
-      </pre>
+      <p className="my-3 whitespace-pre-wrap text-xs leading-5 text-muted">
+        {approval.kind === "question" ? approval.detail : display.detail}
+      </p>
+      {display.technicalDetail ? (
+        <details className="mb-3 text-xs text-subtle">
+          <summary className="cursor-pointer hover:text-fg">查看命令与工作目录</summary>
+          <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-md bg-surface-2 p-2 font-mono text-[11px]">
+            {display.technicalDetail}
+          </pre>
+        </details>
+      ) : null}
       {approval.kind === "question" && (
         <textarea
           aria-label="补充回答"

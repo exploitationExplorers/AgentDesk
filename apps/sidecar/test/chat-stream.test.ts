@@ -61,7 +61,8 @@ for (const ending of ["complete", "disconnect", "error"] as const) {
       expect(signal.aborted).toBe(false);
       if (ending === "disconnect") {
         await reader.cancel();
-        expect(signal.aborted).toBe(true);
+        expect(signal.aborted).toBe(false);
+        finish();
       } else {
         if (ending === "error") fail(new Error("chat failed"));
         else finish();

@@ -4,6 +4,9 @@ import {
   AppError,
   ChatRequest,
   ErrorCode,
+  runFailureMessage,
+  emptyChatProgress,
+  reduceChatProgress,
   type AgentStreamEvent,
   type ChatMessage,
   type Conversation,
@@ -22,12 +25,24 @@ import type { MemoryService } from "./memory";
 import type { ProjectInstructionService } from "./project-instructions";
 import { createDelegateHandler } from "./task-executor";
 import type { TaskService } from "./tasks";
-import { failedRunMessage, readRunToolHistory, RunToolHistory } from "./run-tool-history";
+import { readRunToolHistory, RunToolHistory } from "./run-tool-history";
 
 export class ChatService {
   readonly conversations: ConversationService;
   private readonly conversationStore: ConversationStore;
   private contextService?: ConversationContextService;
+  private readonly active = new Map<string, { controller: AbortController; done: Promise<void> }>();
+
+  stop(conversationId: string): void {
+    this.getConversation(conversationId);
+    this.active.get(conversationId)?.controller.abort();
+  }
+
+  async dispose(): Promise<void> {
+    const active = [...this.active.values()];
+    active.forEach(({ controller }) => controller.abort());
+    await Promise.allSettled(active.map(({ done }) => done));
+  }
 
   setContextService(service: ConversationContextService): void {
     this.contextService = service;
@@ -63,6 +78,7 @@ export class ChatService {
 
   deleteConversation(id: string): void {
     this.tasks.assertConversationAvailable(id);
+    this.conversationStore.deleteProgress(id);
     this.contextService?.forget(id);
     this.db.delete(messages).where(eq(messages.conversationId, id)).run();
     this.db
@@ -197,8 +213,13 @@ export class ChatService {
     }
     this.tasks.assertConversationAvailable(conversationId);
     const release = acquireConversation(conversationId, "running");
+    const controller = new AbortController();
+    let finish!: () => void;
+    const done = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    this.active.set(conversationId, { controller, done });
     try {
-      const controller = new AbortController();
       signal = AbortSignal.any([signal, controller.signal]);
       const shadow = this.shadowTaskFor(
         conversationId,
@@ -219,7 +240,9 @@ export class ChatService {
       });
 
       const scope = `chat:${conversationId}`;
+      let progress = emptyChatProgress();
       const traced = (event: AgentStreamEvent) => {
+        progress = reduceChatProgress(progress, event);
         if (event.type !== "text_delta") {
           this.db
             .insert(traces)
@@ -251,7 +274,7 @@ export class ChatService {
       const requestAnswer = (request: ApprovalRequest): Promise<string> => {
         let approvalId = "";
         return this.approvals
-          .request({ kind: "question", ...request }, signal, (approval) => {
+          .request({ kind: "question", ...request, conversationId }, signal, (approval) => {
             approvalId = approval.id;
             forwardToShadow({
               type: "approval_required",
@@ -303,16 +326,19 @@ export class ChatService {
           signal,
           emit: forwardToShadow,
           requestApproval: (request) =>
-            this.approvals.request({ kind: "tool", ...request }, signal, (approval) =>
-              forwardToShadow({
-                type: "approval_required",
-                approvalId: approval.id,
-                title: approval.title,
-                detail: approval.detail,
-                risk: approval.risk,
-                payload: approval.payload,
-                reason: approval.reason,
-              }),
+            this.approvals.request(
+              { kind: "tool", ...request, conversationId },
+              signal,
+              (approval) =>
+                forwardToShadow({
+                  type: "approval_required",
+                  approvalId: approval.id,
+                  title: approval.title,
+                  detail: approval.detail,
+                  risk: approval.risk,
+                  payload: approval.payload,
+                  reason: approval.reason,
+                }),
             ),
           requestAnswer,
           autoApprove: this.autoApprove,
@@ -340,6 +366,7 @@ export class ChatService {
           content: text,
           agent: result.agent,
           toolCalls: result.toolCalls,
+          display: progress.blocks,
           createdAt: nowIso(),
         });
         try {
@@ -376,7 +403,11 @@ export class ChatService {
           id: assistantId,
           conversationId,
           role: "assistant",
-          content: failedRunMessage(message, toolCalls),
+          content: runFailureMessage(message, signal.aborted),
+          display: [
+            ...progress.blocks,
+            { kind: "text", text: runFailureMessage(message, signal.aborted) },
+          ],
           agent: null,
           toolCalls,
           createdAt: nowIso(),
@@ -402,6 +433,8 @@ export class ChatService {
       traced({ type: "done", messageId: assistantId });
       return conversationId;
     } finally {
+      this.active.delete(conversationId);
+      finish();
       release();
     }
   }

@@ -32,7 +32,7 @@ function keyOf(artifact: Artifact): string {
 }
 
 /** 沙箱内仅展示静态 HTML，去除可导航元素以及外部资源。 */
-function staticHtml(content: string): string {
+export function staticHtml(content: string): string {
   const document = new DOMParser().parseFromString(content, "text/html");
   for (const node of document.querySelectorAll(
     "script, iframe, frame, frameset, object, embed, form, meta, base, link",
@@ -240,7 +240,7 @@ export function ArtifactWorkspace({
   );
 }
 
-function Preview({ view, raw = false }: { view: ArtifactContent; raw?: boolean }) {
+export function ArtifactPreview({ view, raw = false }: { view: ArtifactContent; raw?: boolean }) {
   const html = useMemo(
     () => (view.mimeType === "text/html" ? staticHtml(view.content) : ""),
     [view.mimeType, view.content],
@@ -277,6 +277,8 @@ function Preview({ view, raw = false }: { view: ArtifactContent; raw?: boolean }
     </pre>
   );
 }
+
+const Preview = ArtifactPreview;
 
 function ArtifactEditor({
   taskId,

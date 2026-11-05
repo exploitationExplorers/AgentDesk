@@ -60,7 +60,3 @@ export function summarizeToolCalls(records: ToolCallRecord[]): string {
     })
     .join("；");
 }
-
-export function failedRunMessage(error: string, calls: ToolCallRecord[]): string {
-  return `出错了：${error}${calls.length ? `\n\n本轮已记录的操作（续跑时跳过已确认完成的操作）：${summarizeToolCalls(calls)}` : ""}`;
-}

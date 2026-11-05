@@ -108,6 +108,7 @@ export interface RunOutcome {
 export type RunExecutor = (run: Run, task: Task, signal: AbortSignal) => Promise<RunOutcome>;
 
 export interface TaskServiceOptions {
+  artifactRoot?: string;
   maxConcurrentRuns?: number;
   executor?: RunExecutor;
 }
@@ -122,6 +123,7 @@ const placeholderExecutor: RunExecutor = async (run) => ({
 
 /** Task/Run/Artifact 的裸持久化服务：CRUD + 状态机校验 + 幂等 Run + 产物版本管理 + 并发队列调度。 */
 export class TaskService {
+  private readonly artifactRoot?: string;
   private readonly tasks: Collection<Task>;
   private readonly maxConcurrentRuns: number;
   private readonly executor: RunExecutor;
@@ -135,6 +137,7 @@ export class TaskService {
     options: TaskServiceOptions = {},
   ) {
     this.tasks = new Collection<Task>(db, "tasks");
+    this.artifactRoot = options.artifactRoot;
     this.maxConcurrentRuns = options.maxConcurrentRuns ?? DEFAULT_MAX_CONCURRENT_RUNS;
     this.executor = options.executor ?? placeholderExecutor;
     this.recoverAfterRestart();
@@ -581,6 +584,13 @@ export class TaskService {
       createdAt: nowIso(),
     };
     this.db.insert(artifacts).values(row).run();
+    if (input.runId)
+      this.appendEvent({
+        taskId: input.taskId,
+        runId: input.runId,
+        parentRunId: this.getRun(input.runId)?.parentRunId,
+        event: { type: "artifact_ready", artifactId: row.id, title: row.title },
+      });
     return this.toArtifact(row);
   }
 
@@ -604,7 +614,8 @@ export class TaskService {
     const run = artifact.runId ? this.getRun(artifact.runId) : undefined;
     if (run && run.taskId !== taskId)
       throw new AppError(ErrorCode.BadRequest, "成果运行不属于当前任务");
-    return artifactContent(artifact, run?.input.workspace);
+    const generated = (artifact.metadata as { storage?: string } | null)?.storage === "generated";
+    return artifactContent(artifact, generated ? this.artifactRoot : run?.input.workspace);
   }
 
   async reviseArtifact(taskId: string, id: string, input: ArtifactVersionInput): Promise<Artifact> {

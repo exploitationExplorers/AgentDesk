@@ -26,6 +26,13 @@ export const AGENT_META: Record<
 };
 
 export const TOOL_LABELS: Record<string, string> = {
+  "presentations.create": "制作演示文稿",
+  "presentations.start": "准备演示文稿",
+  "presentations.append": "撰写演示页面",
+  "presentations.finish": "保存演示文稿",
+  "documents.start": "准备文档",
+  "documents.append": "撰写文档章节",
+  "documents.finish": "保存 Word 文档",
   "agents.delegate": "委派 Agent",
   "projects.list": "查看项目列表",
   "projects.status": "读取项目状态",
@@ -46,6 +53,7 @@ export const TOOL_LABELS: Record<string, string> = {
   "workflow.list": "查看工作流",
   "workflow.run": "运行工作流",
   "shell.run": "执行命令",
+  "environment.inspect": "检查运行环境",
   "skills.load": "加载技能",
   "browser.open": "打开浏览器",
   "browser.act": "浏览器操作",

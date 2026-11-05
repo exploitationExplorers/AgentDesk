@@ -10,6 +10,7 @@ export interface SessionWorkbench {
   artifacts: Artifact[];
   usedTools: string[];
   pendingApprovals: number;
+  pendingApprovalIds?: string[];
   activity: "running" | "compacting" | null;
   context: ConversationContextStatus | null;
   contextError: string | null;

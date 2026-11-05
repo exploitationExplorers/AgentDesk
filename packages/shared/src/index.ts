@@ -16,3 +16,5 @@ export * from "./contracts/task";
 export * from "./contracts/code";
 export * from "./contracts/reach";
 export * from "./task-session";
+export * from "./chat-display";
+export * from "./chat-progress";

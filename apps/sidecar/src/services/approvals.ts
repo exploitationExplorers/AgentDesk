@@ -11,6 +11,7 @@ import { GLOBAL_CHANNEL, type EventHub, type GlobalEvent } from "../events";
 import { newId, nowIso } from "../util";
 
 export interface ApprovalDraft {
+  conversationId?: string;
   kind: Approval["kind"];
   title: string;
   detail: string;

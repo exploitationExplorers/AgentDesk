@@ -4,7 +4,7 @@ test.describe("AgentDesk", () => {
   test("首页展示 Bot 欢迎区并能在各模块间导航", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByRole("heading", { name: /今天想做什么/ })).toBeVisible();
-    await expect(page.getByPlaceholder(/问我任何事/)).toBeFocused();
+    await expect(page.getByRole("textbox", { name: "发送消息" })).toBeFocused();
     await expect(page.getByText("还没有配置模型")).toBeVisible();
 
     for (const [nav, heading] of [
@@ -20,7 +20,7 @@ test.describe("AgentDesk", () => {
 
   test("未配置模型时对话给出明确提示并保存会话", async ({ page }) => {
     await page.goto("/");
-    const composer = page.getByPlaceholder(/问我任何事/);
+    const composer = page.getByRole("textbox", { name: "发送消息" });
     await composer.fill("你好");
     await composer.press("Enter");
     await expect(page.getByText(/没有可用的模型/)).toBeVisible();

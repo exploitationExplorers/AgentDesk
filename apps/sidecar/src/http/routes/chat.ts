@@ -42,7 +42,12 @@ export function chatRoutes({ chat, projectInstructions, providers }: Container) 
     return c.body(null, 204);
   });
 
-  /** POST + SSE：一轮对话的全部 Agent 事件流式返回；客户端断开即取消。 */
+  app.post("/conversations/:id/stop", (c) => {
+    chat.stop(c.req.param("id"));
+    return c.body(null, 204);
+  });
+
+  /** 页面连接只是观察者；任务只在用户明确停止或服务退出时取消。 */
   app.post("/chat", async (c) => {
     const body = ChatRequest.parse(await c.req.json());
     // 在提交 SSE 响应头之前校验工作区，输入错误保持普通 HTTP 400 响应。
@@ -52,25 +57,30 @@ export function chatRoutes({ chat, projectInstructions, providers }: Container) 
     if (body.modelSelection) providers.validateSelection(body.modelSelection);
     return streamSSE(c, async (stream) => {
       const controller = new AbortController();
-      stream.onAbort(() => controller.abort());
+      let disconnected = false;
+      const disconnect = () => {
+        disconnected = true;
+        clearInterval(heartbeat);
+      };
       let pending = Promise.resolve();
       const enqueue = (write: () => Promise<unknown>) => {
-        if (controller.signal.aborted) return;
+        if (disconnected) return;
         pending = pending
           .then(async () => {
-            if (!controller.signal.aborted) await write();
+            if (!disconnected) await write();
           })
-          .catch((error: unknown) => controller.abort(error));
+          .catch(disconnect);
       };
       const emit = (event: AgentStreamEvent) => {
         enqueue(() => stream.writeSSE({ data: JSON.stringify(event) }));
       };
       // 模型思考、工具执行和审批等待期间也保持连接；注释不进入业务事件或会话记录。
       const heartbeat = setInterval(() => enqueue(() => stream.write(": keep-alive\n\n")), 15_000);
+      stream.onAbort(disconnect);
       try {
         await chat.send(body, emit, controller.signal);
       } catch (error) {
-        if (!controller.signal.aborted) emit({ type: "error", message: errorMessage(error) });
+        if (!disconnected) emit({ type: "error", message: errorMessage(error) });
       } finally {
         clearInterval(heartbeat);
         await pending;

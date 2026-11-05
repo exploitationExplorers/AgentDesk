@@ -37,6 +37,11 @@ export function ConversationList({ activeId }: { activeId?: string }) {
   const [groupEditor, setGroupEditor] = useState<ConversationGroup | "new" | null>(null);
   const groups = useQuery({ queryKey: ["conversation-groups"], queryFn: conversationsApi.groups });
   const projects = useQuery({ queryKey: ["projects"], queryFn: api.projects });
+  const approvals = useQuery({
+    queryKey: ["approvals", "pending"],
+    queryFn: () => api.approvals("pending"),
+  });
+  const waiting = new Set(approvals.data?.map((approval) => approval.conversationId));
   const conversations = useQuery({
     queryKey: ["conversations", { search: query, archived, groupId }],
     queryFn: () =>
@@ -220,6 +225,9 @@ export function ConversationList({ activeId }: { activeId?: string }) {
                     <span className="flex items-center gap-1.5 text-[12.5px]">
                       {conversation.pinned ? <Pin className="h-3 w-3 shrink-0 text-brand" /> : null}
                       <span className="truncate">{conversation.title}</span>
+                      {waiting.has(conversation.id) ? (
+                        <span className="ml-auto shrink-0 text-[10px] text-brand">待回复</span>
+                      ) : null}
                     </span>
                     <span className="mt-0.5 block truncate text-[11px] text-subtle">
                       {projects.data?.find((project) => project.id === conversation.projectId)
