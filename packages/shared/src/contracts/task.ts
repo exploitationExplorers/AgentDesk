@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { AgentStreamEvent } from "./chat";
 import { AgentName } from "./provider";
+import { AutomationStatus, type AutoloopPublicEvent } from "./autoloop";
 
 export const TaskStatus = z.enum([
   "pending",
@@ -21,6 +22,8 @@ export const Task = z.object({
   title: z.string(),
   goal: z.string(),
   purpose: z.enum(["standard", "reference_analysis"]).optional(),
+  automationId: z.string().optional(),
+  automationStatus: AutomationStatus.optional(),
   agent: AgentName.nullable(),
   conversationId: z.string(),
   requiresPlanApproval: z.boolean(),
@@ -51,6 +54,7 @@ export const Run = z.object({
   status: RunStatus,
   trigger: RunTrigger,
   idempotencyKey: z.string().nullable(),
+  executionOwner: z.enum(["local", "autoloop"]).optional(),
   input: z.object({
     userMessage: z.string(),
     context: z.string().optional(),
@@ -108,6 +112,7 @@ export type ArtifactContent = z.infer<typeof ArtifactContent>;
 /** Task/Run 专用的内部事件流，复用 AgentStreamEvent 的全部 variant 并追加任务级事件。 */
 export type TaskStreamEvent =
   | AgentStreamEvent
+  | AutoloopPublicEvent
   | {
       type: "run_started";
       runId: string;

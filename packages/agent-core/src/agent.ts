@@ -13,11 +13,21 @@ import { DEFAULT_CONTEXT_WINDOW } from "./llm";
 import { estimateMessageTokens, estimateTokens, inputBudget } from "./context";
 import { createStreamUnmasker, maskJson, maskText, unmaskJson, type MaskStore } from "./masking";
 import {
+  DurableCheckpointError,
+  DurableExecutionUnknownError,
+  DurableSuspensionSignal,
+  runDurableAgent,
+  type AgentExecutionOutcome,
+  type DurableAgentOptions,
+  type DurableToolExecution,
+} from "./durable";
+import {
   fromWireName,
   toPiTool,
   type AnyAgentTool,
   type ApprovalRequest,
   type AutoApprove,
+  type DurableToolState,
   type RecordArtifactInput,
   type RecordedArtifact,
   type ToolContext,
@@ -48,14 +58,16 @@ export interface RunAgentOptions {
   /** 可选：发给模型前脱敏、拿到回复后换回真实值。同一次对话/任务的多轮、多委派 Agent 共用同一个 store。 */
   mask?: MaskStore;
   signal?: AbortSignal;
+  durable?: DurableAgentOptions;
+  durableState?: DurableToolState;
 }
 
-export interface AgentRunResult {
+export type AgentRunResult = AgentExecutionOutcome & {
   text: string;
   toolCalls: ToolCallRecord[];
   messages: Message[];
   providerId: string | null;
-}
+};
 
 export class NoModelError extends Error {
   constructor(agent: AgentName) {
@@ -276,7 +288,7 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 
 export async function runAgent(options: RunAgentOptions): Promise<AgentRunResult> {
   const { definition, tools, models, emit, signal } = options;
-  if (models.length === 0) throw new NoModelError(definition.name);
+  if (models.length === 0 && !options.durable) throw new NoModelError(definition.name);
 
   const messages: Message[] = [...options.messages];
   const toolCalls: ToolCallRecord[] = [];
@@ -287,6 +299,27 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentRunResult
   const maxTurns = definition.maxTurns ?? 12;
   if (!Number.isSafeInteger(maxTurns) || maxTurns < 1)
     throw new Error("Agent 的 maxTurns 必须是正整数");
+  if (options.durable) {
+    return runDurableAgent(options, {
+      model: (history) => {
+        if (models.length === 0) throw new NoModelError(definition.name);
+        return callModel(
+          models,
+          {
+            systemPrompt,
+            messages: history,
+            tools: piTools.length > 0 ? piTools : undefined,
+          },
+          definition.name,
+          emit,
+          signal,
+          options.mask,
+        );
+      },
+      tool: (call, toolOptions, access, execution) =>
+        executeToolCall(call, tools, piTools, toolOptions, definition.name, access, execution),
+    });
+  }
   let finalText = "";
   let providerId: string | null = null;
 
@@ -335,7 +368,7 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentRunResult
   }
 
   emit({ type: "agent_end", agent: definition.name });
-  return { text: finalText, toolCalls, messages, providerId };
+  return { status: "completed", text: finalText, toolCalls, messages, providerId };
 }
 
 /** 连续只读调用可并发，写入及未知工具形成屏障，不允许后面的读取越过写入。 */
@@ -372,6 +405,7 @@ async function executeToolCall(
   options: RunAgentOptions,
   agent: AgentName,
   access: ToolAccessState,
+  execution?: DurableToolExecution,
 ): Promise<{ record: ToolCallRecord; result: ToolResultMessage }> {
   const name = fromWireName(call.name);
   const tool = tools.find((t) => t.name === name);
@@ -379,6 +413,7 @@ async function executeToolCall(
 
   let output: unknown;
   let isError = false;
+  let executionStarted = false;
   try {
     options.signal?.throwIfAborted();
     if (!tool) throw new Error(`未知工具：${name}`);
@@ -432,19 +467,31 @@ async function executeToolCall(
       requestApproval: options.requestApproval,
       requestAnswer: options.requestAnswer,
       recordArtifact: options.recordArtifact,
+      durableState: options.durableState ? protectedDurableState(options.durableState) : undefined,
     };
     options.signal?.throwIfAborted();
+    await execution?.beforeExecute();
+    executionStarted = true;
     output = await tool.execute(args, ctx);
     const widen = tool.restrictsToolsTo?.(output);
     if (widen && widen.length > 0) {
       access.allowed = new Set([...(access.allowed ?? []), ...widen]);
     }
   } catch (error) {
+    if (
+      error instanceof DurableSuspensionSignal ||
+      error instanceof DurableCheckpointError ||
+      error instanceof DurableExecutionUnknownError
+    )
+      throw error;
+    options.signal?.throwIfAborted();
+    if (execution && executionStarted && !tool?.interactionOnly) await execution.onExecutionError();
     isError = true;
     output = error instanceof Error ? error.message : String(error);
   }
 
-  options.emit({ type: "tool_result", agent, id: call.id, result: output, isError });
+  if (!execution)
+    options.emit({ type: "tool_result", agent, id: call.id, result: output, isError });
   return {
     record: { id: call.id, name, args: call.arguments, result: output, isError, agent },
     result: {
@@ -455,5 +502,20 @@ async function executeToolCall(
       isError,
       timestamp: Date.now(),
     },
+  };
+}
+
+function protectedDurableState(state: DurableToolState): DurableToolState {
+  const invoke = <T>(callback: () => T): T => {
+    try {
+      return callback();
+    } catch (cause) {
+      throw new DurableCheckpointError("无法访问任务的持久化草稿，已停止执行", { cause });
+    }
+  };
+  return {
+    get: (key) => invoke(() => state.get(key)),
+    set: (key, value) => invoke(() => state.set(key, value)),
+    delete: (key) => invoke(() => state.delete(key)),
   };
 }

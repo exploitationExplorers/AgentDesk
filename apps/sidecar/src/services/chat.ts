@@ -77,6 +77,8 @@ export class ChatService {
   }
 
   deleteConversation(id: string): void {
+    if (this.tasks.findByConversation(id)?.automationId)
+      throw new AppError(ErrorCode.Conflict, "自动化会话仍被任务引用，暂不能单独删除");
     this.tasks.assertConversationAvailable(id);
     this.conversationStore.deleteProgress(id);
     this.contextService?.forget(id);
@@ -93,6 +95,8 @@ export class ChatService {
   }
 
   patchConversation(id: string, patch: ConversationPatch): Conversation {
+    if (patch.projectId !== undefined && this.tasks.findByConversation(id)?.automationId)
+      throw new AppError(ErrorCode.Conflict, "自动化工作区由创建时的绑定决定，不能在会话中更换");
     if (patch.projectId !== undefined && conversationActivity(id)) {
       throw new AppError(ErrorCode.Conflict, "请等待当前会话处理完成后再更换关联项目");
     }
@@ -182,6 +186,8 @@ export class ChatService {
     signal: AbortSignal,
   ): Promise<string> {
     const req = ChatRequest.parse(input);
+    if (req.conversationId && this.tasks.findByConversation(req.conversationId)?.automationId)
+      throw new AppError(ErrorCode.Conflict, "请通过自动化会话中的回答或继续修改操作提交请求");
     const workspace = await this.projectInstructions.validateWorkspace(
       this.conversationWorkspace(req.conversationId, req.workspace),
     );

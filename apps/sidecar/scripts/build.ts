@@ -5,11 +5,23 @@
  *   dist/node_modules/...  无法 bundle 的原生/大体积依赖
  *   dist/skills/           内置 Skills
  */
-import { cpSync, existsSync, mkdirSync, realpathSync, rmSync, statSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { createHash } from "node:crypto";
+import { copyAutoloopRuntime } from "../../../packages/autoloop-runtime/scripts/build.mjs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
+import type SqliteDatabase from "better-sqlite3";
 import { copyPublicSkills } from "./public-skills";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -102,6 +114,46 @@ await build({
   logLevel: "info",
 });
 cpSync(process.execPath, join(dist, process.platform === "win32" ? "node.exe" : "node"));
+const hubRuntime = copyAutoloopRuntime(join(dist, "autoloop"));
+const Sqlite = createRequire(import.meta.url)("better-sqlite3") as typeof SqliteDatabase;
+const runtimeProbe = new Sqlite(":memory:");
+let sqliteVersion: string;
+try {
+  sqliteVersion = (
+    runtimeProbe.prepare("SELECT sqlite_version() AS version").get() as { version: string }
+  ).version;
+} finally {
+  runtimeProbe.close();
+}
+writeFileSync(
+  join(dist, "runtime-manifest.json"),
+  JSON.stringify(
+    {
+      schemaVersion: 1,
+      sidecar: {
+        nodeVersion: process.versions.node,
+        modules: process.versions.modules,
+        sqliteVersion,
+        platform: process.platform,
+        arch: process.arch,
+        nodeSha256: createHash("sha256").update(readFileSync(process.execPath)).digest("hex"),
+        betterSqlite3: JSON.parse(
+          readFileSync(join(dist, "node_modules/better-sqlite3/package.json"), "utf8"),
+        ).version,
+        betterSqlite3Sha256: createHash("sha256")
+          .update(
+            readFileSync(
+              join(dist, "node_modules/better-sqlite3/build/Release/better_sqlite3.node"),
+            ),
+          )
+          .digest("hex"),
+      },
+      autoloop: hubRuntime,
+    },
+    null,
+    2,
+  ) + "\n",
+);
 
 const size = (p: string) => `${(statSync(p).size / 1024 / 1024).toFixed(1)} MB`;
 console.info(

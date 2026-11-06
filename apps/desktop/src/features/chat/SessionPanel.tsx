@@ -10,6 +10,7 @@ import type {
 } from "@agentdesk/shared";
 import { http } from "../../lib/http";
 import { ArtifactWorkspace } from "../code/ArtifactWorkspace";
+import { automationStatusLabel } from "../automations/status";
 
 const statuses: Record<TaskStatus, string> = {
   pending: "待开始",
@@ -96,7 +97,12 @@ export function SessionPanel({
       </section>
       {data?.task && (
         <section className="space-y-2">
-          <h3 className="font-medium">当前任务 · {statuses[data.task.status]}</h3>
+          <h3 className="font-medium">
+            当前任务 ·{" "}
+            {data.task.automationStatus
+              ? automationStatusLabel(data.task.automationStatus)
+              : statuses[data.task.status]}
+          </h3>
           <p className="text-muted">{data.task.title}</p>
           <p>
             {data.runs.filter((run) => run.status === "succeeded").length} / {data.runs.length}{" "}

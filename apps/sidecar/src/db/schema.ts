@@ -109,6 +109,9 @@ export const runs = sqliteTable(
       enum: ["create", "continue", "followup", "resume", "delegate"],
     }).notNull(),
     idempotencyKey: text("idempotency_key"),
+    executionOwner: text("execution_owner", { enum: ["local", "autoloop"] })
+      .notNull()
+      .default("local"),
     input: text("input", { mode: "json" }).notNull(),
     resultText: text("result_text"),
     resultError: text("result_error"),
@@ -406,6 +409,7 @@ CREATE TABLE IF NOT EXISTS runs (
   status TEXT NOT NULL,
   trigger TEXT NOT NULL,
   idempotency_key TEXT,
+  execution_owner TEXT NOT NULL DEFAULT 'local',
   input TEXT NOT NULL,
   result_text TEXT,
   result_error TEXT,

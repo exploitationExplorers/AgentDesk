@@ -5,3 +5,5 @@ pnpm-lock.yaml
 apps/desktop/src-tauri/target
 apps/desktop/src-tauri/gen
 .turbo
+packages/autoloop-runtime/vendor
+crates/**/target

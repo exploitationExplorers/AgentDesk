@@ -13,6 +13,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "zod": "^4.1.12",
     "@agentdesk/shared": "workspace:*",
     "@octokit/rest": "^22.0.0",
     "node-html-parser": "^7.0.1",

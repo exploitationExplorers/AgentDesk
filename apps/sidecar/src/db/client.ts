@@ -16,6 +16,9 @@ export function openDatabase(dataDir: string | ":memory:"): DbHandle {
   raw.pragma("journal_mode = WAL");
   raw.pragma("foreign_keys = ON");
   raw.exec(schema.BOOTSTRAP_SQL);
+  const runColumns = raw.prepare("PRAGMA table_info(runs)").all() as Array<{ name: string }>;
+  if (!runColumns.some((column) => column.name === "execution_owner"))
+    raw.exec("ALTER TABLE runs ADD COLUMN execution_owner TEXT NOT NULL DEFAULT 'local'");
   return { db: drizzle(raw, { schema }), raw, close: () => raw.close() };
 }
 

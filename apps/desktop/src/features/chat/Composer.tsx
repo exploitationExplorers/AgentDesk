@@ -47,7 +47,7 @@ export function Composer({
   onStop: () => void;
   streaming: boolean;
   agent: AgentName;
-  onAgentChange: (agent: AgentName) => void;
+  onAgentChange?: (agent: AgentName) => void;
   initial?: string;
   autoFocus?: boolean;
   large?: boolean;
@@ -102,7 +102,7 @@ export function Composer({
       />
       <div className="flex items-center gap-2 px-3 pb-3">
         <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
-          {AGENT_ORDER.map((name) => {
+          {(onAgentChange ? AGENT_ORDER : [agent]).map((name) => {
             const meta = AGENT_META[name];
             const active = agent === name;
             return (
@@ -110,7 +110,8 @@ export function Composer({
                 key={name}
                 type="button"
                 title={meta.description}
-                onClick={() => onAgentChange(name)}
+                onClick={() => onAgentChange?.(name)}
+                disabled={!onAgentChange}
                 className={cn(
                   "flex h-7 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-[12px] transition-colors",
                   active

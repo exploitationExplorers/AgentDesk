@@ -2,15 +2,17 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { ToolContext } from "@agentdesk/agent-core";
 import { createPresentation, renderPresentation, slideSchema } from "./presentations";
+import { draftScope } from "./draft-scope";
 
 const startInput = z.object({
   title: z.string().trim().min(1).max(80),
   theme: z.enum(["blue", "dark", "warm"]).default("blue"),
   total: z.number().int().min(1).max(30),
 });
-type Draft = z.infer<typeof startInput> & { slides: z.infer<typeof slideSchema>[] };
+const draftSchema = startInput.extend({ slides: z.array(slideSchema).max(30) });
+type Draft = z.infer<typeof draftSchema>;
 
-/** 写入回调是每次运行独有的能力，草稿无法跨会话读取；运行释放后内存自动回收。 */
+/** 自动化草稿由宿主按任务保存，普通聊天仍按本轮写入回调隔离。 */
 export class PresentationDrafts {
   private readonly scopes = new WeakMap<
     NonNullable<ToolContext["recordArtifact"]>,
@@ -19,14 +21,7 @@ export class PresentationDrafts {
   constructor(private readonly root: string) {}
 
   private scope(ctx: ToolContext) {
-    ctx.signal?.throwIfAborted();
-    if (!ctx.recordArtifact) throw new Error("当前任务不支持保存成果");
-    let scope = this.scopes.get(ctx.recordArtifact);
-    if (!scope) {
-      scope = new Map();
-      this.scopes.set(ctx.recordArtifact, scope);
-    }
-    return scope;
+    return draftScope(ctx, this.scopes, "presentation-drafts:v1", draftSchema);
   }
 
   start(input: unknown, ctx: ToolContext) {

@@ -5,8 +5,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
+import { setTimeout as delay } from "node:timers/promises";
+import { apiRequest } from "../src/client.js";
 import { runningState, serviceStatus, startService, stopService } from "../src/lifecycle.js";
-import { claimState, readState } from "../src/state.js";
+import { claimState, processAlive, readState } from "../src/state.js";
 
 const workerPath = fileURLToPath(new URL("./fixtures/service.mjs", import.meta.url));
 const homeDir = () => mkdtempSync(join(tmpdir(), "agentdesk-cli-lifecycle-"));
@@ -33,6 +35,55 @@ test("后台启动、重复启动和认证关闭管理同一真实子进程", as
     await stopService(home);
   }
 });
+
+if (process.platform === "win32")
+  test("CLI 宿主退出清理工具子进程和孙进程", async () => {
+    const home = homeDir();
+    let pids: number[] = [];
+    try {
+      const started = await startService(home, { workerPath, port: 0 });
+      assert.ok(started.state);
+      const tree = await (
+        await apiRequest<{ pid: number; descendant: number }>(
+          started.state,
+          "/fixture/process-tree",
+          { method: "POST", body: "{}" },
+        )
+      ).json();
+      pids = [tree.pid, tree.descendant];
+      assert.equal(pids.every(processAlive), true);
+      await stopService(home);
+      for (let attempt = 0; attempt < 40 && pids.some(processAlive); attempt++) await delay(50);
+      assert.equal(pids.some(processAlive), false);
+    } finally {
+      await stopService(home);
+      for (const pid of pids) if (processAlive(pid)) process.kill(pid);
+    }
+  });
+
+if (process.platform === "win32")
+  test("前台 CLI 服务同样由 Supervisor 托管并可认证关闭", async () => {
+    const home = homeDir();
+    const foreground = startService(home, { workerPath, port: 0, foreground: true });
+    try {
+      let ready = false;
+      for (let attempt = 0; attempt < 80; attempt++) {
+        if ((await serviceStatus(home)).status === "running") {
+          ready = true;
+          break;
+        }
+        await delay(50);
+      }
+      assert.equal(ready, true);
+      assert.equal(readState(home)?.mode, "foreground");
+      assert.notEqual(readState(home)?.pid, process.pid);
+      assert.equal(await stopService(home), true);
+      assert.equal((await foreground).status, "stopped");
+    } finally {
+      await stopService(home);
+      await foreground;
+    }
+  });
 
 test("读轮询期间两个并发 start 最多保留一个实例，状态始终完整", async () => {
   const home = homeDir();

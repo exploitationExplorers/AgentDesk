@@ -214,6 +214,9 @@ importers:
       '@agentdesk/agent-core':
         specifier: workspace:*
         version: link:../../packages/agent-core
+      '@agentdesk/autoloop-runtime':
+        specifier: workspace:*
+        version: link:../../packages/autoloop-runtime
       '@agentdesk/integrations':
         specifier: workspace:*
         version: link:../../packages/integrations
@@ -298,6 +301,12 @@ importers:
         specifier: ^3.2.4
         version: 3.2.7(@types/debug@4.1.13)(@types/node@22.20.5)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.15)(yaml@2.9.1)
 
+  packages/autoloop-runtime:
+    devDependencies:
+      esbuild:
+        specifier: ^0.25.11
+        version: 0.25.12
+
   packages/integrations:
     dependencies:
       '@agentdesk/shared':
@@ -312,6 +321,9 @@ importers:
       playwright-core:
         specifier: ^1.56.0
         version: 1.64.1
+      zod:
+        specifier: ^4.1.12
+        version: 4.6.7
     devDependencies:
       '@types/node':
         specifier: ^22.18.10

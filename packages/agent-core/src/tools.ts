@@ -44,6 +44,13 @@ export interface RecordedArtifact {
   version: number;
 }
 
+/** 由宿主限定到当前 Task，并在每次写入时校验执行权；不得传入全局状态仓库。 */
+export interface DurableToolState {
+  get: (key: string) => unknown;
+  set: (key: string, value: unknown) => void;
+  delete: (key: string) => void;
+}
+
 export interface ToolContext {
   agent: AgentName;
   toolCallId?: string;
@@ -61,6 +68,7 @@ export interface ToolContext {
    * 只在方案关口等支持产物持久化的执行上下文中提供，例如 tasks.submit_plan 工具。
    */
   recordArtifact?: (input: RecordArtifactInput) => RecordedArtifact;
+  durableState?: DurableToolState;
 }
 
 export interface AgentTool<TParams extends TSchema = TSchema> {
@@ -73,6 +81,8 @@ export interface AgentTool<TParams extends TSchema = TSchema> {
   riskFor?: (args: Static<TParams>) => RiskLevel;
   /** 仅明确互不干扰的只读工具设为 true；审批风险低不代表可并发。默认按调用顺序执行。 */
   isConcurrencySafe?: boolean;
+  /** 仅收集输入、没有业务副作用；持久化执行允许重放已回答的交互步骤。 */
+  interactionOnly?: boolean;
   execute: (args: Static<TParams>, ctx: ToolContext) => Promise<unknown>;
   describeApproval?: (
     args: Static<TParams>,

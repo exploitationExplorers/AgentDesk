@@ -5,12 +5,14 @@ import {
   ConversationPatch,
   ConversationQuery,
   ConversationGroupInput,
+  AppError,
+  ErrorCode,
   type AgentStreamEvent,
 } from "@agentdesk/shared";
 import type { Container } from "../../container";
 import { errorMessage } from "../../util";
 
-export function chatRoutes({ chat, projectInstructions, providers }: Container) {
+export function chatRoutes({ chat, projectInstructions, providers, tasks, autoloop }: Container) {
   const app = new Hono();
 
   app.get("/conversations", (c) =>
@@ -42,7 +44,12 @@ export function chatRoutes({ chat, projectInstructions, providers }: Container) 
     return c.body(null, 204);
   });
 
-  app.post("/conversations/:id/stop", (c) => {
+  app.post("/conversations/:id/stop", async (c) => {
+    const task = tasks.findByConversation(c.req.param("id"));
+    if (task?.automationId) {
+      await autoloop.cancelTask(task.id);
+      return c.body(null, 204);
+    }
     chat.stop(c.req.param("id"));
     return c.body(null, 204);
   });
@@ -50,6 +57,8 @@ export function chatRoutes({ chat, projectInstructions, providers }: Container) 
   /** 页面连接只是观察者；任务只在用户明确停止或服务退出时取消。 */
   app.post("/chat", async (c) => {
     const body = ChatRequest.parse(await c.req.json());
+    if (body.conversationId && tasks.findByConversation(body.conversationId)?.automationId)
+      throw new AppError(ErrorCode.Conflict, "请通过自动化会话中的回答或继续修改操作提交请求");
     // 在提交 SSE 响应头之前校验工作区，输入错误保持普通 HTTP 400 响应。
     await projectInstructions.validateWorkspace(
       chat.conversationWorkspace(body.conversationId, body.workspace),

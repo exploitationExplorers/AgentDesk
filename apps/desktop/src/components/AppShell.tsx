@@ -12,6 +12,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Rocket,
+  Repeat2,
   Search,
   Settings,
   ShieldAlert,
@@ -49,6 +50,7 @@ const NAV: Array<{ to: string; label: string; icon: LucideIcon }> = [
   { to: "/feed", label: "热榜", icon: Newspaper },
   { to: "/learning", label: "成长", icon: GraduationCap },
   { to: "/workflows", label: "工作流", icon: Workflow },
+  { to: "/automations", label: "自动化", icon: Repeat2 },
   { to: "/skills", label: "技能", icon: Sparkles },
   { to: "/disk", label: "磁盘", icon: HardDrive },
 ];

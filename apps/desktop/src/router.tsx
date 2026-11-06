@@ -20,6 +20,7 @@ import { SettingsPage } from "./features/settings/SettingsPage";
 import { SkillsPage } from "./features/skills/SkillsPage";
 import { WorkflowEditorPage } from "./features/workflows/WorkflowEditorPage";
 import { WorkflowsPage } from "./features/workflows/WorkflowsPage";
+import { AutomationsPage } from "./features/automations/AutomationsPage";
 
 const rootRoute = createRootRoute({ component: AppShell });
 
@@ -84,6 +85,11 @@ const workflowsRoute = createRoute({
   path: "/workflows",
   component: WorkflowsPage,
 });
+const automationsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/automations",
+  component: AutomationsPage,
+});
 const workflowEditorRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/workflows/$id",
@@ -113,6 +119,7 @@ const routeTree = rootRoute.addChildren([
   learningLibraryRoute,
   learningReviewRoute,
   workflowsRoute,
+  automationsRoute,
   workflowEditorRoute,
   skillsRoute,
   settingsRoute,

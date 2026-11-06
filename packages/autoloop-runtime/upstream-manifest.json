@@ -1,0 +1,106 @@
+{
+  "repository": "https://github.com/KKKKhazix/agent-autoloop",
+  "version": "1.1.1",
+  "commit": "22312e16419fc9f542a58044cfbb76f4aec80623",
+  "license": "MIT",
+  "nodeVersion": "24.11.1",
+  "patches": ["patches/windows-host.patch", "patches/session-cancellation.patch"],
+  "files": {
+    "host/home.ts": {
+      "upstreamSha256": "0cc2d56a7a0391612c4dd21dc67ed3d0829bf938d20bbe6cb5e5a992a4e10e4e",
+      "sha256": "0cc2d56a7a0391612c4dd21dc67ed3d0829bf938d20bbe6cb5e5a992a4e10e4e"
+    },
+    "host/plugins.ts": {
+      "upstreamSha256": "ec4525b10f47dbb60b59897df30e869c58dc239c692bde7fb932be5f7bc7968a",
+      "sha256": "ec4525b10f47dbb60b59897df30e869c58dc239c692bde7fb932be5f7bc7968a"
+    },
+    "host/runtime.ts": {
+      "upstreamSha256": "ffa114b2ae6c7388aa6ccb0c425e9d08050fd79676b4f16bd1e593377aa6c2e0",
+      "sha256": "77547971b1744c5a519aa534c78d34f59bb322c1faa4742c694faf75816892e2"
+    },
+    "host/server.ts": {
+      "upstreamSha256": "5c67b4369c7aca32ab683c1351ab6a29e0ff0d416dc338f4fdb6a95f9af6be97",
+      "sha256": "0f79fd7fdac503052bfeb3bc1d1ce86a0de99f3f6f10c54990d6e44c905d0913"
+    },
+    "kernel/card-page.ts": {
+      "upstreamSha256": "000337272f3bed21c995ab31ec93e214ced7e42e2f12b4c6a42d989c4d17cf0d",
+      "sha256": "000337272f3bed21c995ab31ec93e214ced7e42e2f12b4c6a42d989c4d17cf0d"
+    },
+    "kernel/credentials.ts": {
+      "upstreamSha256": "1b2343615341e60937f9a2bf73948caf10d99d251988b94350bbe99ce0660e48",
+      "sha256": "1b2343615341e60937f9a2bf73948caf10d99d251988b94350bbe99ce0660e48"
+    },
+    "kernel/cron.ts": {
+      "upstreamSha256": "66013eec4b2eab7749f033e3a62c26a0d5a0e6bd5f35e626837fc5eb1d61dda2",
+      "sha256": "66013eec4b2eab7749f033e3a62c26a0d5a0e6bd5f35e626837fc5eb1d61dda2"
+    },
+    "kernel/decide.ts": {
+      "upstreamSha256": "96731b343ebf1b4f4ef2c5e58b653e763f7aaa5535fdcf514daa75934f70960c",
+      "sha256": "51de9f3542f8d9e372deb19414b73621de301c29da011ee236a500713007cda4"
+    },
+    "kernel/due.ts": {
+      "upstreamSha256": "7dccd541baa350b4645dec3215dab7f40886a6acc1d1399a5f6b43baa5a01dd7",
+      "sha256": "7dccd541baa350b4645dec3215dab7f40886a6acc1d1399a5f6b43baa5a01dd7"
+    },
+    "kernel/errors.ts": {
+      "upstreamSha256": "0804b397d8e21c9747ec2e6b5938580cc0405aac6f642e6e43b1ad658a7c4745",
+      "sha256": "0804b397d8e21c9747ec2e6b5938580cc0405aac6f642e6e43b1ad658a7c4745"
+    },
+    "kernel/evolve.ts": {
+      "upstreamSha256": "adb0779ce5efaf536eab6cbaef4162256c1e30c961fa18e307148bb2e3710129",
+      "sha256": "adb0779ce5efaf536eab6cbaef4162256c1e30c961fa18e307148bb2e3710129"
+    },
+    "kernel/http.ts": {
+      "upstreamSha256": "a5a777cb453d21efb268783f28e52b2101b258d5405ca307b93fad3706ddaf1b",
+      "sha256": "a5a777cb453d21efb268783f28e52b2101b258d5405ca307b93fad3706ddaf1b"
+    },
+    "kernel/query.ts": {
+      "upstreamSha256": "080cedf09c9776647c46128eb676d398b7c8f34d60d5c2e073b6fa6a60be85bf",
+      "sha256": "080cedf09c9776647c46128eb676d398b7c8f34d60d5c2e073b6fa6a60be85bf"
+    },
+    "kernel/rules.ts": {
+      "upstreamSha256": "e54a2076377d69e25bbc00c29f3f54eea40f4c0b84334a7d85d801006a17c660",
+      "sha256": "e54a2076377d69e25bbc00c29f3f54eea40f4c0b84334a7d85d801006a17c660"
+    },
+    "kernel/schema.sql": {
+      "upstreamSha256": "9d573c89d072da24449158f455fe26ced157da2702569bc98a691504cab4ce79",
+      "sha256": "9d573c89d072da24449158f455fe26ced157da2702569bc98a691504cab4ce79"
+    },
+    "kernel/state.ts": {
+      "upstreamSha256": "f92274a1f1b0d649d2da0241b616391f055359580f6de43e022abbdf34d2f561",
+      "sha256": "f92274a1f1b0d649d2da0241b616391f055359580f6de43e022abbdf34d2f561"
+    },
+    "kernel/store.ts": {
+      "upstreamSha256": "7bdf4e32db38564e03ef15d4feae1b843e7608e6eb13989296a6addb870a2218",
+      "sha256": "7bdf4e32db38564e03ef15d4feae1b843e7608e6eb13989296a6addb870a2218"
+    },
+    "protocol/client.ts": {
+      "upstreamSha256": "f9a4579f1a46299fdf04396cf5235236dc1b7ff7fad531517610ea367564b9a8",
+      "sha256": "f9a4579f1a46299fdf04396cf5235236dc1b7ff7fad531517610ea367564b9a8"
+    },
+    "protocol/conformance.ts": {
+      "upstreamSha256": "1ffef96a570c927b61dff07e46005653958f7b32c9835feac4d37e1a01d1d43b",
+      "sha256": "1ffef96a570c927b61dff07e46005653958f7b32c9835feac4d37e1a01d1d43b"
+    },
+    "protocol/job.ts": {
+      "upstreamSha256": "5398dfd8d4b8e6b7344bd8f9d44e8bb75940a85cd491eb36f774313acf6f93b8",
+      "sha256": "5398dfd8d4b8e6b7344bd8f9d44e8bb75940a85cd491eb36f774313acf6f93b8"
+    },
+    "protocol/rules.ts": {
+      "upstreamSha256": "e86d4b888264240e00d16a840878136bee04ee86a68b35e04335ce70ea54fc26",
+      "sha256": "4452c8f67486191a8539ae04dba756f980b68d7f17fc57bc04ea299a8a15cd73"
+    },
+    "protocol/schema.json": {
+      "upstreamSha256": "023881719ccbaa73e88bbcaad1a01fa6b8119e42165278f17c3395c95ea93147",
+      "sha256": "023881719ccbaa73e88bbcaad1a01fa6b8119e42165278f17c3395c95ea93147"
+    },
+    "protocol/schema.ts": {
+      "upstreamSha256": "e577def184f22d8f5ab6f373a8d02929cf648f64713c90707204a34e1a3a00e0",
+      "sha256": "e577def184f22d8f5ab6f373a8d02929cf648f64713c90707204a34e1a3a00e0"
+    },
+    "protocol/validate.ts": {
+      "upstreamSha256": "f0efca2f18917b608ba163bd9694cc6f8e41486ba4ea7ed071f2817b1fe62ed1",
+      "sha256": "f0efca2f18917b608ba163bd9694cc6f8e41486ba4ea7ed071f2817b1fe62ed1"
+    }
+  }
+}

@@ -102,8 +102,8 @@ for (const source of ["task", "chat"] as const) {
     expect((first.toolCalls as ToolCallRecord[])[0]?.result).toBeDefined();
     const failed = container.chat.messages(task.conversationId).at(-1)!;
     expect(failed.toolCalls).toEqual(first.toolCalls);
-    expect(failed.content).toContain(path);
-    expect(failed.content).toContain("完成");
+    expect(failed.content).toContain("成果会保留");
+    expect(failed.toolCalls[0]?.args).toMatchObject({ path, content });
     expect(readFileSync(join(project, path), "utf8")).toBe(content);
 
     model.contextWindow = 64_000;
@@ -147,7 +147,11 @@ for (const source of ["task", "chat"] as const) {
       expect(container.tasks.get(task.id)?.status).toBe("awaiting_review");
     }
     expect(captured).toContain(path);
-    expect(captured).toContain("跳过已确认完成的操作");
+    expect(captured).toContain("fs.write");
+    expect(captured).toContain("完成");
+    expect(captured).toContain(
+      source === "task" ? "跳过已确认完成的操作" : "内部执行记录，仅用于续跑时核对",
+    );
     expect(executed).toHaveBeenCalledOnce();
     expect(readFileSync(join(project, path), "utf8")).toBe(content);
   });

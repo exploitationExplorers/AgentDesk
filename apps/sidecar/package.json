@@ -11,6 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@agentdesk/autoloop-runtime": "workspace:*",
     "@agentdesk/agent-core": "workspace:*",
     "@agentdesk/integrations": "workspace:*",
     "@agentdesk/shared": "workspace:*",

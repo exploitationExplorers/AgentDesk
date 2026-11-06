@@ -6,6 +6,7 @@ import type {
   ToolCallRecord,
 } from "@agentdesk/shared";
 import { runAgent, type AgentDefinition } from "./agent";
+import type { AgentExecutionOutcome, DurableAgentOptions } from "./durable";
 import type { ModelResolver } from "./llm";
 import type { MaskStore } from "./masking";
 import type { SkillRegistry } from "./skills";
@@ -13,6 +14,7 @@ import {
   defineTool,
   type ApprovalRequest,
   type AutoApprove,
+  type DurableToolState,
   type RecordArtifactInput,
   type RecordedArtifact,
   type ToolRegistry,
@@ -36,6 +38,8 @@ export interface OrchestratorRunOptions {
   /** 可选：向用户追问并拿到回答文本的能力，透传给 tasks.ask_user 等工具的 ToolContext。 */
   requestAnswer?: (request: ApprovalRequest) => Promise<string>;
   signal?: AbortSignal;
+  durable?: DurableAgentOptions;
+  durableState?: DurableToolState;
   /** 额外系统上下文，例如召回的长期记忆。总控和被委派的 Agent 都会看到。 */
   context?: string;
   /**
@@ -63,11 +67,11 @@ export interface OrchestratorRunOptions {
   };
 }
 
-export interface OrchestratorResult {
+export type OrchestratorResult = AgentExecutionOutcome & {
   text: string;
   agent: AgentName;
   toolCalls: ToolCallRecord[];
-}
+};
 
 const KEYWORD_ROUTES: Array<{ agent: AgentName; words: string[] }> = [
   { agent: "deploy", words: ["部署", "上线", "发布", "宝塔", "服务器", "deploy", "重启"] },
@@ -140,6 +144,8 @@ export class Orchestrator {
       | "modelSelection"
       | "autoApprove"
       | "mask"
+      | "durable"
+      | "durableState"
     >,
   ) {
     const def = this.definition(name);
@@ -162,6 +168,8 @@ export class Orchestrator {
       autoApprove: opts.autoApprove,
       mask: opts.mask,
       signal: opts.signal,
+      durable: opts.durable,
+      durableState: opts.durableState,
     });
   }
 
@@ -172,7 +180,14 @@ export class Orchestrator {
     if (opts.agent && opts.agent !== "orchestrator") {
       opts.emit({ type: "route", agent: opts.agent, reason: "用户指定" });
       const result = await this.runSpecialist(opts.agent, messages, opts.userMessage, opts);
-      return { text: result.text, agent: opts.agent, toolCalls: result.toolCalls };
+      return {
+        ...(result.status === "suspended"
+          ? { status: "suspended", suspension: result.suspension }
+          : { status: "completed" }),
+        text: result.text,
+        toolCalls: result.toolCalls,
+        agent: opts.agent,
+      };
     }
 
     const specialists = this.deps.agents.filter((a) => a.name !== "orchestrator");
@@ -223,7 +238,9 @@ export class Orchestrator {
     const hint = routeByKeywords(opts.userMessage);
     const tools = opts.allowedTools
       ? this.deps.registry.select(opts.allowedTools)
-      : [...this.toolsFor(def), delegate];
+      : opts.durable
+        ? this.toolsFor(def)
+        : [...this.toolsFor(def), delegate];
     const result = await runAgent({
       definition: def,
       tools,
@@ -243,8 +260,13 @@ export class Orchestrator {
       autoApprove: opts.autoApprove,
       mask: opts.mask,
       signal: opts.signal,
+      durable: opts.durable,
+      durableState: opts.durableState,
     });
     return {
+      ...(result.status === "suspended"
+        ? { status: "suspended", suspension: result.suspension }
+        : { status: "completed" }),
       text: result.text,
       agent: "orchestrator",
       toolCalls: [...result.toolCalls, ...delegated],

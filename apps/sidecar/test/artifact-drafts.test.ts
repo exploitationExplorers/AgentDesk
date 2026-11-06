@@ -5,6 +5,7 @@ import { afterEach, expect, it } from "vitest";
 import { ToolRegistry, type ToolContext } from "@agentdesk/agent-core";
 import { emptyChatProgress, reduceChatProgress, type AgentStreamEvent } from "@agentdesk/shared";
 import { openDatabase, type DbHandle } from "../src/db/client";
+import { Collection } from "../src/db/collection";
 import { TaskService } from "../src/services/tasks";
 import { EventHub } from "../src/events";
 import { PresentationDrafts } from "../src/services/presentation-drafts";
@@ -145,4 +146,87 @@ it("公开阶段按事件排序，只有等待模型时显示思考，展示记�
   expect(state.phase).toBe("writing");
   expect(state.blocks.map((block) => block.kind)).toEqual(["text", "activity", "text"]);
   expect(JSON.stringify(state.blocks)).not.toMatch(/private|raw-internal/);
+});
+
+it("PPT 和 Word 草稿按任务持久化，换服务和回调后继续生成，其他任务无法读取", async () => {
+  const { root, tasks, task, ctx } = setup();
+  const store = new Collection<{ id: string; value: unknown }>(db.db, "test_draft_state");
+  const stateFor = (taskId: string): NonNullable<ToolContext["durableState"]> => ({
+    get: (key) => store.get(`${taskId}:${key}`)?.value,
+    set: (key, value) => {
+      store.put({ id: `${taskId}:${key}`, value });
+    },
+    delete: (key) => {
+      store.delete(`${taskId}:${key}`);
+    },
+  });
+  const firstContext: ToolContext = { ...ctx, durableState: stateFor(task.id) };
+  const presentation = new PresentationDrafts(root);
+  const slideDraft = presentation.start({ title: "续办报告", total: 2 }, firstContext);
+  await presentation.append(
+    { ...slideDraft, afterSlide: 0, slides: [{ title: "已整理资料" }] },
+    firstContext,
+  );
+  const firstRegistry = new ToolRegistry();
+  registerDocumentTools(firstRegistry, root);
+  const documentDraft = (await firstRegistry
+    .get("documents.start")!
+    .execute({ title: "续办文档", total: 2 }, firstContext)) as { draftId: string };
+  await firstRegistry.get("documents.append")!.execute(
+    {
+      ...documentDraft,
+      afterSection: 0,
+      sections: [{ heading: "现状", paragraphs: ["已整理资料，不重新生成。"] }],
+    },
+    firstContext,
+  );
+
+  // 新的服务实例与回调能力模拟下一轮；状态来自 SQLite，旧 WeakMap 无法提供数据。
+  const resumedContext: ToolContext = {
+    ...ctx,
+    recordArtifact: (input) => ctx.recordArtifact!(input),
+    durableState: stateFor(task.id),
+  };
+  const otherTask: ToolContext = { ...resumedContext, durableState: stateFor("another-task") };
+  const resumedPresentation = new PresentationDrafts(root);
+  await expect(
+    resumedPresentation.append(
+      { ...slideDraft, afterSlide: 1, slides: [{ title: "越权读取" }] },
+      otherTask,
+    ),
+  ).rejects.toThrow("没有该草稿");
+  await resumedPresentation.append(
+    { ...slideDraft, afterSlide: 1, slides: [{ title: "继续完成" }] },
+    resumedContext,
+  );
+  const ppt = await resumedPresentation.finish(slideDraft.draftId, resumedContext);
+  expect((await tasks.readArtifact(task.id, ppt.artifactId)).mimeType).toContain("presentationml");
+
+  const resumedRegistry = new ToolRegistry();
+  registerDocumentTools(resumedRegistry, root);
+  await expect(
+    resumedRegistry.get("documents.append")!.execute(
+      {
+        ...documentDraft,
+        afterSection: 1,
+        sections: [{ heading: "越权", paragraphs: ["不应读取"] }],
+      },
+      otherTask,
+    ),
+  ).rejects.toThrow("没有该文档草稿");
+  await resumedRegistry.get("documents.append")!.execute(
+    {
+      ...documentDraft,
+      afterSection: 1,
+      sections: [{ heading: "结论", paragraphs: ["从现有资料完成后续章节。"] }],
+    },
+    resumedContext,
+  );
+  const doc = (await resumedRegistry
+    .get("documents.finish")!
+    .execute(documentDraft, resumedContext)) as { artifactId: string };
+  expect((await tasks.readArtifact(task.id, doc.artifactId)).mimeType).toContain(
+    "wordprocessingml",
+  );
+  expect(store.list()).toEqual([]);
 });

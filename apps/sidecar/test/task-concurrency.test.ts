@@ -211,7 +211,7 @@ describe("并发续跑 HTTP 拒绝不影响原执行", () => {
     });
     const execute = vi.spyOn(container.orchestrator, "run").mockImplementation(async () => {
       await released;
-      return { text: "原执行完成", agent: "code", toolCalls: [] };
+      return { status: "completed", text: "原执行完成", agent: "code", toolCalls: [] };
     });
     const created = await call("/tasks", { goal: "等待后完成" });
     expect(created.status).toBe(201);

@@ -1,0 +1,10 @@
+{
+  "nodeVersion": "24.11.1",
+  "checksumsUrl": "https://nodejs.org/dist/v24.11.1/SHASUMS256.txt",
+  "targets": {
+    "win32-x64": {
+      "url": "https://nodejs.org/dist/v24.11.1/win-x64/node.exe",
+      "sha256": "f13ac3ca23248dc389507e8fe38c34489ab7edb3e6d6700eb6da6a0b7e128eaf"
+    }
+  }
+}

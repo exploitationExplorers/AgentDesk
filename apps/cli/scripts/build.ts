@@ -4,12 +4,14 @@ import { execFileSync } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build, type BuildOptions } from "esbuild";
+import { copyAutoloopRuntime } from "../../../packages/autoloop-runtime/scripts/build.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const sidecar = resolve(root, "../sidecar");
 const dist = join(root, "dist");
 rmSync(dist, { recursive: true, force: true });
 mkdirSync(dist, { recursive: true });
+copyAutoloopRuntime(join(dist, "autoloop"));
 
 const options: BuildOptions = {
   bundle: true,

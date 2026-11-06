@@ -21,6 +21,7 @@ import { workflowRoutes } from "./routes/workflows";
 import { createWorkbench } from "./workbench";
 import { projectInsightRoutes } from "./routes/project-insights";
 import { sessionWorkbenchRoutes } from "./routes/session-workbench";
+import { autoloopRoutes } from "./routes/autoloop";
 
 export function createApp(container: Container, options: { webRoot?: string } = {}): Hono {
   const app = new Hono();
@@ -73,6 +74,7 @@ export function createApp(container: Container, options: { webRoot?: string } = 
   app.route("/api", browserRoutes(container));
   app.route("/api", chatRoutes(container));
   app.route("/api", sessionWorkbenchRoutes(container));
+  app.route("/api", autoloopRoutes(container));
   app.route("/api", projectInsightRoutes(container));
   app.route("/api", workflowRoutes(container));
   app.route("/api", taskRoutes(container));

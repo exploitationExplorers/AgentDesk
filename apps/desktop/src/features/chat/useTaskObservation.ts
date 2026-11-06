@@ -11,6 +11,7 @@ export function useTaskObservation(
   taskId: string | undefined,
   runId: string | null | undefined,
   active: boolean,
+  persistent = false,
 ) {
   const client = useQueryClient();
   type Slide = Extract<AgentStreamEvent, { type: "presentation_slide" }>;
@@ -45,16 +46,40 @@ export function useTaskObservation(
       (record) => {
         if (seen.has(record.seq)) return;
         seen.add(record.seq);
-        if (record.runId !== runId && record.parentRunId !== runId) return;
         const event = record.event;
-        if (["artifact_ready", "approval_required", "run_ended", "done"].includes(event.type)) {
+        if (
+          [
+            "artifact_ready",
+            "approval_required",
+            "run_started",
+            "run_ended",
+            "done",
+            "automation_status",
+            "interaction_required",
+            "interaction_resolved",
+          ].includes(event.type)
+        ) {
           void client.invalidateQueries({ queryKey: ["session-workbench", conversationId] });
           void client.invalidateQueries({ queryKey: ["approvals"] });
+          if (persistent) void client.invalidateQueries({ queryKey: ["interactions", taskId] });
         }
         if (event.type === "run_ended" || event.type === "done")
           void client.invalidateQueries({ queryKey: ["messages", conversationId] });
+        const currentRun = record.runId === runId || record.parentRunId === runId;
+        // 等待和续办共享同一份预览；旧轮次的正文与进度仍由已保存消息展示。
+        if (
+          !currentRun &&
+          !(
+            persistent &&
+            ["document_preview", "presentation_status", "presentation_slide"].includes(event.type)
+          )
+        )
+          return;
         snapshot = (() => {
-          const current = { ...snapshot, timeline: reduceChatProgress(snapshot.timeline, event) };
+          const current = {
+            ...snapshot,
+            timeline: currentRun ? reduceChatProgress(snapshot.timeline, event) : snapshot.timeline,
+          };
           if (event.type === "document_preview")
             return { ...current, document: event, presentation: false };
           if (event.type === "text_delta" && record.runId === runId)
@@ -68,7 +93,7 @@ export function useTaskObservation(
               presentationId: event.presentationId ?? current.presentationId,
               presentationTitle: event.deckTitle ?? current.presentationTitle,
               slides:
-                event.phase === "starting" ||
+                (!persistent && event.phase === "starting") ||
                 (event.presentationId && event.presentationId !== current.presentationId)
                   ? []
                   : current.slides,
@@ -120,8 +145,11 @@ export function useTaskObservation(
         })();
         setState(snapshot);
       },
-      { isFinal: (record) => record.event.type === "run_ended" && record.runId === runId },
+      {
+        isFinal: (record) =>
+          !persistent && record.event.type === "run_ended" && record.runId === runId,
+      },
     );
-  }, [client, conversationId, taskId, runId, active]);
+  }, [client, conversationId, taskId, runId, active, persistent]);
   return active && state?.runId === runId ? state : null;
 }

@@ -29,7 +29,7 @@ beforeAll(async () => {
   await container.projects.add(projectB);
   vi.spyOn(container.orchestrator, "run").mockImplementation(async (options) => {
     seen.push(options);
-    return { text: "done", agent: "code", toolCalls: [] };
+    return { status: "completed", text: "done", agent: "code", toolCalls: [] };
   });
   vi.spyOn(container.memory, "captureFromTurn").mockResolvedValue([]);
 });

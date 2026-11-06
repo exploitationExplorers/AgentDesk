@@ -2,11 +2,14 @@ use std::{
     io::{BufRead, BufReader},
     net::TcpListener,
     path::PathBuf,
-    process::{Child, Command, Stdio},
+    process::{Command, Stdio},
     sync::{Arc, Mutex},
     thread,
 };
 
+#[cfg(windows)]
+use agentdesk_supervisor::InstanceLock;
+use agentdesk_supervisor::ManagedChild;
 use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
@@ -19,8 +22,10 @@ pub struct SidecarInfo {
 #[derive(Default)]
 pub struct SidecarState {
     pub info: Arc<Mutex<Option<SidecarInfo>>>,
-    pub child: Mutex<Option<Child>>,
+    pub child: Mutex<Option<ManagedChild>>,
     pub error: Arc<Mutex<Option<String>>>,
+    #[cfg(windows)]
+    pub instance: Mutex<Option<InstanceLock>>,
 }
 
 fn free_port() -> u16 {
@@ -35,7 +40,8 @@ fn command(app: &AppHandle) -> Result<Command, String> {
     if cfg!(debug_assertions) {
         let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../sidecar");
         let mut cmd = Command::new("node");
-        cmd.args(["--import", "tsx", "src/index.ts"]).current_dir(dir);
+        cmd.args(["--import", "tsx", "src/index.ts"])
+            .current_dir(dir);
         Ok(cmd)
     } else {
         let dir = app
@@ -52,6 +58,17 @@ fn command(app: &AppHandle) -> Result<Command, String> {
 }
 
 pub fn spawn(app: &AppHandle, state: &SidecarState) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        let directory = std::env::var_os("AGENTDESK_DATA_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| {
+                PathBuf::from(std::env::var_os("APPDATA").unwrap_or_default()).join("AgentDesk")
+            });
+        *state.instance.lock().unwrap() = Some(
+            InstanceLock::for_directory(&directory).map_err(|e| e.to_string())?,
+        );
+    }
     let token = crate::secrets::random_token()?;
     let master_key = crate::secrets::master_key().unwrap_or_else(|e| {
         eprintln!("[agentdesk] 无法访问系统钥匙串，sidecar 将使用本地密钥文件: {e}");
@@ -77,9 +94,9 @@ pub fn spawn(app: &AppHandle, state: &SidecarState) -> Result<(), String> {
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
 
-    let mut child = cmd.spawn().map_err(|e| format!("启动 sidecar 失败: {e}"))?;
-    let stdout = child.stdout.take();
-    let stderr = child.stderr.take();
+    let mut child = ManagedChild::spawn(&mut cmd).map_err(|e| format!("启动 sidecar 失败: {e}"))?;
+    let stdout = child.child.stdout.take();
+    let stderr = child.child.stderr.take();
 
     let info = state.info.clone();
     if let Some(out) = stdout {
@@ -114,14 +131,7 @@ pub fn spawn(app: &AppHandle, state: &SidecarState) -> Result<(), String> {
 
 pub fn kill(state: &SidecarState) {
     if let Some(mut child) = state.child.lock().unwrap().take() {
-        // 先关闭 stdin 让 sidecar 优雅退出（关闭浏览器、写库），再兜底强杀
-        drop(child.stdin.take());
-        for _ in 0..20 {
-            if let Ok(Some(_)) = child.try_wait() {
-                return;
-            }
-            thread::sleep(std::time::Duration::from_millis(100));
-        }
-        let _ = child.kill();
+        // 先协作退出，再结束 Job 内全部子孙进程，包括 Hub 和任务工具。
+        let _ = child.stop(std::time::Duration::from_secs(3));
     }
 }

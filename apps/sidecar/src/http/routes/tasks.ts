@@ -151,7 +151,8 @@ export function taskRoutes({ tasks, approvals, hub, dbHandle, projectInstruction
       `task:${id}`,
       { taskId: id },
       after,
-      (record) => record.event.type === "run_ended" && record.parentRunId === null,
+      (record) =>
+        !task.automationId && record.event.type === "run_ended" && record.parentRunId === null,
     );
   });
 

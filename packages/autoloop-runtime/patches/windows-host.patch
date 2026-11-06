@@ -1,0 +1,48 @@
+--- a/host/runtime.ts
++++ b/host/runtime.ts
+@@ -122,12 +122,12 @@
+ export let rules = query.configuration(current);
+ let loaded = { file: "", mtime: 0 };
+ 
+-export function reloadRules(file = RULES_FILE) {
++export function reloadRules(file = RULES_FILE, force = false) {
+   let mtime: number;
+   let text: string;
+   try {
+     mtime = statSync(file).mtimeMs;
+-    if (loaded.file === file && loaded.mtime === mtime) return { changed: false };
++    if (!force && loaded.file === file && loaded.mtime === mtime) return { changed: false };
+     text = readFileSync(file, "utf8");
+   } catch (error) {
+     // A file moved back keeps its old mtime and must still be read again.
+--- a/host/server.ts
++++ b/host/server.ts
+@@ -1,7 +1,7 @@
+ // What the kernel's doors need from this machine: the clock, a timer for the next deadline, long polls to wake, the
+ // rules file to watch, the log as a stream and the webhook plugins.
+ import { watch } from "node:fs";
+-import { dirname } from "node:path";
++import { basename, dirname } from "node:path";
+ import { RULES_FILE } from "./home.ts";
+ import { loadPlugin } from "./plugins.ts";
+ import * as hub from "./runtime.ts";
+@@ -105,7 +105,7 @@
+     arm();
+   });
+   const watcher = watch(dirname(RULES_FILE), (_event, file) => {
+-    if (file === RULES_FILE.split("/").at(-1)) fire();
++    if (file === basename(RULES_FILE) || file === null) fire();
+   });
+   const handle = createHandler({
+     commit,
+--- a/protocol/rules.ts
++++ b/protocol/rules.ts
+@@ -71,7 +71,7 @@
+     ["name", isText, NOT_EMPTY],
+     ["when", isObject, "要是一个对象"],
+     ["to", isKeyOf(rules.agents), `不是已登记的 Agent：${isObject(rule) ? rule.to : ""}`],
+-    ["cwd", (value) => typeof value === "string" && /^(~\/|\/)/.test(value), "要是以 ~/ 或 / 开头的目录"],
++    ["cwd", (value) => typeof value === "string" && /^(~\/|\/(?!\/)|[A-Za-z]:[\\/])/.test(value) && !value.includes("\0"), "要是 POSIX 或 Windows 绝对目录"],
+     ["skill", isText, NOT_EMPTY, true],
+     ["prompt", isText, NOT_EMPTY, true],
+     ["group", isText, NOT_EMPTY, true],

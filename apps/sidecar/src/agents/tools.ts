@@ -805,6 +805,7 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
   registry.register(
     defineTool({
       name: "tasks.ask_user",
+      interactionOnly: true,
       description: "需要用户澄清时调用；可一次提供单个问题或一组有选项的问题，逐题等待用户回答",
       parameters: Type.Object({
         question: Type.Optional(Type.String({ description: "需要用户回答的单个问题" })),

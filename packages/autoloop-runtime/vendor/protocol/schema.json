@@ -1,0 +1,901 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:agent-autoloop:protocol:v1",
+  "$defs": {
+    "event": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 200,
+          "minLength": 1
+        },
+        "type": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.-]{0,63}$"
+        },
+        "subject": {
+          "type": ["string", "null"],
+          "maxLength": 100,
+          "pattern": "^[A-Za-z0-9#._:\\/@-]*$"
+        },
+        "summary": {
+          "type": ["string", "null"],
+          "maxLength": 200
+        },
+        "detail": {
+          "type": ["string", "null"],
+          "maxLength": 4000
+        },
+        "link": {
+          "type": ["string", "null"],
+          "maxLength": 500,
+          "pattern": "^(https?://[\\x21-\\x7e]+)?$"
+        },
+        "hops": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": ["id", "type"],
+      "additionalProperties": false
+    },
+    "usage": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "number",
+        "minimum": 0
+      }
+    },
+    "ask": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 4000,
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "\\S"
+          },
+          "minItems": 2,
+          "maxItems": 5
+        },
+        "recommend": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4
+        },
+        "about": {
+          "type": "string",
+          "maxLength": 4000
+        },
+        "key": {
+          "type": "string",
+          "maxLength": 100
+        }
+      },
+      "required": ["title", "text", "options"],
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "properties": {
+            "options": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2
+            },
+            "recommend": {
+              "type": "integer",
+              "maximum": 1
+            }
+          }
+        },
+        {
+          "properties": {
+            "options": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3
+            },
+            "recommend": {
+              "type": "integer",
+              "maximum": 2
+            }
+          }
+        },
+        {
+          "properties": {
+            "options": {
+              "type": "array",
+              "minItems": 4,
+              "maxItems": 4
+            },
+            "recommend": {
+              "type": "integer",
+              "maximum": 3
+            }
+          }
+        },
+        {
+          "properties": {
+            "options": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5
+            },
+            "recommend": {
+              "type": "integer",
+              "maximum": 4
+            }
+          }
+        }
+      ]
+    },
+    "notice": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 4000,
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "key": {
+          "type": "string",
+          "maxLength": 100
+        }
+      },
+      "required": ["title", "text"],
+      "additionalProperties": false
+    },
+    "resolve": {
+      "type": "object",
+      "properties": {
+        "card": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 1000,
+          "minLength": 1,
+          "pattern": "\\S"
+        }
+      },
+      "required": ["card", "reason"],
+      "additionalProperties": false
+    },
+    "later": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "key": {
+              "type": "string",
+              "maxLength": 100,
+              "minLength": 1,
+              "pattern": "\\S"
+            },
+            "cancel": {
+              "const": true
+            },
+            "about": {}
+          },
+          "required": ["key", "cancel"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "key": {
+              "type": "string",
+              "maxLength": 100,
+              "minLength": 1,
+              "pattern": "\\S"
+            },
+            "at": {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "(Z|[+-]\\d\\d:\\d\\d)$"
+            },
+            "about": {
+              "type": "string",
+              "maxLength": 4000,
+              "minLength": 1,
+              "pattern": "\\S"
+            }
+          },
+          "required": ["key", "at", "about"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "result": {
+      "type": "object",
+      "properties": {
+        "outcome": {
+          "enum": ["done", "nothing", "failed", "cancelled"]
+        },
+        "summary": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "error": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "session": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "usage": {
+          "$ref": "#/$defs/usage"
+        },
+        "ask": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ask"
+          },
+          "maxItems": 5
+        },
+        "notice": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/notice"
+          },
+          "maxItems": 10
+        },
+        "resolve": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/resolve"
+          },
+          "maxItems": 50
+        },
+        "later": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/later"
+          },
+          "maxItems": 10
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/event"
+          },
+          "maxItems": 100
+        }
+      },
+      "required": ["outcome"],
+      "additionalProperties": false
+    },
+    "started": {
+      "type": "object",
+      "properties": {
+        "session": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "link": {
+          "type": "string",
+          "maxLength": 500
+        }
+      },
+      "required": [],
+      "additionalProperties": true
+    },
+    "answer": {
+      "type": "object",
+      "properties": {
+        "choice": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 4000
+        },
+        "by": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "ref": {
+          "type": "string",
+          "maxLength": 500
+        }
+      },
+      "required": [],
+      "additionalProperties": true
+    },
+    "delivered": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "ref": {
+          "type": ["string", "null"],
+          "maxLength": 500
+        }
+      },
+      "required": ["version"],
+      "additionalProperties": false
+    },
+    "failed": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "error": {
+          "type": "string",
+          "maxLength": 300
+        }
+      },
+      "required": ["version", "error"],
+      "additionalProperties": false
+    },
+    "tell-source": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 20000,
+          "minLength": 1,
+          "pattern": "\\S"
+        }
+      },
+      "required": ["key", "text"],
+      "additionalProperties": false
+    },
+    "tell-worker": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 20000,
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "task": {
+          "type": "string",
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "\\S"
+        }
+      },
+      "required": ["key", "text", "task"],
+      "additionalProperties": false
+    },
+    "job": {
+      "type": "object",
+      "properties": {
+        "run": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "token": {
+          "type": "string",
+          "maxLength": 100,
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "rule": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "cwd": {
+              "type": "string"
+            },
+            "skill": {
+              "type": "string"
+            },
+            "prompt": {
+              "type": "string"
+            },
+            "emits": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string"
+                },
+                "types": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": ["source", "types"],
+              "additionalProperties": true
+            }
+          },
+          "required": ["name", "cwd"],
+          "additionalProperties": true
+        },
+        "agent": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "use": {
+              "type": "string"
+            },
+            "worker": {
+              "type": "string"
+            },
+            "model": {
+              "type": "string"
+            },
+            "effort": {
+              "type": "string"
+            },
+            "access": {
+              "enum": ["read", "edit", "full"]
+            },
+            "command": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "timeout": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": ["id", "name", "use", "access"],
+          "additionalProperties": true
+        },
+        "context": {
+          "type": "object",
+          "properties": {
+            "events": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/context-event"
+              }
+            },
+            "answers": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/context-answer"
+              }
+            },
+            "timers": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/context-timer"
+              }
+            },
+            "waiting": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/context-timer"
+              }
+            },
+            "open": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/context-open"
+              }
+            },
+            "decided": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/context-decided"
+              }
+            }
+          },
+          "required": ["events", "answers", "timers", "waiting", "open", "decided"],
+          "additionalProperties": true
+        },
+        "session": {
+          "type": ["string", "null"]
+        },
+        "attempt": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "askFirst": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": ["run", "token", "attempt", "rule", "agent", "session", "askFirst", "context"],
+      "additionalProperties": true
+    },
+    "card": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "kind": {
+          "enum": ["ask", "notice"]
+        },
+        "state": {
+          "enum": ["open", "decided", "done", "closed"]
+        },
+        "title": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "ref": {
+          "type": ["string", "null"]
+        },
+        "recommend": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "choice": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "answer": {
+          "type": ["string", "null"]
+        },
+        "by": {
+          "type": ["string", "null"]
+        },
+        "result": {
+          "type": ["string", "null"]
+        },
+        "link": {
+          "type": ["string", "null"]
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "kind",
+        "state",
+        "title",
+        "text",
+        "options",
+        "ref",
+        "recommend",
+        "choice",
+        "answer",
+        "by",
+        "result",
+        "link"
+      ],
+      "additionalProperties": true,
+      "oneOf": [
+        {
+          "properties": {
+            "kind": {
+              "const": "ask"
+            },
+            "options": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 5
+            }
+          }
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "notice"
+            }
+          }
+        }
+      ]
+    },
+    "work": {
+      "type": "object",
+      "properties": {
+        "job": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/job"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cancel": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "required": ["job", "cancel"],
+      "additionalProperties": false
+    },
+    "eventAck": {
+      "type": "object",
+      "properties": {
+        "event": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "duplicate": {
+          "type": "boolean"
+        },
+        "routed": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 200
+          }
+        }
+      },
+      "required": ["event", "duplicate", "routed"],
+      "additionalProperties": false
+    },
+    "receiptAck": {
+      "type": "object",
+      "properties": {
+        "rejected": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "card": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "what": {
+                "type": "string",
+                "maxLength": 500
+              },
+              "reason": {
+                "type": "string",
+                "maxLength": 1000
+              }
+            },
+            "required": ["reason"],
+            "additionalProperties": false
+          }
+        },
+        "duplicate": {
+          "type": "boolean"
+        }
+      },
+      "required": ["rejected"],
+      "additionalProperties": false
+    },
+    "fact": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "at": {
+          "type": "number"
+        },
+        "type": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "changes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "table": {
+                "type": "string",
+                "maxLength": 100
+              },
+              "key": {
+                "type": "string",
+                "maxLength": 500
+              },
+              "row": {
+                "type": ["object", "null"]
+              }
+            },
+            "required": ["table", "key", "row"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["version", "seq", "at", "type", "changes"],
+      "additionalProperties": false
+    },
+    "error": {
+      "type": "object",
+      "properties": {
+        "error": {
+          "type": "string",
+          "maxLength": 4000
+        }
+      },
+      "required": ["error"],
+      "additionalProperties": false
+    },
+    "context-event": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "sourceName": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "subject": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "detail": {
+          "type": "string"
+        },
+        "link": {
+          "type": "string"
+        },
+        "receivedAt": {
+          "type": "string"
+        },
+        "hops": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": ["id", "source", "sourceName", "type", "subject", "summary", "detail", "link", "receivedAt"],
+      "additionalProperties": true
+    },
+    "context-answer": {
+      "type": "object",
+      "properties": {
+        "card": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "title": {
+          "type": "string"
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "choice": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "text": {
+          "type": ["string", "null"]
+        },
+        "about": {
+          "type": "string"
+        },
+        "by": {
+          "type": ["string", "null"]
+        },
+        "at": {
+          "type": "string"
+        }
+      },
+      "required": ["card", "title", "options", "choice", "text", "about", "by", "at"],
+      "additionalProperties": true
+    },
+    "context-timer": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "about": {
+          "type": "string"
+        },
+        "at": {
+          "type": "string"
+        }
+      },
+      "required": ["key", "about", "at"],
+      "additionalProperties": true
+    },
+    "context-open": {
+      "type": "object",
+      "properties": {
+        "card": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "title": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "at": {
+          "type": "string"
+        }
+      },
+      "required": ["card", "title", "text", "at"],
+      "additionalProperties": true
+    },
+    "context-decided": {
+      "type": "object",
+      "properties": {
+        "card": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "title": {
+          "type": "string"
+        },
+        "choice": {
+          "type": ["string", "null"]
+        },
+        "at": {
+          "type": "string"
+        }
+      },
+      "required": ["card", "title", "choice", "at"],
+      "additionalProperties": true
+    }
+  }
+}

@@ -15,6 +15,8 @@ import { openDatabase, type DbHandle } from "./db/client";
 import { EventHub } from "./events";
 import { SecretStore } from "./secrets";
 import { ApprovalService } from "./services/approvals";
+import { AutoloopService } from "./services/autoloop/service";
+import { AutoloopStore } from "./services/autoloop/store";
 import { createAutoApprove } from "./services/auto-approve";
 import { BrowserService } from "./services/browser";
 import { ChatService } from "./services/chat";
@@ -46,6 +48,7 @@ export interface Container {
   secrets: SecretStore;
   settings: SettingsService;
   approvals: ApprovalService;
+  autoloop: AutoloopService;
   permissionRules: PermissionRuleService;
   providers: ProviderService;
   projects: ProjectService;
@@ -73,7 +76,7 @@ export interface Container {
 
 export async function createContainer(
   config: SidecarConfig,
-  options: { inMemory?: boolean } = {},
+  options: { inMemory?: boolean; autoloopFetch?: typeof fetch } = {},
 ): Promise<Container> {
   const dbHandle = openDatabase(options.inMemory ? ":memory:" : config.dataDir);
   const db = dbHandle.db;
@@ -177,6 +180,20 @@ export async function createContainer(
   });
   const tasks = new TaskService(db, hub, { executor: taskExecutor, artifactRoot });
   lazyTasks.current = tasks;
+  const autoloop = new AutoloopService({
+    store: new AutoloopStore(db),
+    secrets,
+    dataDir: config.dataDir,
+    tasks,
+    registry,
+    providers,
+    projects,
+    projectInstructions,
+    permissionRules,
+    maskFactory,
+    fetchImpl: options.autoloopFetch,
+  });
+  await autoloop.start().catch(() => console.warn("[autoloop] 后台启动未完成，自动化状态已保留"));
   const chat = new ChatService(
     db,
     orchestrator,
@@ -198,6 +215,7 @@ export async function createContainer(
     secrets,
     settings,
     approvals,
+    autoloop,
     permissionRules,
     providers,
     projects,
@@ -221,6 +239,7 @@ export async function createContainer(
     scheduler,
     registry,
     dispose: async () => {
+      await autoloop.dispose();
       await chat.dispose();
       reach.dispose();
       scheduler.stop();

@@ -87,7 +87,12 @@ describe("会话模型选择", () => {
         options.agent ?? "orchestrator",
         options.modelSelection,
       );
-      return { text: models[0]!.model.id, agent: options.agent ?? "orchestrator", toolCalls: [] };
+      return {
+        status: "completed",
+        text: models[0]!.model.id,
+        agent: options.agent ?? "orchestrator",
+        toolCalls: [],
+      };
     });
     const a = { providerId: provider.id, model: "selected" };
     const b = { providerId: other.id, model: "other" };
@@ -160,6 +165,7 @@ describe("会话模型选择", () => {
   it("重命名会话持久化标题，拒绝空标题和未知会话", async () => {
     vi.spyOn(container.memory, "captureFromTurn").mockResolvedValue([]);
     vi.spyOn(container.orchestrator, "run").mockResolvedValue({
+      status: "completed",
       text: "ok",
       agent: "orchestrator",
       toolCalls: [],

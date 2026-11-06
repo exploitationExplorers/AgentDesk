@@ -12,7 +12,7 @@ import {
 import { toWireName } from "@agentdesk/agent-core";
 import { fsRead } from "@agentdesk/integrations";
 import type { AgentStreamEvent, Artifact, RunEventRecord, Task } from "@agentdesk/shared";
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { createContainer, type Container } from "../src/container";
 import { loadConfig } from "../src/config";
 import { createApp } from "../src/http/app";
@@ -37,6 +37,20 @@ beforeAll(async () => {
 afterAll(async () => {
   faux.unregister();
   await container.dispose();
+});
+afterEach(async () => {
+  // 断言失败也要收尾执行，避免上一项的待审批任务消费下一项的模型响应。
+  await container.chat.dispose();
+  const activeRuns = () =>
+    container.tasks
+      .list()
+      .flatMap((task) =>
+        container.tasks
+          .listRuns(task.id)
+          .filter((run) => ["queued", "running"].includes(run.status)),
+      );
+  for (const run of activeRuns()) container.tasks.requestCancel(run.id);
+  await waitFor(() => activeRuns().length === 0);
 });
 
 async function waitFor(predicate: () => boolean) {
@@ -99,7 +113,11 @@ it("提交前的组合 Git 查询无需审批，实际提交仅在批准后执�
   await waitFor(() => container.approvals.list("pending").length > 0);
   const pending = container.approvals.list("pending");
   expect(pending).toHaveLength(1);
-  expect(pending[0]!.title).toContain(commit);
+  expect(pending[0]!.detail).toContain(commit);
+  expect(pending[0]!.payload).toMatchObject({
+    tool: "shell.run",
+    args: { command: commit, cwd: repo },
+  });
   expect(git(["rev-parse", "HEAD"]).trim()).toBe(before);
   await request(`/approvals/${pending[0]!.id}`, { approved: true });
   const events = await stream;
@@ -285,10 +303,20 @@ for (const decision of ["approve", "reject", "cancel"] as const) {
           expect.objectContaining({ type: "tool_call", agent: "code", name: "fs.patch" }),
         ]),
       );
-      if (decision === "cancel") await reader.cancel();
-      else await request(`/approvals/${approval.approvalId}`, { approved: decision === "approve" });
-      await consume;
       const task = container.tasks.list().find((item) => item.goal === `委派编辑 ${path}`)!;
+      if (decision === "cancel") {
+        await reader.cancel();
+        await consume;
+        // SSE 断连只结束观察；用户通过停止接口明确取消父子执行与待处理授权。
+        expect(container.tasks.listRuns(task.id).some((run) => run.status === "running")).toBe(
+          true,
+        );
+        expect(container.approvals.list("pending")).toHaveLength(1);
+        expect((await request(`/conversations/${task.conversationId}/stop`, {})).status).toBe(204);
+      } else {
+        await request(`/approvals/${approval.approvalId}`, { approved: decision === "approve" });
+        await consume;
+      }
       await waitFor(() =>
         container.tasks.listRuns(task.id).every((run) => run.status !== "running"),
       );

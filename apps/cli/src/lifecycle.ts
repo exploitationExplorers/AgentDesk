@@ -1,8 +1,8 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import { closeSync, existsSync, openSync, renameSync, statSync } from "node:fs";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { apiRequest, verifyInstance } from "./client.js";
 import { createUi } from "./ui.js";
@@ -24,6 +24,20 @@ interface StartOptions {
   workerPath: string;
   port?: number;
   foreground?: boolean;
+}
+
+function supervisorPath(workerPath: string): string | undefined {
+  if (process.platform !== "win32") return undefined;
+  const packaged = join(dirname(workerPath), "autoloop", "agentdesk-supervisor.exe");
+  if (existsSync(packaged)) return packaged;
+  if (existsSync(join(dirname(workerPath), "autoloop", "runtime-manifest.json")))
+    throw new Error("CLI 内置进程管理程序缺失，请重新安装 AgentDesk。");
+  const development = resolve(
+    dirname(fileURLToPath(import.meta.url)),
+    "../../../crates/agentdesk-supervisor/target/debug/agentdesk-supervisor.exe",
+  );
+  if (existsSync(development)) return development;
+  throw new Error("请先构建 agentdesk-supervisor，再启动 Windows CLI 服务。");
 }
 
 export async function serviceStatus(home: string): Promise<ServiceStatus> {
@@ -70,7 +84,26 @@ export async function startService(
   const instanceId = randomUUID();
   const token = randomBytes(32).toString("hex");
   const selectedPort = port ?? 17891;
-  if (foreground) {
+  const supervisor = supervisorPath(workerPath);
+  const environment = {
+    ...process.env,
+    AGENTDESK_CLI_HOME: home,
+    AGENTDESK_CLI_INSTANCE: instanceId,
+    AGENTDESK_CLI_TOKEN: token,
+    AGENTDESK_CLI_PORT: String(selectedPort),
+    AGENTDESK_CLI_MODE: foreground ? "foreground" : "background",
+    AGENTDESK_PARENT_STDIN: foreground ? "1" : "0",
+  };
+  const argumentsForRuntime = supervisor
+    ? [
+        ...(foreground ? [] : ["--daemon"]),
+        "--instance-data-dir",
+        join(home, "data"),
+        process.execPath,
+        workerPath,
+      ]
+    : [workerPath];
+  if (foreground && !supervisor) {
     const runtime = await import(pathToFileURL(workerPath).href);
     await runtime.runCliRuntime({
       home,
@@ -81,6 +114,30 @@ export async function startService(
     });
     return { status: "stopped" };
   }
+  if (foreground) {
+    const child = spawn(supervisor!, argumentsForRuntime, {
+      windowsHide: true,
+      stdio: ["pipe", "inherit", "inherit"],
+      env: environment,
+    });
+    const stop = () => child.stdin?.end();
+    child.stdin?.on("error", stop);
+    process.once("SIGINT", stop);
+    process.once("SIGTERM", stop);
+    try {
+      await new Promise<void>((resolveStopped, reject) => {
+        child.once("error", reject);
+        child.once("exit", (code) => {
+          if (code === 0) resolveStopped();
+          else reject(new Error("CLI 服务异常退出，请检查启动日志。"));
+        });
+      });
+    } finally {
+      process.removeListener("SIGINT", stop);
+      process.removeListener("SIGTERM", stop);
+    }
+    return { status: "stopped" };
+  }
   const logPath = join(home, "daemon.log");
   if (existsSync(logPath) && statSync(logPath).size > 10 * 1024 * 1024) {
     renameSync(logPath, `${logPath}.1`);
@@ -88,17 +145,11 @@ export async function startService(
   const logFd = openSync(logPath, "a", 0o600);
   let child;
   try {
-    child = spawn(process.execPath, [workerPath], {
+    child = spawn(supervisor ?? process.execPath, argumentsForRuntime, {
       detached: true,
       windowsHide: true,
       stdio: ["ignore", logFd, logFd],
-      env: {
-        ...process.env,
-        AGENTDESK_CLI_HOME: home,
-        AGENTDESK_CLI_INSTANCE: instanceId,
-        AGENTDESK_CLI_TOKEN: token,
-        AGENTDESK_CLI_PORT: String(selectedPort),
-      },
+      env: environment,
     });
   } finally {
     closeSync(logFd);

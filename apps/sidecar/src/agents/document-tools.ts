@@ -4,30 +4,23 @@ import { join } from "node:path";
 import { Document, HeadingLevel, Packer, Paragraph } from "docx";
 import { z } from "zod";
 import { defineTool, Type, type ToolContext, type ToolRegistry } from "@agentdesk/agent-core";
+import { draftScope } from "../services/draft-scope";
 
 const sectionSchema = z.object({
   heading: z.string().trim().min(1).max(120),
   paragraphs: z.array(z.string().min(1).max(4000)).min(1).max(8),
 });
-type Draft = {
-  title: string;
-  total: number;
-  sections: z.infer<typeof sectionSchema>[];
-  previewId?: string;
-};
+const draftSchema = z.object({
+  title: z.string().trim().min(1).max(80),
+  total: z.number().int().min(1).max(20),
+  sections: z.array(sectionSchema).max(20),
+  previewId: z.string().optional(),
+});
+type Draft = z.infer<typeof draftSchema>;
 
 export function registerDocumentTools(registry: ToolRegistry, root: string): void {
   const scopes = new WeakMap<NonNullable<ToolContext["recordArtifact"]>, Map<string, Draft>>();
-  const scope = (ctx: ToolContext) => {
-    ctx.signal?.throwIfAborted();
-    if (!ctx.recordArtifact) throw new Error("当前任务不支持保存文档");
-    let map = scopes.get(ctx.recordArtifact);
-    if (!map) {
-      map = new Map();
-      scopes.set(ctx.recordArtifact, map);
-    }
-    return map;
-  };
+  const scope = (ctx: ToolContext) => draftScope(ctx, scopes, "document-drafts:v1", draftSchema);
   registry.register(
     defineTool({
       name: "documents.start",

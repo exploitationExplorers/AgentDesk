@@ -4,6 +4,7 @@ import {
   AppError,
   ErrorCode,
   type AgentName,
+  type AutomationStatus,
   type Artifact,
   type ArtifactKind,
   type ArtifactVersionInput,
@@ -42,6 +43,7 @@ const TASK_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
 };
 
 export interface TaskCreateInput {
+  automationId?: string;
   title?: string;
   goal: string;
   agent?: AgentName | null;
@@ -51,6 +53,7 @@ export interface TaskCreateInput {
 }
 
 export interface CreateRunInput {
+  executionOwner?: "local" | "autoloop";
   taskId: string;
   parentRunId?: string | null;
   kind: RunKind;
@@ -130,6 +133,7 @@ export class TaskService {
   private readonly queue: string[] = [];
   private readonly runningSet = new Set<string>();
   private readonly controllers = new Map<string, AbortController>();
+  private readonly externalSlots = new Set<symbol>();
 
   constructor(
     private readonly db: Db,
@@ -147,6 +151,9 @@ export class TaskService {
     const now = nowIso();
     return this.tasks.put({
       id: newId(),
+      ...(input.automationId
+        ? { automationId: input.automationId, automationStatus: "queued" as const }
+        : {}),
       ...(input.purpose ? { purpose: input.purpose } : {}),
       title: input.title?.trim() || input.goal.slice(0, 40),
       goal: input.goal,
@@ -226,6 +233,8 @@ export class TaskService {
     }
     const task = this.tasks.get(input.taskId);
     if (!task) throw new AppError(ErrorCode.NotFound, "任务不存在");
+    if (task.automationId && input.executionOwner !== "autoloop")
+      throw new AppError(ErrorCode.Conflict, "自动化任务由后台调度，请使用任务中的回答或停止操作");
     if (input.kind === "root") {
       if (task.status === "closed")
         throw new AppError(ErrorCode.Conflict, "任务已关闭，不能新建运行");
@@ -261,6 +270,7 @@ export class TaskService {
       status: "queued" as RunStatus,
       trigger: input.trigger,
       idempotencyKey: input.idempotencyKey ?? null,
+      executionOwner: input.executionOwner ?? "local",
       input: { ...input.input, ...(workspace ? { workspace } : {}) },
       resultText: null,
       resultError: null,
@@ -298,6 +308,7 @@ export class TaskService {
     if (!run) throw new AppError(ErrorCode.NotFound, "运行不存在");
     this.updateRunRow(runId, { status: "running", startedAt: nowIso() });
     if (controller) this.controllers.set(runId, controller);
+    if (run.executionOwner !== "autoloop") this.runningSet.add(runId);
     if (!run.parentRunId) {
       const task = this.get(run.taskId);
       if (task && ["pending", "failed", "cancelled"].includes(task.status))
@@ -321,6 +332,8 @@ export class TaskService {
   requestCancel(runId: string): Run {
     const row = this.db.select().from(runs).where(eq(runs.id, runId)).get();
     if (!row) throw new AppError(ErrorCode.NotFound, "运行不存在");
+    if (row.executionOwner === "autoloop")
+      throw new AppError(ErrorCode.Conflict, "请通过自动化任务停止后台执行");
     if (!row.cancelRequested) {
       this.db
         .update(runs)
@@ -337,6 +350,7 @@ export class TaskService {
   cancelTask(taskId: string): Task {
     const task = this.tasks.get(taskId);
     if (!task) throw new AppError(ErrorCode.NotFound, "任务不存在");
+    if (task.automationId) throw new AppError(ErrorCode.Conflict, "请通过自动化任务停止后台执行");
     if (task.currentRunId) this.requestCancel(task.currentRunId);
     if (!TASK_TRANSITIONS[task.status].includes("cancelled")) return task;
     return this.transition(taskId, "cancelled");
@@ -356,16 +370,21 @@ export class TaskService {
 
   /** 排队进这条 Run，并尝试立即开始调度（受并发槛位限制）。 */
   enqueue(runId: string): void {
+    if (this.getRun(runId)?.executionOwner === "autoloop")
+      throw new AppError(ErrorCode.Conflict, "托管执行不能进入本地调度队列");
     this.queue.push(runId);
     void this.pump();
   }
 
   /** 从队首按序领取 Run，直到槛位占满或队列排空；每个槛位空出时会再调用一次自己。 */
   private async pump(): Promise<void> {
-    while (this.queue.length > 0 && this.runningSet.size < this.maxConcurrentRuns) {
+    while (
+      this.queue.length > 0 &&
+      this.runningSet.size + this.externalSlots.size < this.maxConcurrentRuns
+    ) {
       const runId = this.queue.shift()!;
       const run = this.getRun(runId);
-      if (!run || run.status !== "queued") continue;
+      if (!run || run.status !== "queued" || run.executionOwner === "autoloop") continue;
       if (run.cancelRequested) {
         this.finalizeRun(run, { status: "cancelled", resultError: "排队期间被取消" });
         continue;
@@ -415,8 +434,48 @@ export class TaskService {
     const run = this.getRun(runId);
     if (!run) return;
     this.writeRunResult(run, outcome);
-    if (run.parentRunId === null) this.safeTransition(run.taskId, this.taskStatusFor(outcome));
+    if (run.parentRunId === null && this.get(run.taskId)?.currentRunId === run.id)
+      this.safeTransition(run.taskId, this.taskStatusFor(outcome));
     this.controllers.delete(runId);
+    this.runningSet.delete(runId);
+    void this.pump();
+  }
+
+  /** 先保留本机额度再向 Hub claim，避免领取后长时间排队。 */
+  reserveExternalSlot(): (() => void) | undefined {
+    if (this.runningSet.size + this.externalSlots.size >= this.maxConcurrentRuns) return undefined;
+    const key = Symbol();
+    this.externalSlots.add(key);
+    return () => {
+      this.externalSlots.delete(key);
+      void this.pump();
+    };
+  }
+
+  setAutomationStatus(taskId: string, status: AutomationStatus): void {
+    const task = this.get(taskId);
+    if (!task?.automationId) throw new AppError(ErrorCode.Conflict, "不是自动化任务");
+    this.tasks.put({
+      ...task,
+      automationStatus: status,
+      status:
+        status === "completed"
+          ? "completed"
+          : status === "cancelled"
+            ? "cancelled"
+            : status === "queued"
+              ? "queued"
+              : status === "running"
+                ? "running"
+                : "awaiting_review",
+      updatedAt: nowIso(),
+    });
+    if (task.currentRunId)
+      this.appendEvent({
+        taskId,
+        runId: task.currentRunId,
+        event: { type: "automation_status", status },
+      });
   }
 
   private writeRunResult(run: Run, result: RunOutcome): Run {
@@ -470,7 +529,11 @@ export class TaskService {
    */
   private recoverAfterRestart(): void {
     const now = nowIso();
-    const runningRows = this.db.select().from(runs).where(eq(runs.status, "running")).all();
+    const runningRows = this.db
+      .select()
+      .from(runs)
+      .where(and(eq(runs.status, "running"), eq(runs.executionOwner, "local")))
+      .all();
     for (const row of runningRows) {
       this.db
         .update(runs)
@@ -484,7 +547,7 @@ export class TaskService {
     const queuedRows = this.db
       .select()
       .from(runs)
-      .where(eq(runs.status, "queued"))
+      .where(and(eq(runs.status, "queued"), eq(runs.executionOwner, "local")))
       .orderBy(asc(runs.createdAt))
       .all();
     for (const row of queuedRows) this.queue.push(row.id);

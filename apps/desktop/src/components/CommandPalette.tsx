@@ -9,6 +9,7 @@ import {
   Newspaper,
   Play,
   Rocket,
+  Repeat2,
   Settings,
   Sparkles,
   Terminal,
@@ -114,6 +115,12 @@ export function CommandPalette() {
             onSelect={() => go(() => navigate({ to: "/workflows" }))}
           >
             工作流
+          </Item>
+          <Item
+            icon={<Repeat2 className="h-4 w-4" />}
+            onSelect={() => go(() => navigate({ to: "/automations" }))}
+          >
+            自动化
           </Item>
           <Item
             icon={<Sparkles className="h-4 w-4" />}

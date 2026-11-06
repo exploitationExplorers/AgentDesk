@@ -1,5 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { AlertTriangle, Menu, PanelRight, Files } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { chatMessageContent, type AgentName } from "@agentdesk/shared";
@@ -26,6 +26,11 @@ import {
   visibleArtifacts,
 } from "./ChatArtifacts";
 import { useTaskObservation } from "./useTaskObservation";
+import { AutomationInteractions } from "../automations/AutomationInteractions";
+import { AutomationFollowup } from "../automations/AutomationFollowup";
+import { AutomationRecovery } from "../automations/AutomationRecovery";
+import { automationIsRunning, automationStatusLabel } from "../automations/status";
+import { Button } from "@agentdesk/ui";
 
 function AgentAvatar({ agent }: { agent: AgentName | null }) {
   const meta = AGENT_META[agent ?? "orchestrator"];
@@ -60,12 +65,24 @@ export function ChatPage() {
     onConversation,
     conversationId,
   );
-  const running = streaming || workbench.data?.activity === "running";
+  const automation = workbench.data?.task?.automationId ? workbench.data.task : null;
+  const queryClient = useQueryClient();
+  const cancelAutomation = useMutation({
+    mutationFn: (id: string) => api.cancelAutomationTask(id),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["session-workbench", conversationId] }),
+  });
+  const running =
+    streaming ||
+    (automation
+      ? automationIsRunning(automation.automationStatus)
+      : workbench.data?.activity === "running");
   const observed = useTaskObservation(
     conversationId,
     workbench.data?.task?.id,
     workbench.data?.task?.currentRunId,
-    running,
+    running || Boolean(automation),
+    Boolean(automation),
   );
   const artifacts = visibleArtifacts(workbench.data?.artifacts ?? []);
   const selectedId =
@@ -85,12 +102,16 @@ export function ChatPage() {
     (selectedVersion?.artifactKey
       ? artifacts.find((item) => item.artifactKey === selectedVersion.artifactKey)
       : undefined);
+  const showAutomationPreview = Boolean(
+    automation && !["completed", "cancelled"].includes(automation.automationStatus ?? ""),
+  );
   const livePresentation =
-    running &&
+    (running || showAutomationPreview) &&
     observed?.presentation &&
     (!artifactSelection || artifactSelection.conversationId !== conversationId);
   const liveDocument =
-    running && (!artifactSelection || artifactSelection.conversationId !== conversationId)
+    (running || showAutomationPreview) &&
+    (!artifactSelection || artifactSelection.conversationId !== conversationId)
       ? observed?.document
       : null;
   const openArtifact = (id: string | null) => {
@@ -186,12 +207,14 @@ export function ChatPage() {
       onSend={(t) => handleSend(t)}
       onStop={() => {
         if (streaming) void stop();
+        else if (automation) cancelAutomation.mutate(automation.id);
         else if (workbench.data?.task?.currentRunId)
           void http.post(`/runs/${encodeURIComponent(workbench.data.task.currentRunId)}/cancel`);
       }}
       streaming={running}
       disabled={
         compacting ||
+        Boolean(automation) ||
         workbench.data?.activity === "compacting" ||
         workbench.data?.task?.purpose === "reference_analysis"
       }
@@ -276,7 +299,7 @@ export function ChatPage() {
                     >
                       <Files className="h-3.5 w-3.5" />
                       <span className="hidden sm:inline">
-                        {running && (observed?.presentation || observed?.document)
+                        {observed?.presentation || observed?.document
                           ? "查看预览"
                           : `成果 ${artifacts.length}`}
                       </span>
@@ -373,12 +396,60 @@ export function ChatPage() {
                     />
                   </div>
                 ) : null}
+                {automation ? (
+                  <div className="space-y-3">
+                    {!running ? (
+                      <p role="status" className="text-sm text-muted">
+                        {automationStatusLabel(automation.automationStatus ?? "queued")}
+                      </p>
+                    ) : null}
+                    <AutomationInteractions taskId={automation.id} />
+                  </div>
+                ) : null}
                 <ArtifactCards artifacts={artifacts} onOpen={openArtifact} />
                 <div ref={bottom} />
               </div>
             </div>
             <div className="mx-auto w-full max-w-[860px] px-4 pb-4 sm:px-8 sm:pb-5">
-              {pendingQuestion ? (
+              {automation ? (
+                <div className="space-y-2 rounded-xl border bg-surface p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
+                    <Link to="/automations" className="rounded px-1 py-2 hover:text-brand">
+                      查看自动化与运行记录
+                    </Link>
+                    {!["completed", "cancelled"].includes(automation.automationStatus ?? "") ? (
+                      <div className="space-y-1">
+                        <Button
+                          size="sm"
+                          disabled={cancelAutomation.isPending}
+                          onClick={() => cancelAutomation.mutate(automation.id)}
+                        >
+                          {cancelAutomation.isPending ? "正在请求停止…" : "停止任务及后续触发"}
+                        </Button>
+                        <p>将停用此自动化，保留已有会话与成果。</p>
+                      </div>
+                    ) : null}
+                  </div>
+                  {cancelAutomation.error ? (
+                    <p role="alert" className="text-xs text-danger">
+                      {cancelAutomation.error.message}
+                    </p>
+                  ) : null}
+                  {automation.automationStatus === "needs_attention" ? (
+                    <AutomationRecovery
+                      taskId={automation.id}
+                      conversationId={automation.conversationId}
+                    />
+                  ) : null}
+                  {automation.automationStatus === "completed" ? (
+                    <AutomationFollowup
+                      key={automation.currentRunId}
+                      taskId={automation.id}
+                      conversationId={automation.conversationId}
+                    />
+                  ) : null}
+                </div>
+              ) : pendingQuestion ? (
                 <QuestionPrompt
                   key={pendingQuestion.id}
                   approvalId={pendingQuestion.id}
@@ -401,7 +472,11 @@ export function ChatPage() {
       ) : livePresentation && !showBrowser ? (
         <LivePresentationPanel
           slides={observed?.slides ?? []}
-          progress={observed?.progress ?? null}
+          progress={
+            automation && !running
+              ? automationStatusLabel(automation.automationStatus ?? "queued")
+              : (observed?.progress ?? null)
+          }
           title={observed?.presentationTitle}
           onClose={() => openArtifact(null)}
         />

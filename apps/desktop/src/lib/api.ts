@@ -6,6 +6,11 @@ import type {
   AiCommitResult,
   AppSettings,
   Approval,
+  AutomationBinding,
+  AutomationBindingInput,
+  AutomationCard,
+  AutoloopInteractionAnswer,
+  AutoloopStatus,
   ChatMessage,
   ClaudeSession,
   CommitInfo,
@@ -51,6 +56,7 @@ import type {
   ReviewRating,
   SkillSuggestionResult,
   StarredRepo,
+  Task,
 } from "@agentdesk/shared";
 import type { Workflow, WorkflowInput, WorkflowRun } from "@agentdesk/workflow/dsl";
 import { http, postStream } from "./http";
@@ -114,6 +120,27 @@ export interface RecipePreset {
 }
 
 export const api = {
+  autoloopStatus: () => http.get<AutoloopStatus>("/autoloop/status"),
+  automations: () => http.get<AutomationBinding[]>("/automations"),
+  createAutomation: (input: AutomationBindingInput) =>
+    http.post<AutomationBinding>("/automations", input),
+  disableAutomation: (id: string) =>
+    http.post<AutomationBinding>(`/automations/${encodeURIComponent(id)}/disable`),
+  triggerAutomation: (id: string, eventId: string) =>
+    http.post<{ commandId: string; taskId?: string; conversationId?: string }>(
+      `/automations/${encodeURIComponent(id)}/trigger`,
+      { eventId },
+    ),
+  automationTasks: (id: string) => http.get<Task[]>(`/automations/${encodeURIComponent(id)}/tasks`),
+  interactions: (taskId: string) => http.get<AutomationCard[]>("/interactions", { taskId }),
+  answerInteraction: (id: string, answer: AutoloopInteractionAnswer) =>
+    http.post<AutomationCard>(`/interactions/${encodeURIComponent(id)}/answer`, answer),
+  cancelAutomationTask: (id: string) =>
+    http.post<{ requested: boolean }>(`/automation-tasks/${encodeURIComponent(id)}/cancel`),
+  followupAutomationTask: (id: string, input: { message: string; eventId: string }) =>
+    http.post<{ commandId: string }>(`/automation-tasks/${encodeURIComponent(id)}/followup`, input),
+  resumeAutomationTask: (id: string) =>
+    http.post<{ requested: boolean }>(`/automation-tasks/${encodeURIComponent(id)}/resume`, {}),
   health: () => http.get<HealthInfo>("/health"),
   settings: () => http.get<AppSettings>("/settings"),
   updateSettings: (patch: Partial<AppSettings>) => http.put<AppSettings>("/settings", patch),

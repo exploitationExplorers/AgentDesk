@@ -215,7 +215,7 @@ describe("会话管理 API", () => {
     vi.spyOn(container.memory, "captureFromTurn").mockResolvedValue([]);
     vi.spyOn(container.orchestrator, "run").mockImplementation(async (options) => {
       contexts.push(options.context);
-      return { text: "完成", agent: "code", toolCalls: [] };
+      return { status: "completed", text: "完成", agent: "code", toolCalls: [] };
     });
     expect((await call("/conversations/workspace", { projectId: "linked" }, "PATCH")).status).toBe(
       200,
@@ -250,7 +250,7 @@ describe("会话管理 API", () => {
     vi.spyOn(container.orchestrator, "run").mockImplementation(async () => {
       started();
       await release;
-      return { text: "ok", agent: "code", toolCalls: [] };
+      return { status: "completed", text: "ok", agent: "code", toolCalls: [] };
     });
     container.chat.conversations.put(oldConversation("active"));
     const running = container.chat.send(

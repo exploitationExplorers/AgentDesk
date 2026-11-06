@@ -14,6 +14,8 @@ export default tseslint.config(
       "**/src-tauri/gen/**",
       "**/.turbo/**",
       "**/playwright-report/**",
+      "packages/autoloop-runtime/vendor/**",
+      "crates/**/target/**",
     ],
   },
   js.configs.recommended,

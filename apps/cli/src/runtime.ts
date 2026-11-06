@@ -94,9 +94,15 @@ export async function runCliRuntime(options: RuntimeOptions): Promise<void> {
     };
     process.once("SIGINT", onSignal);
     process.once("SIGTERM", onSignal);
+    if (process.env.AGENTDESK_PARENT_STDIN === "1") {
+      process.stdin.resume();
+      process.stdin.once("end", onSignal);
+      if (process.stdin.readableEnded) onSignal();
+    }
     await stopped;
     process.removeListener("SIGINT", onSignal);
     process.removeListener("SIGTERM", onSignal);
+    process.stdin.removeListener("end", onSignal);
   } catch (error) {
     await runtime?.close();
     removeOwnedState(home, instanceId);
@@ -119,7 +125,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       instanceId,
       token,
       port: Number(process.env.AGENTDESK_CLI_PORT ?? 17891),
-      mode: "background",
+      mode: process.env.AGENTDESK_CLI_MODE === "foreground" ? "foreground" : "background",
     }).catch((error: unknown) => {
       console.error("[cli] failed to start:", error instanceof Error ? error.message : error);
       process.exit(1);

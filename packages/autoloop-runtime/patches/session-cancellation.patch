@@ -1,0 +1,44 @@
+diff --git a/kernel/decide.ts b/kernel/decide.ts
+index 431a980..a7033a3 100644
+--- a/kernel/decide.ts
++++ b/kernel/decide.ts
+@@ -403,7 +403,13 @@ function finish(draft: Draft, id: number, token: string, given: unknown) {
+     : run.usage;
+   put(draft, "runs", id, { last_issued: run.issued, last_result: hash, issued: null, session, usage });
+   let rejected: Rejected[] = [];
+-  if (result.outcome === "failed") rejected = retryLater(draft, run, result);
++  if (run.session_cancelled_at != null) {
++    // AgentDesk 会话取消是持久边界；迟到回执不能重新创建卡片、定时器或后续事件。
++    put(draft, "runs", id, { state: "cancelled", finished_at: draft.at, summary: "事项已停止", cancel_at: null });
++    for (const what of ["ask", "notice", "resolve", "later", "events"] as const) {
++      for (const _ of result[what] ?? []) rejected.push({ what, reason: "事项已停止" });
++    }
++  } else if (result.outcome === "failed") rejected = retryLater(draft, run, result);
+   else if (result.outcome === "cancelled") {
+     put(draft, "runs", id, {
+       state: "cancelled",
+@@ -575,6 +581,24 @@ const HANDLERS: Record<string, (draft: Draft, ...args: any[]) => unknown> = {
+     else if (run.state === "claimed") put(draft, "runs", id, { cancel_at: draft.at });
+     else throw new InputError("这一轮已经结束了");
+   },
++  cancelSession(draft, session) {
++    if (typeof session !== "string" || !session.trim() || session.length > 500)
++      throw new InputError("session 要是 500 字以内的非空文字");
++    for (const card of rows(draft.view, "cards", { session, state: ["open", "decided"] })) {
++      closeCard(draft, card, "事项已停止", "AgentDesk");
++    }
++    for (const timer of rows(draft.view, "timers", { session, event_id: null })) {
++      set(draft, "timers", timer.id, null);
++    }
++    const belongs = (run: Row) => run.session === session || run.resume === session;
++    for (const run of rows(draft.view, "runs", { state: ["queued", "claimed", "unknown"] }).filter(belongs)) {
++      if (run.session_cancelled_at != null) continue;
++      const stopped = { session_cancelled_at: draft.at, cancel_at: draft.at };
++      if (run.state === "queued")
++        put(draft, "runs", run.id, { ...stopped, state: "cancelled", finished_at: draft.at });
++      else put(draft, "runs", run.id, stopped);
++    }
++  },
+   resolve(draft, id, reason, by) {
+     const card = draft.view.get("cards", id);
+     if (!card) throw new NotFound("没有这张卡片");
