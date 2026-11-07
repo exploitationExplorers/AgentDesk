@@ -98,7 +98,7 @@ test("创建和触发自动化使用真实交互入口，失败重发保留幂�
   await page.getByLabel("最多费用（USD，可选）").fill("2.5");
   await page.getByRole("button", { name: "创建自动化", exact: true }).click();
   await expect(page.getByRole("heading", { name: binding.title })).toBeVisible();
-  await expect(page.getByText("30 9 * * *", { exact: true })).toBeVisible();
+  await expect(page.getByText(/每天 09:30 自动执行/)).toBeVisible();
   await page.getByRole("button", { name: "立即运行" }).click();
   await expect(page.getByRole("alert")).toContainText("请重试");
   await page.reload();
@@ -106,6 +106,36 @@ test("创建和触发自动化使用真实交互入口，失败重发保留幂�
   await expect(page.getByRole("link", { name: "查看会话与成果" })).toBeVisible();
   expect(attempts).toHaveLength(2);
   expect(attempts[0]).toBe(attempts[1]);
+});
+
+test("收起运行记录时仍自动显示定时执行进度和成果，不发送手动触发请求", async ({ page }) => {
+  let current: Task[] = [];
+  const triggers: string[] = [];
+  await page.route("**/api/automations", (route) =>
+    route.fulfill({
+      json: [{ ...binding, schedule: { cron: "0 16 * * *", timezone: "Asia/Shanghai" } }],
+    }),
+  );
+  await page.route("**/api/automations/weekly/tasks", (route) => route.fulfill({ json: current }));
+  await page.route("**/api/automations/weekly/trigger", (route) => {
+    triggers.push(route.request().url());
+    return route.abort();
+  });
+  await page.goto("/#/automations");
+  await expect(page.getByText("等待计划时间自动执行", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "运行记录" })).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  );
+  current = [{ ...task, automationStatus: "running" }];
+  await expect(page.getByRole("status").filter({ hasText: "最近运行" })).toContainText("正在处理");
+  current = [{ ...task, status: "completed", automationStatus: "completed" }];
+  await expect(page.getByRole("status").filter({ hasText: "最近运行" })).toContainText("已完成");
+  await expect(page.getByRole("link", { name: "查看最新进度与成果" })).toHaveAttribute(
+    "href",
+    /#\/\?c=automation-chat/,
+  );
+  expect(triggers).toHaveLength(0);
 });
 
 test("等待问题跨刷新保留预览，显式回答只提交一次并继续原任务", async ({ page }, testInfo) => {

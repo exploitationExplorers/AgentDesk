@@ -128,6 +128,23 @@ export class Orchestrator {
     return tools;
   }
 
+  private isolateTools(name: AgentName, text: string, tools: ReturnType<Orchestrator["toolsFor"]>) {
+    const skills =
+      this.deps.skills?.matchTriggers(name, text).filter((skill) => skill.isolateTools) ?? [];
+    // 多个隔离技能取交集；技能不能借加载其他技能扩大本轮的实际工具集。
+    return tools.filter(
+      (tool) =>
+        tool.name === "skills.load" ||
+        skills.every((skill) =>
+          skill.allowedTools.some((pattern) =>
+            pattern.endsWith(".*")
+              ? tool.name.startsWith(pattern.slice(0, -1))
+              : tool.name === pattern,
+          ),
+        ),
+    );
+  }
+
   async runSpecialist(
     name: AgentName,
     messages: Message[],
@@ -155,7 +172,7 @@ export class Orchestrator {
       : this.toolsFor(def);
     return runAgent({
       definition: def,
-      tools,
+      tools: this.isolateTools(name, userText, tools),
       models,
       messages,
       systemPromptSuffix: [opts.context, this.deps.skills?.promptFor(name, userText)]
@@ -243,7 +260,7 @@ export class Orchestrator {
         : [...this.toolsFor(def), delegate];
     const result = await runAgent({
       definition: def,
-      tools,
+      tools: this.isolateTools("orchestrator", opts.userMessage, tools),
       models,
       messages,
       systemPromptSuffix: [

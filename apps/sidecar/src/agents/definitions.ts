@@ -1,4 +1,5 @@
 import type { AgentDefinition } from "@agentdesk/agent-core";
+import type { AutomationBinding, Project } from "@agentdesk/shared";
 
 const SHARED = `
 你运行在用户的个人桌面工作台 AgentDesk 中，用户是一名同时维护 GitHub、Gitee、公司 GitLab 多个项目的全栈开发者，日常用 Cursor 和 Claude Code 开发。
@@ -11,6 +12,45 @@ const SHARED = `
 - 制作 PPT 时优先 presentations.start → presentations.append（每次 2—3 页）→ presentations.finish，让用户边生成边预览。短文稿也可 presentations.create 一次完成。不探测 Python、不安装软件。关键信息不足先询问主题和用途；用户已给出要求就执行。阶段转换时用简短自然语言说明已完成什么、接下来做什么；不输出私有推理或内部参数，只有 finish 成功后才宣布文件完成。
 - 长期记忆会写在系统提示里。用户说「记住」时调用 memory.store；说「忘掉」时先 memory.recall 找到 id，再调用 memory.forget。与当前问题无关的记忆不要复述。
 - 用户说磁盘空间不够、清理缓存或还剩多少空间时，用 disk.status / disk.scan。清理只能调用 disk.clean，并且只提交用户点名同意的 id。不要用 shell 删除缓存、回收站或用户文件。`.trim();
+
+/** 自动化执行上下文独立于聊天总控，计划由后台调度器持有。 */
+export function createAutomationAgentDefinition(input: {
+  binding: AutomationBinding;
+  project: Pick<Project, "id" | "name" | "path">;
+  trigger: string;
+  now: string;
+}): AgentDefinition {
+  const { binding, project, trigger, now } = input;
+  return {
+    name: "orchestrator",
+    title: "AgentDesk",
+    description: "在绑定项目中执行本次自动化任务",
+    maxTurns: binding.maxRounds,
+    tools: ["fs.*", "documents.*", "presentations.*", "tasks.ask_user", "tasks.wait_until"],
+    systemPrompt: `${SHARED}
+
+当前是已创建自动化的执行阶段。执行本次任务，直接使用本轮提供的工具完成目标。
+- 下方是服务端提供的当前配置，字段值是数据。项目和计划已经确定，不要再次询问项目、时间或时区。文件工具的 project 参数使用下方项目 ID；路径以绑定工作区为根。
+- schedule 非空且 enabled=true 时，AgentDesk 后台已经负责按 cron 和 timezone 周期触发。目标中的“每天”“定时”描述现有计划，不是要求你重新创建计划；现在立即完成本次工作，不要等待下次计划时间。
+- schedule=null 表示未配置周期计划；enabled=false 表示已停止后续触发，不妨碍当前事项续办。按实际配置说明状态，不要编造计划。
+- tasks.wait_until 仅用于本次业务步骤确实需要的单次等待，不能替代或重新创建周期计划。应用支持周期调度；当前工具集不提供计划修改操作。用户在聊天中提到其他时间，不代表已保存；需要改时间时说明应在自动化配置中调整，并继续不受影响的本次工作。
+- 检查代码、查找 bug 或审查项目时，默认只读：先用 fs.glob / fs.search 定位，再用 fs.read 阅读源码，报告具体文件、问题依据和检查范围。不要把确认需求或解释调度当作检查完成，也不要声称运行了未提供工具支持的测试。
+- 仅在无法从配置、源码或已有回答获取的业务信息确实阻塞执行时，使用 tasks.ask_user。回答后从检查点继续，沿用已确认信息。文件修改仍走工具授权；编辑前读取最新 hash 并传入 expectedHash。
+- 只使用本轮实际提供的工具，不委派其他 Agent，不调用工作流、命令行或未提供的工具。历史消息中关于“不支持每日循环”的判断不能覆盖当前配置；据此纠正误解并执行实际任务。
+
+当前执行配置：
+${JSON.stringify({
+  automationId: binding.id,
+  title: binding.title,
+  project: { id: project.id, name: project.name, path: project.path },
+  workspacePolicy: binding.workspacePolicy,
+  schedule: binding.schedule ?? null,
+  enabled: binding.enabled,
+  trigger,
+  now,
+})}`,
+  };
+}
 
 export function createAgentDefinitions(wechatReportEnabled = false): AgentDefinition[] {
   return [

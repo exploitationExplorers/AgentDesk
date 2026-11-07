@@ -10,7 +10,13 @@ import {
 import type { AgentName, AgentStreamEvent, ToolCallRecord } from "@agentdesk/shared";
 import type { ResolvedModel } from "./llm";
 import { DEFAULT_CONTEXT_WINDOW } from "./llm";
-import { estimateMessageTokens, estimateTokens, inputBudget } from "./context";
+import {
+  estimateMessageTokens,
+  estimateTokens,
+  inputBudget,
+  fitToolResults,
+  ModelContextBudgetError,
+} from "./context";
 import { createStreamUnmasker, maskJson, maskText, unmaskJson, type MaskStore } from "./masking";
 import {
   DurableCheckpointError,
@@ -23,6 +29,7 @@ import {
 } from "./durable";
 import {
   fromWireName,
+  toWireName,
   toPiTool,
   type AnyAgentTool,
   type ApprovalRequest,
@@ -168,6 +175,7 @@ async function callModel(
   emit: RunAgentOptions["emit"],
   signal?: AbortSignal,
   mask?: MaskStore,
+  preservedToolResults?: ReadonlySet<string>,
 ): Promise<{ message: AssistantMessage; providerId: string }> {
   const outboundContext = mask
     ? {
@@ -179,19 +187,33 @@ async function callModel(
       }
     : context;
   let lastError = "unknown error";
+  let contextError: ModelContextBudgetError | undefined;
   const deadline = Date.now() + MODEL_CALL_TIMEOUT_MS;
   for (const [candidateIndex, candidate] of models.entries()) {
     if (candidateIndex > 0)
       emit({ type: "response_status", agent, message: "正在重新连接，继续处理…" });
     const contextWindow = candidate.model.contextWindow || DEFAULT_CONTEXT_WINDOW;
-    const estimatedInputTokens =
-      estimateMessageTokens(outboundContext.messages) +
+    const overhead =
       estimateTokens(outboundContext.systemPrompt ?? "") +
       estimateTokens(JSON.stringify(outboundContext.tools ?? []));
-    if (estimatedInputTokens > inputBudget(contextWindow, candidate.model.maxTokens || 4096)) {
-      lastError = `上下文超出 ${candidate.model.id} 的输入预算（估算 ${estimatedInputTokens} tokens）。请压缩历史、缩短输入或扩大模型窗口后继续；执行记录已保留。`;
+    const budget = inputBudget(contextWindow, candidate.model.maxTokens || 4096);
+    const candidateContext = preservedToolResults
+      ? {
+          ...outboundContext,
+          messages: fitToolResults(
+            outboundContext.messages,
+            budget - overhead,
+            preservedToolResults,
+          ),
+        }
+      : outboundContext;
+    const estimatedInputTokens = estimateMessageTokens(candidateContext.messages) + overhead;
+    if (estimatedInputTokens > budget) {
+      contextError = new ModelContextBudgetError(estimatedInputTokens, contextWindow);
+      lastError = contextError.message;
       continue;
     }
+    contextError = undefined;
     for (let attempt = 0; attempt <= TRANSIENT_RETRIES; attempt++) {
       let produced = false;
       const remainingMs = deadline - Date.now();
@@ -202,7 +224,7 @@ async function callModel(
       try {
         message = await readModelAttempt(
           candidate,
-          outboundContext,
+          candidateContext,
           (event) => {
             if (event.type === "text_delta") {
               const delta = unmasker ? unmasker.push(event.delta) : event.delta;
@@ -258,6 +280,7 @@ async function callModel(
       await sleep(Math.min(1000 * 2 ** attempt, deadline - Date.now()), signal);
     }
   }
+  if (contextError) throw contextError;
   throw new Error(`模型调用失败：${lastError}`);
 }
 
@@ -314,6 +337,11 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentRunResult
           emit,
           signal,
           options.mask,
+          new Set(
+            tools
+              .filter((tool) => tool.interactionOnly)
+              .flatMap((tool) => [tool.name, toWireName(tool.name)]),
+          ),
         );
       },
       tool: (call, toolOptions, access, execution) =>

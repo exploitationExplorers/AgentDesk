@@ -25,6 +25,7 @@ import {
 import {
   DurableCheckpointError,
   DurableModelError,
+  ModelContextBudgetError,
   type DurableAgentOptions,
 } from "@agentdesk/agent-core";
 import type { SecretStore } from "../../secrets";
@@ -660,11 +661,13 @@ export class AutoloopService {
       resultError:
         error instanceof AppError
           ? error.message
-          : error instanceof DurableCheckpointError
-            ? error.cause instanceof AppError
-              ? error.cause.message
-              : error.message
-            : "执行已停止，已有结果已保留，请核实后续操作",
+          : error instanceof DurableModelError && error.cause instanceof ModelContextBudgetError
+            ? error.cause.message
+            : error instanceof DurableCheckpointError
+              ? error.cause instanceof AppError
+                ? error.cause.message
+                : error.message
+              : "执行已停止，已有结果已保留，请核实后续操作",
     });
     this.tasks.setAutomationStatus(link.taskId, "needs_attention");
   }

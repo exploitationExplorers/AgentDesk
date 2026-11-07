@@ -284,9 +284,10 @@ function AutomationItem({ binding }: { binding: AutomationBinding }) {
   const tasks = useQuery({
     queryKey: ["automation-tasks", binding.id],
     queryFn: () => api.automationTasks(binding.id),
-    enabled: expanded,
-    refetchInterval: expanded ? 2500 : false,
+    refetchInterval: 2500,
   });
+  const latestTask = tasks.data?.[0];
+  const daily = binding.schedule?.cron.match(/^(\d{1,2}) (\d{1,2}) \* \* \*$/);
   const trigger = useMutation({
     mutationFn: async () => {
       const pending = preparePendingEvent(`trigger:${binding.id}`);
@@ -329,9 +330,34 @@ function AutomationItem({ binding }: { binding: AutomationBinding }) {
           </div>
           {binding.schedule ? (
             <p className="mt-2 break-words text-xs text-muted">
-              定时表达式：<code>{binding.schedule.cron}</code>。所有已启用的定时自动化共用此时区。
+              {daily
+                ? `每天 ${daily[2]!.padStart(2, "0")}:${daily[1]!.padStart(2, "0")} 自动执行`
+                : `定时表达式：${binding.schedule.cron}`}
+              。应用运行时到点自动开始，无需点击「立即运行」。
             </p>
           ) : null}
+          <div className="mt-3 text-sm" role="status">
+            {latestTask ? (
+              <>
+                <p>
+                  最近运行：
+                  {automationStatusLabel(latestTask.automationStatus ?? latestTask.status)}
+                  <span className="ml-2 text-xs text-muted">
+                    {new Date(latestTask.createdAt).toLocaleString()}
+                  </span>
+                </p>
+                <Link
+                  to="/"
+                  search={{ c: latestTask.conversationId }}
+                  className="mt-1 inline-block text-brand hover:underline"
+                >
+                  查看最新进度与成果
+                </Link>
+              </>
+            ) : binding.enabled && binding.schedule && !tasks.isLoading ? (
+              <p className="text-muted">等待计划时间自动执行</p>
+            ) : null}
+          </div>
         </div>
         <Button
           variant="primary"

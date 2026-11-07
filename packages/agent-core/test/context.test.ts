@@ -16,6 +16,7 @@ import {
   ESTIMATED_IMAGE_TOKENS,
   estimateMessageTokens,
   estimateTokens,
+  fitToolResults,
   runAgent,
 } from "../src";
 
@@ -23,6 +24,39 @@ let faux: FauxProviderRegistration | undefined;
 afterEach(() => faux?.unregister());
 
 describe("模型预算与真实用量", () => {
+  it("工具正文裁剪保留用户要求、交互回答和调用对应关系", () => {
+    const user: Message = { role: "user", content: "只读检查，不修改项目", timestamp: 0 };
+    const answer: Message = {
+      role: "toolResult",
+      toolName: "tasks__ask_user",
+      toolCallId: "answer",
+      content: [{ type: "text", text: "业务约束".repeat(1000) }],
+      isError: false,
+      timestamp: 0,
+    };
+    const source: Message = {
+      role: "toolResult",
+      toolName: "fs__read",
+      toolCallId: "source",
+      content: [{ type: "text", text: "source line\n".repeat(3000) }],
+      isError: false,
+      timestamp: 0,
+    };
+    const messages = [user, answer, source];
+    const before = structuredClone(messages);
+    const fitted = fitToolResults(messages, 6000, new Set(["tasks__ask_user"]));
+    expect(estimateMessageTokens(fitted)).toBeLessThan(6000);
+    expect(fitted[0]).toEqual(user);
+    expect(fitted[1]).toEqual(answer);
+    expect(fitted[2]).toMatchObject({
+      role: "toolResult",
+      toolName: "fs__read",
+      toolCallId: "source",
+    });
+    expect(messages).toEqual(before);
+    expect(fitToolResults(messages, 100000, new Set())).toBe(messages);
+  });
+
   it("带图消息按图片预算估算，不把传输编码当作文本", () => {
     const message = (data: string): Message => ({
       role: "user",

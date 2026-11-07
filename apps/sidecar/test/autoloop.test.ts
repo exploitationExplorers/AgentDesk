@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, readFileSync, existsSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
@@ -61,6 +61,81 @@ async function setup(fetchImpl?: typeof fetch) {
 }
 const tool = (name: string, args: Record<string, unknown>) =>
   fauxAssistantMessage(fauxToolCall(toWireName(name), args), { stopReason: "toolUse" });
+
+it("真实 Hub：定时绑定执行与重启续办均向模型传入已生效计划和项目，直接读取代码", async () => {
+  const { workspace, project, config, connect } = await setup();
+  writeFileSync(
+    join(workspace, "review.ts"),
+    "export const ratio = (total: number) => 100 / total;\n",
+  );
+  const scheduled = await container!.autoloop.createBinding({
+    title: "每天检查潜在 bug",
+    goal: "每天定时检查项目可能有的 bug，只报告，不修改代码",
+    projectId: project.id,
+    workspacePolicy: { root: workspace, allowSubdirectories: true },
+    schedule: { cron: "3 15 * * *", timezone: "Asia/Shanghai" },
+    maxRounds: 20,
+    maxMinutes: 5,
+  });
+  const prompts: string[] = [];
+  faux!.setResponses([
+    (context) => {
+      prompts.push(context.systemPrompt ?? "");
+      return tool("fs.search", { project: project.id, query: "ratio", glob: "*.ts" });
+    },
+    tool("fs.read", { project: project.id, path: "review.ts" }),
+    tool("tasks.ask_user", { question: "total 是否允许为 0？", options: ["允许", "不允许"] }),
+    (context) => {
+      prompts.push(context.systemPrompt ?? "");
+      return fauxAssistantMessage(
+        fauxText("review.ts 的 total 为 0 时返回 Infinity，建议增加输入校验。"),
+      );
+    },
+  ]);
+  await container!.autoloop.trigger(scheduled.id, { eventId: "scheduled-binding-context" });
+  await waitFor(
+    () => container!.autoloop.listInteractions().some((c) => c.state === "open"),
+    "检查代码后询问业务边界",
+  );
+  const task = container!.autoloop.listTasks(scheduled.id)[0]!;
+  const card = container!.autoloop.listInteractions(task.id).find((c) => c.state === "open")!;
+  expect(card.description).toBe("total 是否允许为 0？");
+  expect(container!.tasks.getRun(task.currentRunId!)?.toolCalls).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ name: "fs.search", isError: false }),
+      expect.objectContaining({ name: "fs.read", isError: false }),
+    ]),
+  );
+  const firstPrompt = prompts[0]!;
+  expect(firstPrompt).toContain(scheduled.schedule!.cron);
+  expect(firstPrompt).toContain(scheduled.schedule!.timezone);
+  expect(firstPrompt).toContain(project.id);
+  expect(firstPrompt).toContain(JSON.stringify(workspace));
+  expect(firstPrompt).toContain("执行本次任务");
+  expect(firstPrompt).toContain('"trigger":"手动触发"');
+  expect(firstPrompt).not.toContain("用 agents.delegate 委派");
+  expect(firstPrompt).not.toContain("需要等待某个时间时调用 tasks.wait_until");
+  await container!.dispose();
+  container = await createContainer(config);
+  connect();
+  await container.autoloop.answerInteraction(card.id, {
+    answerId: "business-boundary",
+    cardVersion: card.version,
+    choice: 0,
+  });
+  await waitFor(
+    () => container!.tasks.get(task.id)?.automationStatus === "completed",
+    "续办并报告检查结果",
+  );
+  expect(prompts[1]).toContain(scheduled.schedule!.cron);
+  expect(prompts[1]).toContain(project.id);
+  expect(prompts[1]).toContain("用户回答后续办");
+  expect(container.tasks.listRuns(task.id)).toHaveLength(2);
+  expect(container.autoloop.getBinding(scheduled.id)?.schedule).toEqual(scheduled.schedule);
+  expect(readFileSync(join(workspace, "review.ts"), "utf8")).toBe(
+    "export const ratio = (total: number) => 100 / total;\n",
+  );
+}, 60000);
 
 it("真实 Hub：写文件后等待释放额度，重启回答续办同一 Task，已完成写入不重跑", async () => {
   const { workspace, config, connect, project, binding } = await setup();

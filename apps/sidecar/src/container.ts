@@ -10,6 +10,9 @@ import { createAgentDefinitions } from "./agents/definitions";
 import { buildToolRegistry } from "./agents/tools";
 import { registerPresentationTools } from "./agents/presentation-tools";
 import { registerDocumentTools } from "./agents/document-tools";
+import { registerRepoReadingTools, withRepoReading } from "./agents/repo-reading-tools";
+import { RepositorySource } from "./services/repo-reading/source";
+import { RepoReadingService } from "./services/repo-reading/service";
 import type { SidecarConfig } from "./config";
 import { openDatabase, type DbHandle } from "./db/client";
 import { EventHub } from "./events";
@@ -143,8 +146,12 @@ export async function createContainer(
   const artifactRoot = join(config.dataDir, "generated-artifacts");
   registerPresentationTools(registry, artifactRoot);
   registerDocumentTools(registry, artifactRoot);
+  registerRepoReadingTools(
+    registry,
+    new RepoReadingService(db, new RepositorySource(projects), providers, maskFactory),
+  );
   const orchestrator = new Orchestrator({
-    agents: createAgentDefinitions(config.wechatReportEnabled),
+    agents: withRepoReading(createAgentDefinitions(config.wechatReportEnabled)),
     registry,
     resolver: providers,
     skills,

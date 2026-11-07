@@ -12,6 +12,8 @@ export interface Skill {
   agents: AgentName[];
   triggers: string[];
   allowedTools: string[];
+  /** 自动触发时在执行入口隔离工具集，防止模型加载技能前执行无关操作。 */
+  isolateTools?: boolean;
   /** 禁止模型主动加载；仍可被未来的显式用户调用入口使用。 */
   disableModelInvocation?: boolean;
   /** 是否应出现在用户可调用的技能菜单。 */
@@ -43,6 +45,7 @@ export function parseSkill(source: string, dir: string): Skill {
     agents: list(meta.agents) as AgentName[],
     triggers: list(meta.triggers),
     allowedTools,
+    isolateTools: meta["isolate-tools"] === true,
     disableModelInvocation: meta["disable-model-invocation"] === true,
     userInvocable: meta["user-invocable"] !== false,
     instructions: (match[2] ?? "").trim(),

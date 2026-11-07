@@ -17,7 +17,7 @@ import {
   type Task,
   type Run,
 } from "@agentdesk/shared";
-import { createAgentDefinitions } from "../../agents/definitions";
+import { createAutomationAgentDefinition } from "../../agents/definitions";
 import type { ProjectInstructionService } from "../project-instructions";
 import type { ProjectService } from "../projects";
 import type { ProviderService } from "../providers";
@@ -42,7 +42,7 @@ export interface AutomationExecutorDeps {
   maskFactory?: () => MaskStore | undefined;
 }
 
-const FILE_TOOLS = new Set(["fs.read", "fs.write", "fs.patch", "fs.glob", "fs.grep"]);
+const FILE_TOOLS = new Set(["fs.read", "fs.write", "fs.patch", "fs.glob", "fs.search"]);
 /** 首期工具边界限定为本地文件与报告产物；每次工具入口重验绑定和拒绝规则。 */
 export async function executeAutomation(
   deps: AutomationExecutorDeps,
@@ -141,12 +141,20 @@ export async function executeAutomation(
         ? { approved: true, reason: "已保存的权限规则", source: "rule" }
         : { approved: false };
     };
-    const agents = createAgentDefinitions(false).map((agent) => ({
-      ...agent,
-      maxTurns: binding.maxRounds,
-      tools: [...agent.tools, "tasks.wait_until"],
-      systemPrompt: `${agent.systemPrompt}\n当前是本机自动化，使用已提供的工具完成任务，不可委派其他 Agent。需要等待某个时间时调用 tasks.wait_until。当前时间：${nowIso()}。绑定项目：${binding.workspacePolicy.root}`,
-    }));
+    const job = deps.store.links.list().find((link) => link.runId === run.id)?.job;
+    let trigger = run.trigger === "followup" ? "用户追加要求后续办" : "手动触发";
+    if (job?.context.events.some((event) => event.type === "schedule.tick"))
+      trigger = "计划到时自动触发";
+    if (job?.context.timers.length) trigger = "业务等待到期后续办";
+    if (job?.context.answers.length) trigger = "用户回答后续办";
+    const agents = [
+      createAutomationAgentDefinition({
+        binding,
+        project: deps.projects.find(binding.projectId ?? binding.workspacePolicy.root),
+        trigger,
+        now: nowIso(),
+      }),
+    ];
     const orchestrator = new Orchestrator({ agents, registry, resolver: deps.providers });
     const history = new ConversationStore(deps.store.db);
     const saved = deps.store.checkpoints.get(task.id)?.checkpoint;

@@ -21,6 +21,7 @@ import {
   type AgentDefinition,
   type DurableCheckpoint,
   type RunAgentOptions,
+  estimateMessageTokens,
 } from "../src";
 
 let faux: FauxProviderRegistration | undefined;
@@ -53,6 +54,56 @@ function setup() {
 }
 
 describe("持久化 Agent 执行", () => {
+  it("长工具输出超出窗口时继续生成报告，完整结果留在检查点且重启不重跑工具", async () => {
+    const { options, save, load } = setup();
+    options.models[0]!.model = {
+      ...options.models[0]!.model,
+      contextWindow: 8192,
+      maxTokens: 1024,
+    };
+    const content = `file.ts\n${"const value = 1;\n".repeat(2200)}\nEND_OF_FILE`;
+    const read = vi.fn(async () => content);
+    options.tools = [
+      defineTool({
+        name: "fs.read",
+        description: "读取源码",
+        parameters: Type.Object({}),
+        risk: "safe",
+        execute: read,
+      }),
+    ];
+    faux!.setResponses([
+      fauxAssistantMessage(fauxToolCall(toWireName("fs.read"), {}), { stopReason: "toolUse" }),
+      (context) => {
+        expect(estimateMessageTokens(context.messages)).toBeLessThan(6000);
+        expect(JSON.stringify(context.messages)).toContain("工具输出已截取");
+        return fauxAssistantMessage(fauxText("已核查可见源码并生成报告。"));
+      },
+    ]);
+    // 在工具完成后模拟退出，恢复仅重新准备模型输入，不能改变保存的工具结果。
+    const interrupted = new AbortController();
+    await expect(
+      runAgent({
+        ...options,
+        signal: interrupted.signal,
+        durable: {
+          save: (checkpoint) => {
+            save(checkpoint);
+            if (checkpoint.phase === "model" && checkpoint.toolCalls.length) interrupted.abort();
+          },
+        },
+      }),
+    ).rejects.toThrow();
+    expect(load().toolCalls[0]?.result).toBe(content);
+    const result = await runAgent({ ...options, durable: { checkpoint: load(), save } });
+    expect(result.status).toBe("completed");
+    expect(result.text).toContain("生成报告");
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(load().messages)).toContain(content.slice(0, 50).replaceAll("\n", "\\n"));
+    expect(load().toolCalls[0]?.result).toBe(content);
+    expect(load().messages.filter((message) => message.role === "toolResult")).toHaveLength(1);
+  });
+
   it("写入后多问题挂起，重新读取检查点只继续剩余问题且保留原工具 ID", async () => {
     const { options, save, load } = setup();
     const write = vi.fn(async () => "资料已经落盘");

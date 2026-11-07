@@ -26,6 +26,7 @@ for (const name of [
   "bt-deploy",
   "project-triage",
   "reach-research",
+  "repo-walkthrough",
   "tech-explain",
   "wechat-daily-report",
   "personal-skill",
@@ -142,6 +143,7 @@ it("公开构建只复制公开技能，不复制私有包、环境文件和解�
     "bt-deploy",
     "project-triage",
     "reach-research",
+    "repo-walkthrough",
     "tech-explain",
   ]);
 });
