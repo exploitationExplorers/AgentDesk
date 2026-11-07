@@ -4,3 +4,6 @@ export * from "./primitives";
 export * from "./route-flow";
 export * from "./overlays";
 export * from "./motion";
+export * from "./choice-menu";
+export * from "./disclosure";
+export * from "./panel-resize-handle";

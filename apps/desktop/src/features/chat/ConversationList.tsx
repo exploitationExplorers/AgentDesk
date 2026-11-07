@@ -140,14 +140,17 @@ export function ConversationList({ activeId }: { activeId?: string }) {
   const error = conversations.error ?? groups.error ?? patch.error ?? remove.error;
 
   return (
-    <aside
-      className="flex w-[260px] shrink-0 flex-col border-r bg-surface/40"
-      aria-label="会话列表"
-    >
-      <div className="grid gap-2.5 border-b p-3">
+    <aside className="chat-history flex w-[248px] shrink-0 flex-col border-r" aria-label="会话列表">
+      <div className="grid gap-3 p-4">
+        <div className="flex h-7 items-center justify-between">
+          <h2 className="text-[13px] font-semibold tracking-wide">对话</h2>
+          <span className="rounded-md bg-surface-2 px-1.5 py-0.5 text-[10px] tabular-nums text-muted">
+            {conversations.data?.length ?? 0}
+          </span>
+        </div>
         <Button
           variant="secondary"
-          className="h-9 justify-start rounded-full"
+          className="h-10 justify-start rounded-xl border-brand/15 bg-surface text-brand shadow-sm hover:bg-brand/6"
           onClick={() => void navigate({ to: "/", search: {} })}
         >
           <MessageSquarePlus className="h-4 w-4" strokeWidth={1.75} />
@@ -161,7 +164,7 @@ export function ConversationList({ activeId }: { activeId?: string }) {
             value={search}
             maxLength={200}
             onChange={(event) => setSearch(event.target.value)}
-            className="h-9 rounded-full pl-9 text-xs"
+            className="h-9 rounded-xl border-transparent bg-surface/60 pl-9 text-xs focus:border-brand/30"
           />
         </div>
         <div className="flex items-center gap-1">
@@ -231,7 +234,7 @@ export function ConversationList({ activeId }: { activeId?: string }) {
           ) : null}
         </div>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-1">
         {error ? (
           <p role="alert" className="px-2 py-2 text-xs text-danger">
             {error.message}
@@ -260,9 +263,9 @@ export function ConversationList({ activeId }: { activeId?: string }) {
                   animate="visible"
                   exit="exit"
                   className={cn(
-                    "group flex items-center gap-1 overflow-hidden rounded-xl",
+                    "group relative isolate mb-1 flex items-center gap-1 overflow-hidden rounded-xl border border-transparent transition-colors",
                     conversation.id === activeId
-                      ? "bg-surface-2 text-fg"
+                      ? "border-brand/10 bg-brand/7 text-fg"
                       : "text-muted hover:bg-surface-2/70",
                   )}
                 >

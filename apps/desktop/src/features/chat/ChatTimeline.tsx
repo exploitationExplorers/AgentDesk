@@ -12,7 +12,7 @@ import {
   type ChatDisplayBlock,
   type ChatProgress,
 } from "@agentdesk/shared";
-import { cn } from "@agentdesk/ui";
+import { AnimatedDisclosure, cn } from "@agentdesk/ui";
 import { Markdown } from "../../components/Markdown";
 import { TOOL_LABELS } from "../../lib/agents";
 import { DisplayCard } from "./DisplayCards";
@@ -117,11 +117,24 @@ export function ChatTimeline({
       {working || waiting || completed.length > 0 || running.length > 0 ? (
         <div className="space-y-1.5">
           {working ? (
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12.5px] text-subtle">
+            <div
+              className="flex flex-wrap items-center gap-x-2 gap-y-1 py-1 text-[12px] text-muted"
+              role="status"
+            >
               <ElapsedLabel active={working} />
               {!running.length ? (
                 <span className="flex items-center gap-1.5">
-                  <Loader2 className="h-3 w-3 animate-spin" />
+                  <span
+                    className="mr-1 inline-flex items-center gap-0.5 text-brand"
+                    aria-hidden="true"
+                  >
+                    {[0, 1, 2].map((dot) => (
+                      <span
+                        key={dot}
+                        className="chat-progress-dot h-1 w-1 rounded-full bg-current"
+                      />
+                    ))}
+                  </span>
                   {phase === "thinking" ? (status ?? "思考中…") : (progress ?? "正在处理…")}
                 </span>
               ) : null}
@@ -130,7 +143,7 @@ export function ChatTimeline({
           ) : null}
 
           {completed.length > 0 ? (
-            <div className="rounded-lg border border-border/70 bg-surface-2/40 px-3 py-1.5">
+            <div className="rounded-2xl border border-border/60 bg-surface/70 px-3.5 py-2">
               <button
                 type="button"
                 onClick={() => setStepsOpen((open) => !open)}
@@ -146,7 +159,7 @@ export function ChatTimeline({
                   )}
                 />
               </button>
-              {stepsOpen ? (
+              <AnimatedDisclosure open={stepsOpen}>
                 <div className="mb-1 ml-1 border-l border-border/80 pl-3">
                   {completed.map((block) => (
                     <ActivityRow
@@ -156,7 +169,7 @@ export function ChatTimeline({
                     />
                   ))}
                 </div>
-              ) : null}
+              </AnimatedDisclosure>
             </div>
           ) : null}
 

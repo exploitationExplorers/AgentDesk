@@ -65,16 +65,21 @@ export function HomeHero({
   );
 
   return (
-    <div className="ad-glow h-full overflow-y-auto">
-      <div className="mx-auto flex max-w-3xl flex-col px-6 pt-[12vh] pb-16">
-        <div className="mb-8 text-center">
-          <AppMark
-            src={avatar}
-            className="mx-auto mb-5 h-12 w-12 rounded-2xl shadow-[0_0_60px_-10px_var(--ad-brand)]"
-          />
-          <h1 className="text-[28px] font-semibold tracking-tight">{greeting()}，今天想做什么？</h1>
-          <p className="mt-2 text-[13.5px] text-muted">
-            管理项目、一键部署、追踪前沿技术，交给你的 Agent 团队。
+    <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="chat-hero-in mx-auto flex w-full max-w-[820px] flex-col px-5 pt-10 pb-10 sm:px-9 sm:pt-[clamp(40px,11vh,120px)]">
+        <div className="mb-8">
+          <div className="mb-6 flex items-center gap-2.5">
+            <AppMark src={avatar} className="h-8 w-8 rounded-[11px]" />
+            <span className="text-[12px] font-medium tracking-wide text-muted">
+              你的 Agent 工作空间
+            </span>
+          </div>
+          <h1 className="text-[27px] font-semibold leading-snug tracking-tight sm:text-[34px]">
+            {greeting()}，<br className="sm:hidden" />
+            今天想做什么？
+          </h1>
+          <p className="mt-3 text-[13px] leading-6 text-muted">
+            从一个想法开始。查资料、写代码、推进项目，与你的 Agent 团队一起完成。
           </p>
         </div>
 
@@ -92,16 +97,18 @@ export function HomeHero({
 
         {composer}
 
-        <div className="mt-4 grid grid-cols-2 gap-2.5">
+        <div className="mt-5 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
           {SUGGESTIONS.map((s) => (
             <button
               key={s.title}
               type="button"
               onClick={() => onPick(s.prompt, s.agent)}
-              className="group flex items-start gap-3 rounded-2xl border bg-surface/50 px-4 py-3 text-left transition-colors hover:border-border-strong hover:bg-surface"
+              className="chat-suggestion group flex items-start gap-3 rounded-2xl px-4 py-3.5 text-left"
             >
-              <span className="mt-0.5 text-subtle group-hover:text-brand">{s.icon}</span>
-              <span>
+              <span className="mt-0.5 rounded-lg bg-brand/6 p-1.5 text-muted group-hover:text-brand">
+                {s.icon}
+              </span>
+              <span className="min-w-0 flex-1">
                 <span className="block text-[13px] font-medium">{s.title}</span>
                 <span className="mt-0.5 line-clamp-1 text-[12px] text-subtle">{s.prompt}</span>
               </span>
@@ -109,11 +116,8 @@ export function HomeHero({
           ))}
         </div>
 
-        <div className="mt-10 grid gap-4 md:grid-cols-2">
-          <Link
-            to="/feed"
-            className="rounded-2xl border bg-surface/60 p-4 transition-colors hover:border-border-strong"
-          >
+        <div className="mt-8 grid gap-6 border-t border-border/50 pt-6 md:grid-cols-2">
+          <Link to="/feed" className="rounded-xl p-2 transition-colors hover:bg-surface/70">
             <div className="mb-3 flex items-center gap-2 text-[12px] font-medium text-subtle">
               <Newspaper className="h-3.5 w-3.5" />
               今日热榜
@@ -136,10 +140,7 @@ export function HomeHero({
               ) : null}
             </ul>
           </Link>
-          <Link
-            to="/projects"
-            className="rounded-2xl border bg-surface/60 p-4 transition-colors hover:border-border-strong"
-          >
+          <Link to="/projects" className="rounded-xl p-2 transition-colors hover:bg-surface/70">
             <div className="mb-3 flex items-center gap-2 text-[12px] font-medium text-subtle">
               <FolderGit2 className="h-3.5 w-3.5" />
               项目动态

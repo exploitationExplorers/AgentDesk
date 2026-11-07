@@ -10,6 +10,7 @@ import {
   FileCode2,
   GitCompareArrows,
   Loader2,
+  Network,
   Plus,
   Radio,
   RefreshCw,
@@ -36,6 +37,7 @@ import { ArtifactWorkspace } from "./ArtifactWorkspace";
 import { FlowGraph } from "./FlowGraph";
 import { useRunTree } from "./useRunTree";
 import { useTaskEvents } from "./useTaskEvents";
+import { CollaborationView } from "./CollaborationView";
 
 const STATUS: Record<Task["status"], string> = {
   pending: "待开始",
@@ -296,13 +298,14 @@ function TaskDetail({ task, source }: { task: Task; source: CodeSource }) {
     queryFn: codeApi(source).approvals,
     refetchInterval: 1500,
   });
-  const { records, error } = useTaskEvents(source, task.id);
+  const { records, error } = useTaskEvents(source, task);
   const activity = useMemo(() => projectActivity(records), [records]);
   const runTree = useRunTree(records);
   const [selectedChange, setSelectedChange] = useState<string | null>(null);
   const [selectedStep, setSelectedStep] = useState<string | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [timelineView, setTimelineView] = useState<"timeline" | "flow">("timeline");
+  const [workspaceView, setWorkspaceView] = useState<"execution" | "collaboration">("execution");
   const [tab, setTab] = useState<"diff" | "output" | "artifacts">("diff");
   const [followup, setFollowup] = useState("");
   const change = activity.changes.find((c) => c.key === selectedChange) ?? activity.changes.at(-1);
@@ -367,6 +370,19 @@ function TaskDetail({ task, source }: { task: Task; source: CodeSource }) {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <Button
+            size="sm"
+            variant={workspaceView === "collaboration" ? "secondary" : "ghost"}
+            aria-pressed={workspaceView === "collaboration"}
+            onClick={() =>
+              setWorkspaceView((value) =>
+                value === "collaboration" ? "execution" : "collaboration",
+              )
+            }
+          >
+            <Network className="mr-1.5 h-3.5 w-3.5" />
+            {workspaceView === "collaboration" ? "返回执行现场" : "协作视图"}
+          </Button>
           <span
             className={cn(
               "flex items-center gap-1.5 text-xs",
@@ -410,286 +426,341 @@ function TaskDetail({ task, source }: { task: Task; source: CodeSource }) {
           {error && "· 正在重试同步，已显示的记录会保留。"}
         </div>
       )}
-      <div className="grid min-h-0 flex-1 grid-cols-1 xl:grid-cols-[minmax(300px,0.85fr)_minmax(360px,1.15fr)]">
-        <section className="flex min-h-0 min-w-0 flex-col border-r" aria-label="执行时间线">
-          <Tabs
-            value={timelineView}
-            onValueChange={(value) => setTimelineView(value as "timeline" | "flow")}
-            className="flex min-h-0 flex-1 flex-col"
-          >
-            <div className="flex items-center justify-between px-5 pt-2">
-              <TabsList className="w-auto">
-                <TabsTrigger value="timeline">执行过程</TabsTrigger>
-                <TabsTrigger value="flow">流程图</TabsTrigger>
-              </TabsList>
-              <span className="text-xs text-subtle">{activity.steps.length} 个步骤</span>
-            </div>
-            <TabsContent value="timeline" className="min-h-0 flex-1 overflow-y-auto px-5 pb-5 pt-3">
-              <div className="mb-5 rounded-xl bg-surface-2/70 p-3.5">
-                <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.15em] text-subtle">
-                  任务目标
-                </p>
-                <p className="whitespace-pre-wrap text-[13px] leading-relaxed">{task.goal}</p>
-              </div>
-              {runList.map((run) => (
-                <div key={run.id} className="mb-5">
-                  <div className="mb-3 flex items-center gap-2 text-xs">
-                    <span className="flex h-6 w-6 items-center justify-center rounded-lg border bg-surface">
-                      <Code2 className="h-3.5 w-3.5 text-emerald-500" />
-                    </span>
-                    <span className="font-medium">
-                      {run.agent === "code" ? "编码助手" : run.agent}
-                    </span>
-                    {run.parentRunId && <span className="text-subtle">委派任务</span>}
-                    <span className="ml-auto font-mono text-[10px] text-subtle">
-                      {time(run.createdAt)}
-                    </span>
-                  </div>
-                  <div className="ml-3 border-l pl-4">
-                    {activity.steps
-                      .filter((s) => s.runId === run.id)
-                      .map((s) => (
-                        <button
-                          key={s.key}
-                          type="button"
-                          onClick={() => {
-                            setSelectedStep(s.key);
-                            setTab("output");
-                          }}
-                          className={cn(
-                            "mb-1.5 flex w-full items-start gap-2.5 rounded-lg px-2 py-2.5 text-left transition-colors hover:bg-surface-2",
-                            selectedStep === s.key && tab === "output" && "bg-surface-2",
-                          )}
-                        >
-                          <span className="mt-0.5 shrink-0">
-                            <StepIcon
-                              status={
-                                s.status === "running" &&
-                                ["failed", "cancelled"].includes(run.status)
-                                  ? "error"
-                                  : s.status
-                              }
-                            />
-                          </span>
-                          <span className="min-w-0">
-                            <span className="block text-xs font-medium">
-                              {TOOL_LABELS[s.name] ?? s.name}
-                            </span>
-                            <span
-                              className="mt-1 block truncate font-mono text-[11px] text-subtle"
-                              title={stepHint(s)}
-                            >
-                              {stepHint(s)}
-                            </span>
-                          </span>
-                        </button>
-                      ))}
-                    {(activity.textByRun.get(run.id) || run.resultText) && (
-                      <div className="mt-3 text-[13px]">
-                        <Markdown>
-                          {activity.textByRun.get(run.id) || run.resultText || ""}
-                        </Markdown>
-                      </div>
-                    )}
-                    {run.resultError && (
-                      <p className="mt-2 text-xs text-danger">{run.resultError}</p>
-                    )}
-                    {run.status === "running" &&
-                      !activity.steps.some((s) => s.runId === run.id) && (
-                        <p className="py-3 text-xs text-subtle">正在理解任务、读取项目上下文…</p>
-                      )}
-                  </div>
-                </div>
-              ))}
-              {runs.isLoading && <p className="py-4 text-xs text-subtle">正在加载执行记录…</p>}
+      {workspaceView === "collaboration" ? (
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {pending.length > 0 ? (
+            <div className="space-y-3 px-6 pt-4">
               {pending.map((approval) => (
-                <div className="mb-3" key={approval.id}>
-                  <ApprovalCard approval={approval} source={source} refresh={refresh} />
-                </div>
+                <ApprovalCard
+                  key={approval.id}
+                  approval={approval}
+                  source={source}
+                  refresh={refresh}
+                />
               ))}
-              {approvals.error && (
-                <p className="text-xs text-danger">无法同步审批：{approvals.error.message}</p>
-              )}
-            </TabsContent>
-            <TabsContent value="flow" className="relative min-h-0 flex-1 pt-2">
-              <FlowGraph
-                runsById={runTree.runsById}
-                rootOrder={runTree.rootOrder}
-                selectedRunId={selectedRunId}
-                onSelectRun={selectRun}
-              />
-            </TabsContent>
-          </Tabs>
-          {task.purpose === "reference_analysis" && (
-            <p className="border-t p-4 text-xs text-muted">
-              资料分析为只读记录，请到项目中心勾选建议创建开发任务。
-            </p>
-          )}
-          {task.purpose !== "reference_analysis" &&
-            !["closed", "completed"].includes(task.status) && (
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  action.mutate("followup");
-                }}
-                className="border-t p-4"
-              >
-                <div className="flex items-center gap-2 rounded-xl border bg-surface p-2">
-                  <input
-                    aria-label="后续要求"
-                    value={followup}
-                    onChange={(e) => setFollowup(e.target.value)}
-                    disabled={busy || task.status === "awaiting_plan_approval"}
-                    placeholder={busy ? "执行中，可在此查看实时进展" : "补充要求，或继续完成任务…"}
-                    className="min-w-0 flex-1 bg-transparent px-1 text-xs outline-none"
-                  />
-                  <Button
-                    type="submit"
-                    size="sm"
-                    variant="ghost"
-                    disabled={busy || task.status === "awaiting_plan_approval" || action.isPending}
-                    aria-label="继续任务"
-                  >
-                    <ArrowRight className="h-4 w-4" />
-                  </Button>
-                </div>
-                <p className="mt-2 text-[10px] text-subtle">执行记录自动保存，可随时回来查看。</p>
-              </form>
-            )}
-        </section>
-        <section className="flex min-h-0 min-w-0 flex-col bg-surface/35" aria-label="代码检查器">
-          <div className="flex items-center gap-5 border-b px-5">
-            <button
-              type="button"
-              onClick={() => setTab("diff")}
-              className={cn(
-                "flex items-center gap-2 border-b-2 py-3.5 text-xs",
-                tab === "diff" ? "border-emerald-400 text-fg" : "border-transparent text-muted",
-              )}
-            >
-              <GitCompareArrows className="h-3.5 w-3.5" />
-              文件变更 <span className="rounded bg-surface-2 px-1.5 text-[10px]">{files}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setTab("output")}
-              className={cn(
-                "flex items-center gap-2 border-b-2 py-3.5 text-xs",
-                tab === "output" ? "border-emerald-400 text-fg" : "border-transparent text-muted",
-              )}
-            >
-              <Terminal className="h-3.5 w-3.5" />
-              工具输出
-            </button>
-            <button
-              type="button"
-              onClick={() => setTab("artifacts")}
-              className={cn(
-                "flex items-center gap-2 border-b-2 py-3.5 text-xs",
-                tab === "artifacts"
-                  ? "border-emerald-400 text-fg"
-                  : "border-transparent text-muted",
-              )}
-            >
-              <FileCode2 className="h-3.5 w-3.5" />
-              成果
-            </button>
-            <div className="ml-auto font-mono text-[11px]">
-              <span className="text-success">+{total.add}</span>
-              <span className="ml-2 text-danger">−{total.del}</span>
             </div>
-          </div>
-          {tab === "artifacts" ? (
-            <ArtifactWorkspace taskId={task.id} source={source} />
-          ) : tab === "diff" ? (
-            change ? (
-              <>
-                <div className="max-h-40 shrink-0 overflow-y-auto border-b p-2">
-                  {activity.changes.map((item) => (
-                    <button
-                      type="button"
-                      key={item.key}
-                      onClick={() => setSelectedChange(item.key)}
-                      title={item.change.path}
-                      className={cn(
-                        "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs",
-                        change.key === item.key
-                          ? "bg-surface-2"
-                          : "text-muted hover:bg-surface-2/50",
-                      )}
-                    >
-                      <FileCode2 className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
-                      <span className="truncate font-mono">{fileName(item.change.path)}</span>
-                      <span className="ml-auto shrink-0 font-mono text-[10px] text-subtle">
-                        {time(item.createdAt)}
+          ) : null}
+          {approvals.error ? (
+            <p role="alert" className="px-6 pt-4 text-xs text-danger">
+              无法同步审批：{approvals.error.message}
+            </p>
+          ) : null}
+          <CollaborationView
+            task={task}
+            source={source}
+            runs={runList}
+            session={runTree}
+            records={records}
+            approvals={pending}
+            onInspectRun={(runId) => {
+              selectRun(runId);
+              setWorkspaceView("execution");
+            }}
+            onInspectChange={(path, runId) => {
+              const match = activity.changes.findLast(
+                (item) => item.runId === runId && item.change.path === path,
+              );
+              if (match) setSelectedChange(match.key);
+              setTab("diff");
+              setWorkspaceView("execution");
+            }}
+            onOpenArtifacts={() => {
+              setTab("artifacts");
+              setWorkspaceView("execution");
+            }}
+          />
+        </div>
+      ) : (
+        <div className="grid min-h-0 flex-1 grid-cols-1 xl:grid-cols-[minmax(300px,0.85fr)_minmax(360px,1.15fr)]">
+          <section className="flex min-h-0 min-w-0 flex-col border-r" aria-label="执行时间线">
+            <Tabs
+              value={timelineView}
+              onValueChange={(value) => setTimelineView(value as "timeline" | "flow")}
+              className="flex min-h-0 flex-1 flex-col"
+            >
+              <div className="flex items-center justify-between px-5 pt-2">
+                <TabsList className="w-auto">
+                  <TabsTrigger value="timeline">执行过程</TabsTrigger>
+                  <TabsTrigger value="flow">流程图</TabsTrigger>
+                </TabsList>
+                <span className="text-xs text-subtle">{activity.steps.length} 个步骤</span>
+              </div>
+              <TabsContent
+                value="timeline"
+                className="min-h-0 flex-1 overflow-y-auto px-5 pb-5 pt-3"
+              >
+                <div className="mb-5 rounded-xl bg-surface-2/70 p-3.5">
+                  <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.15em] text-subtle">
+                    任务目标
+                  </p>
+                  <p className="whitespace-pre-wrap text-[13px] leading-relaxed">{task.goal}</p>
+                </div>
+                {runList.map((run) => (
+                  <div key={run.id} className="mb-5">
+                    <div className="mb-3 flex items-center gap-2 text-xs">
+                      <span className="flex h-6 w-6 items-center justify-center rounded-lg border bg-surface">
+                        <Code2 className="h-3.5 w-3.5 text-emerald-500" />
                       </span>
-                      <span className="text-success">+{item.change.additions}</span>
-                      <span className="text-danger">−{item.change.deletions}</span>
-                    </button>
-                  ))}
+                      <span className="font-medium">
+                        {run.agent === "code" ? "编码助手" : run.agent}
+                      </span>
+                      {run.parentRunId && <span className="text-subtle">委派任务</span>}
+                      <span className="ml-auto font-mono text-[10px] text-subtle">
+                        {time(run.createdAt)}
+                      </span>
+                    </div>
+                    <div className="ml-3 border-l pl-4">
+                      {activity.steps
+                        .filter((s) => s.runId === run.id)
+                        .map((s) => (
+                          <button
+                            key={s.key}
+                            type="button"
+                            onClick={() => {
+                              setSelectedStep(s.key);
+                              setTab("output");
+                            }}
+                            className={cn(
+                              "mb-1.5 flex w-full items-start gap-2.5 rounded-lg px-2 py-2.5 text-left transition-colors hover:bg-surface-2",
+                              selectedStep === s.key && tab === "output" && "bg-surface-2",
+                            )}
+                          >
+                            <span className="mt-0.5 shrink-0">
+                              <StepIcon
+                                status={
+                                  s.status === "running" &&
+                                  ["failed", "cancelled"].includes(run.status)
+                                    ? "error"
+                                    : s.status
+                                }
+                              />
+                            </span>
+                            <span className="min-w-0">
+                              <span className="block text-xs font-medium">
+                                {TOOL_LABELS[s.name] ?? s.name}
+                              </span>
+                              <span
+                                className="mt-1 block truncate font-mono text-[11px] text-subtle"
+                                title={stepHint(s)}
+                              >
+                                {stepHint(s)}
+                              </span>
+                            </span>
+                          </button>
+                        ))}
+                      {(activity.textByRun.get(run.id) || run.resultText) && (
+                        <div className="mt-3 text-[13px]">
+                          <Markdown>
+                            {activity.textByRun.get(run.id) || run.resultText || ""}
+                          </Markdown>
+                        </div>
+                      )}
+                      {run.resultError && (
+                        <p className="mt-2 text-xs text-danger">{run.resultError}</p>
+                      )}
+                      {run.status === "running" &&
+                        !activity.steps.some((s) => s.runId === run.id) && (
+                          <p className="py-3 text-xs text-subtle">正在理解任务、读取项目上下文…</p>
+                        )}
+                    </div>
+                  </div>
+                ))}
+                {runs.isLoading && <p className="py-4 text-xs text-subtle">正在加载执行记录…</p>}
+                {pending.map((approval) => (
+                  <div className="mb-3" key={approval.id}>
+                    <ApprovalCard approval={approval} source={source} refresh={refresh} />
+                  </div>
+                ))}
+                {approvals.error && (
+                  <p className="text-xs text-danger">无法同步审批：{approvals.error.message}</p>
+                )}
+              </TabsContent>
+              <TabsContent value="flow" className="relative min-h-0 flex-1 pt-2">
+                <FlowGraph
+                  runsById={runTree.runsById}
+                  rootOrder={runTree.rootOrder}
+                  selectedRunId={selectedRunId}
+                  onSelectRun={selectRun}
+                />
+              </TabsContent>
+            </Tabs>
+            {task.purpose === "reference_analysis" && (
+              <p className="border-t p-4 text-xs text-muted">
+                资料分析为只读记录，请到项目中心勾选建议创建开发任务。
+              </p>
+            )}
+            {task.purpose !== "reference_analysis" &&
+              !["closed", "completed"].includes(task.status) && (
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    action.mutate("followup");
+                  }}
+                  className="border-t p-4"
+                >
+                  <div className="flex items-center gap-2 rounded-xl border bg-surface p-2">
+                    <input
+                      aria-label="后续要求"
+                      value={followup}
+                      onChange={(e) => setFollowup(e.target.value)}
+                      disabled={busy || task.status === "awaiting_plan_approval"}
+                      placeholder={
+                        busy ? "执行中，可在此查看实时进展" : "补充要求，或继续完成任务…"
+                      }
+                      className="min-w-0 flex-1 bg-transparent px-1 text-xs outline-none"
+                    />
+                    <Button
+                      type="submit"
+                      size="sm"
+                      variant="ghost"
+                      disabled={
+                        busy || task.status === "awaiting_plan_approval" || action.isPending
+                      }
+                      aria-label="继续任务"
+                    >
+                      <ArrowRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <p className="mt-2 text-[10px] text-subtle">执行记录自动保存，可随时回来查看。</p>
+                </form>
+              )}
+          </section>
+          <section className="flex min-h-0 min-w-0 flex-col bg-surface/35" aria-label="代码检查器">
+            <div className="flex items-center gap-5 border-b px-5">
+              <button
+                type="button"
+                onClick={() => setTab("diff")}
+                className={cn(
+                  "flex items-center gap-2 border-b-2 py-3.5 text-xs",
+                  tab === "diff" ? "border-emerald-400 text-fg" : "border-transparent text-muted",
+                )}
+              >
+                <GitCompareArrows className="h-3.5 w-3.5" />
+                文件变更 <span className="rounded bg-surface-2 px-1.5 text-[10px]">{files}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setTab("output")}
+                className={cn(
+                  "flex items-center gap-2 border-b-2 py-3.5 text-xs",
+                  tab === "output" ? "border-emerald-400 text-fg" : "border-transparent text-muted",
+                )}
+              >
+                <Terminal className="h-3.5 w-3.5" />
+                工具输出
+              </button>
+              <button
+                type="button"
+                onClick={() => setTab("artifacts")}
+                className={cn(
+                  "flex items-center gap-2 border-b-2 py-3.5 text-xs",
+                  tab === "artifacts"
+                    ? "border-emerald-400 text-fg"
+                    : "border-transparent text-muted",
+                )}
+              >
+                <FileCode2 className="h-3.5 w-3.5" />
+                成果
+              </button>
+              <div className="ml-auto font-mono text-[11px]">
+                <span className="text-success">+{total.add}</span>
+                <span className="ml-2 text-danger">−{total.del}</span>
+              </div>
+            </div>
+            {tab === "artifacts" ? (
+              <ArtifactWorkspace taskId={task.id} source={source} />
+            ) : tab === "diff" ? (
+              change ? (
+                <>
+                  <div className="max-h-40 shrink-0 overflow-y-auto border-b p-2">
+                    {activity.changes.map((item) => (
+                      <button
+                        type="button"
+                        key={item.key}
+                        onClick={() => setSelectedChange(item.key)}
+                        title={item.change.path}
+                        className={cn(
+                          "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs",
+                          change.key === item.key
+                            ? "bg-surface-2"
+                            : "text-muted hover:bg-surface-2/50",
+                        )}
+                      >
+                        <FileCode2 className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
+                        <span className="truncate font-mono">{fileName(item.change.path)}</span>
+                        <span className="ml-auto shrink-0 font-mono text-[10px] text-subtle">
+                          {time(item.createdAt)}
+                        </span>
+                        <span className="text-success">+{item.change.additions}</span>
+                        <span className="text-danger">−{item.change.deletions}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-2 border-b px-4 py-3">
+                    <span
+                      className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted"
+                      title={change.change.path}
+                    >
+                      {change.change.path}
+                    </span>
+                    <span className="shrink-0 rounded bg-success/10 px-2 py-0.5 text-[10px] text-success">
+                      {change.change.operation === "create" ? "已创建" : "已写入"}
+                    </span>
+                  </div>
+                  <DiffView change={change.change} />
+                  <p className="border-t px-4 py-2 text-[10px] text-subtle">
+                    展示每次实际写入的差异 · 统计为累计编辑量
+                  </p>
+                </>
+              ) : (
+                <div className="flex flex-1 flex-col items-center justify-center p-8 text-center">
+                  <div className="mb-4 rounded-2xl border border-dashed p-5 text-subtle">
+                    <GitCompareArrows className="h-7 w-7" />
+                  </div>
+                  <p className="text-sm font-medium">代码改动会出现在这里</p>
+                  <p className="mt-2 max-w-60 text-xs leading-6 text-subtle">
+                    Agent 读取、定位并写入文件后，你可以逐行查看新增和删除。
+                  </p>
+                  <div className="mt-6 flex gap-3 font-mono text-[11px] text-subtle">
+                    <span>读取</span>
+                    <ArrowRight className="h-3.5 w-3.5" />
+                    <span>编辑</span>
+                    <ArrowRight className="h-3.5 w-3.5" />
+                    <span>验证</span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 border-b px-4 py-3">
-                  <span
-                    className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted"
-                    title={change.change.path}
-                  >
-                    {change.change.path}
-                  </span>
-                  <span className="shrink-0 rounded bg-success/10 px-2 py-0.5 text-[10px] text-success">
-                    {change.change.operation === "create" ? "已创建" : "已写入"}
-                  </span>
+              )
+            ) : step ? (
+              <>
+                <div className="border-b px-4 py-3">
+                  <p className="text-xs font-medium">{TOOL_LABELS[step.name] ?? step.name}</p>
+                  <p className="mt-1 break-all font-mono text-[11px] text-subtle">
+                    {stepHint(step)}
+                  </p>
                 </div>
-                <DiffView change={change.change} />
-                <p className="border-t px-4 py-2 text-[10px] text-subtle">
-                  展示每次实际写入的差异 · 统计为累计编辑量
-                </p>
+                <pre
+                  className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words p-4 font-mono text-xs leading-6"
+                  data-testid="tool-output"
+                >
+                  {step.output ||
+                    outputText(step.result) ||
+                    (step.status === "running" ? "等待工具输出…" : "此步骤没有输出。")}
+                </pre>
+                <details className="border-t p-3 text-xs text-muted">
+                  <summary className="cursor-pointer">调用参数</summary>
+                  <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap text-[11px]">
+                    {outputText(step.args)}
+                  </pre>
+                </details>
               </>
             ) : (
-              <div className="flex flex-1 flex-col items-center justify-center p-8 text-center">
-                <div className="mb-4 rounded-2xl border border-dashed p-5 text-subtle">
-                  <GitCompareArrows className="h-7 w-7" />
-                </div>
-                <p className="text-sm font-medium">代码改动会出现在这里</p>
-                <p className="mt-2 max-w-60 text-xs leading-6 text-subtle">
-                  Agent 读取、定位并写入文件后，你可以逐行查看新增和删除。
-                </p>
-                <div className="mt-6 flex gap-3 font-mono text-[11px] text-subtle">
-                  <span>读取</span>
-                  <ArrowRight className="h-3.5 w-3.5" />
-                  <span>编辑</span>
-                  <ArrowRight className="h-3.5 w-3.5" />
-                  <span>验证</span>
-                </div>
+              <div className="grid flex-1 place-items-center p-8 text-xs text-subtle">
+                执行命令后，输出会实时显示在这里。
               </div>
-            )
-          ) : step ? (
-            <>
-              <div className="border-b px-4 py-3">
-                <p className="text-xs font-medium">{TOOL_LABELS[step.name] ?? step.name}</p>
-                <p className="mt-1 break-all font-mono text-[11px] text-subtle">{stepHint(step)}</p>
-              </div>
-              <pre
-                className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words p-4 font-mono text-xs leading-6"
-                data-testid="tool-output"
-              >
-                {step.output ||
-                  outputText(step.result) ||
-                  (step.status === "running" ? "等待工具输出…" : "此步骤没有输出。")}
-              </pre>
-              <details className="border-t p-3 text-xs text-muted">
-                <summary className="cursor-pointer">调用参数</summary>
-                <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap text-[11px]">
-                  {outputText(step.args)}
-                </pre>
-              </details>
-            </>
-          ) : (
-            <div className="grid flex-1 place-items-center p-8 text-xs text-subtle">
-              执行命令后，输出会实时显示在这里。
-            </div>
-          )}
-        </section>
-      </div>
+            )}
+          </section>
+        </div>
+      )}
     </div>
   );
 }

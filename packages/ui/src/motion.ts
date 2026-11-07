@@ -1,4 +1,4 @@
-export { AnimatePresence, motion } from "motion/react";
+export { AnimatePresence, motion, MotionConfig, useReducedMotion } from "motion/react";
 import type { Transition, Variants } from "motion/react";
 
 /**
@@ -8,6 +8,10 @@ import type { Transition, Variants } from "motion/react";
  */
 
 const easeOut: Transition["ease"] = [0.16, 1, 0.3, 1];
+
+export const softSpring: Transition = { type: "spring", stiffness: 380, damping: 34 };
+
+export const surfaceTransition: Transition = { duration: 0.24, ease: easeOut };
 
 /** 转场：浮层/面板/对话框的进入与离开（Dialog、Drawer、下拉菜单等）。 */
 export const panelVariants: Variants = {

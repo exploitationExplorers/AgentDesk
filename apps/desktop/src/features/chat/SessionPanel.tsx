@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
-import { Button, Dialog } from "@agentdesk/ui";
+import { PanelRightClose } from "lucide-react";
+import { Button, Dialog, PanelResizeHandle } from "@agentdesk/ui";
 import type {
   AgentName,
   ConversationContextStatus,
@@ -45,16 +46,34 @@ export function SessionPanel({
   streaming,
   compacting = false,
   onCompacting,
+  onClose,
 }: {
   conversationId: string;
   agent: AgentName;
   streaming: boolean;
   compacting?: boolean;
   onCompacting: (value: boolean) => void;
+  onClose?: () => void;
 }) {
   const state = useSessionWorkbench(conversationId, agent);
   const client = useQueryClient();
   const [artifactsOpen, setArtifactsOpen] = useState(false);
+  const [width, setWidth] = useState(() => {
+    try {
+      const saved = Number(localStorage.getItem("agentdesk.session-panel-width"));
+      return saved >= 280 && saved <= 480 ? saved : 320;
+    } catch {
+      return 320;
+    }
+  });
+  const resize = (next: number) => {
+    setWidth(next);
+    try {
+      localStorage.setItem("agentdesk.session-panel-width", String(next));
+    } catch {
+      /* 存储不可用时仍可调整本次布局。 */
+    }
+  };
   const compact = useMutation({
     mutationFn: () =>
       http.post<ConversationContextStatus>(
@@ -73,10 +92,19 @@ export function SessionPanel({
   return (
     <aside
       aria-label="会话状态"
-      className="flex w-[280px] shrink-0 flex-col gap-5 overflow-y-auto border-l bg-surface/40 p-4 text-xs"
+      style={{ width }}
+      className="relative flex h-full max-w-[calc(100vw-24px)] shrink-0 flex-col border-l bg-surface text-xs"
     >
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold">会话状态</h2>
+      <PanelResizeHandle
+        label="调整工作台宽度"
+        value={width}
+        min={280}
+        max={480}
+        onChange={resize}
+        onReset={() => resize(320)}
+      />
+      <div className="flex min-h-[64px] shrink-0 items-center gap-2 border-b border-border/60 pl-5 pr-14">
+        <h2 className="flex-1 text-[13px] font-semibold">会话状态</h2>
         <span className="text-muted">
           {data?.activity === "compacting" || compact.isPending
             ? "正在压缩"
@@ -84,146 +112,153 @@ export function SessionPanel({
               ? "执行中"
               : "就绪"}
         </span>
+        {onClose ? (
+          <Button variant="ghost" size="icon" aria-label="关闭工作台" onClick={onClose}>
+            <PanelRightClose className="h-4 w-4" />
+          </Button>
+        ) : null}
       </div>
-      {state.error && (
-        <p role="alert" className="text-danger">
-          {state.error.message}
-        </p>
-      )}
-      <section className="space-y-2">
-        <h3 className="font-medium">工作环境</h3>
-        <p className="break-all text-muted">{data?.workspace ?? "尚未关联项目"}</p>
-        <p className="break-all text-muted">{context?.model ?? "尚未配置模型"}</p>
-      </section>
-      {data?.task && (
-        <section className="space-y-2">
-          <h3 className="font-medium">
-            当前任务 ·{" "}
-            {data.task.automationStatus
-              ? automationStatusLabel(data.task.automationStatus)
-              : statuses[data.task.status]}
-          </h3>
-          <p className="text-muted">{data.task.title}</p>
-          <p>
-            {data.runs.filter((run) => run.status === "succeeded").length} / {data.runs.length}{" "}
-            次运行完成 · {data.pendingApprovals} 项待审批
-          </p>
-          <Link
-            to="/code"
-            search={{ c: conversationId, source: "workbench" }}
-            className="text-brand"
-          >
-            查看执行与审批 →
-          </Link>
-        </section>
-      )}
-      <section className="space-y-3">
-        <h3 className="font-medium">上下文预算</h3>
-        {context ? (
-          <>
-            <p className="text-muted">
-              窗口 {number(context.contextWindow)} tokens ·{" "}
-              {context.capacitySource === "configured" ? "已配置" : "默认容量"}
-            </p>
-            <progress
-              aria-label="上下文预算占用"
-              className="h-2 w-full accent-[var(--ad-brand)]"
-              max={Math.max(1, context.inputBudgetTokens)}
-              value={Math.min(context.estimatedInputTokens, context.inputBudgetTokens)}
-            />
-            <p>
-              估算 {number(context.estimatedInputTokens)} / {number(context.inputBudgetTokens)}{" "}
-              tokens
-            </p>
-            <p className="leading-5 text-muted">
-              包含系统与工具预留；这是预算估算。原始记录 {context.messageCount} 条，已摘要{" "}
-              {context.summarizedMessages} 条，直接保留 {context.retainedMessages} 条。
-            </p>
-            <Button
-              size="sm"
-              variant="secondary"
-              disabled={busy || !context.model || context.messageCount <= 6}
-              onClick={() => compact.mutate()}
-            >
-              {compact.isPending ? "正在压缩…" : "压缩较早内容"}
-            </Button>
-            {compact.isSuccess && (
-              <p role="status" className="text-muted">
-                压缩完成，原始消息仍可查看。
-              </p>
-            )}
-            {context.summary && (
-              <details className="rounded-lg border p-2">
-                <summary className="cursor-pointer font-medium">查看会话摘要</summary>
-                <p className="mt-3 whitespace-pre-wrap">{context.summary.goal}</p>
-                {(
-                  [
-                    ["约束", context.summary.constraints],
-                    ["决定", context.summary.decisions],
-                    ["事实", context.summary.facts],
-                    ["未完成", context.summary.pending],
-                  ] as const
-                ).map(
-                  ([label, items]) =>
-                    items.length > 0 && (
-                      <div key={label} className="mt-3">
-                        <h4 className="font-medium">{label}</h4>
-                        <ul className="mt-1 list-disc space-y-1 pl-4 text-muted">
-                          {items.map((item, index) => (
-                            <li key={index}>{item}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    ),
-                )}
-              </details>
-            )}
-          </>
-        ) : (
-          <p className="text-muted">{data?.contextError ?? "正在读取上下文…"}</p>
-        )}
-        {compact.error && (
+      <div className="chat-session-body flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
+        {state.error && (
           <p role="alert" className="text-danger">
-            {compact.error.message}
+            {state.error.message}
           </p>
         )}
-        {data?.lastCompaction && <p className="text-muted">{data.lastCompaction.message}</p>}
-      </section>
-      <section className="space-y-2">
-        <h3 className="font-medium">最近一次模型用量</h3>
-        {usage ? (
-          <>
-            <p className="break-all text-muted">{usage.model}</p>
-            <p className="text-muted">
-              {usage.purpose === "compaction"
-                ? "上下文摘要"
-                : usage.purpose === "analysis"
-                  ? "资料分析"
-                  : "会话响应"}
-            </p>
+        <section className="space-y-2">
+          <h3 className="font-medium">工作环境</h3>
+          <p className="break-all text-muted">{data?.workspace ?? "尚未关联项目"}</p>
+          <p className="break-all text-muted">{context?.model ?? "尚未配置模型"}</p>
+        </section>
+        {data?.task && (
+          <section className="space-y-2">
+            <h3 className="font-medium">
+              当前任务 ·{" "}
+              {data.task.automationStatus
+                ? automationStatusLabel(data.task.automationStatus)
+                : statuses[data.task.status]}
+            </h3>
+            <p className="text-muted">{data.task.title}</p>
             <p>
-              输入 {number(usage.inputTokens)} · 输出 {number(usage.outputTokens)}
+              {data.runs.filter((run) => run.status === "succeeded").length} / {data.runs.length}{" "}
+              次运行完成 · {data.pendingApprovals} 项待审批
             </p>
-            <p className="text-muted">
-              缓存读取 {number(usage.cacheReadTokens)} · 写入 {number(usage.cacheWriteTokens)}
-            </p>
-            <p className="text-muted">模型实际返回的用量，非整段会话累计。</p>
-          </>
-        ) : (
-          <p className="text-muted">模型响应后显示真实用量。</p>
+            <Link
+              to="/code"
+              search={{ c: conversationId, source: "workbench" }}
+              className="text-brand"
+            >
+              查看执行与审批 →
+            </Link>
+          </section>
         )}
-      </section>
-      <section className="space-y-2">
-        <h3 className="font-medium">最近使用的工具</h3>
-        <p className="break-all leading-5 text-muted">
-          {data?.usedTools.join("、") || "暂无工具调用"}
-        </p>
-      </section>
-      {data?.task && (
-        <Button size="sm" variant="secondary" onClick={() => setArtifactsOpen(true)}>
-          查看成果（{data.artifacts.length}）
-        </Button>
-      )}
+        <section className="space-y-3">
+          <h3 className="font-medium">上下文预算</h3>
+          {context ? (
+            <>
+              <p className="text-muted">
+                窗口 {number(context.contextWindow)} tokens ·{" "}
+                {context.capacitySource === "configured" ? "已配置" : "默认容量"}
+              </p>
+              <progress
+                aria-label="上下文预算占用"
+                className="chat-budget-progress h-1.5 w-full"
+                max={Math.max(1, context.inputBudgetTokens)}
+                value={Math.min(context.estimatedInputTokens, context.inputBudgetTokens)}
+              />
+              <p>
+                估算 {number(context.estimatedInputTokens)} / {number(context.inputBudgetTokens)}{" "}
+                tokens
+              </p>
+              <p className="leading-5 text-muted">
+                包含系统与工具预留；这是预算估算。原始记录 {context.messageCount} 条，已摘要{" "}
+                {context.summarizedMessages} 条，直接保留 {context.retainedMessages} 条。
+              </p>
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={busy || !context.model || context.messageCount <= 6}
+                onClick={() => compact.mutate()}
+              >
+                {compact.isPending ? "正在压缩…" : "压缩较早内容"}
+              </Button>
+              {compact.isSuccess && (
+                <p role="status" className="text-muted">
+                  压缩完成，原始消息仍可查看。
+                </p>
+              )}
+              {context.summary && (
+                <details className="rounded-lg border p-2">
+                  <summary className="cursor-pointer font-medium">查看会话摘要</summary>
+                  <p className="mt-3 whitespace-pre-wrap">{context.summary.goal}</p>
+                  {(
+                    [
+                      ["约束", context.summary.constraints],
+                      ["决定", context.summary.decisions],
+                      ["事实", context.summary.facts],
+                      ["未完成", context.summary.pending],
+                    ] as const
+                  ).map(
+                    ([label, items]) =>
+                      items.length > 0 && (
+                        <div key={label} className="mt-3">
+                          <h4 className="font-medium">{label}</h4>
+                          <ul className="mt-1 list-disc space-y-1 pl-4 text-muted">
+                            {items.map((item, index) => (
+                              <li key={index}>{item}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      ),
+                  )}
+                </details>
+              )}
+            </>
+          ) : (
+            <p className="text-muted">{data?.contextError ?? "正在读取上下文…"}</p>
+          )}
+          {compact.error && (
+            <p role="alert" className="text-danger">
+              {compact.error.message}
+            </p>
+          )}
+          {data?.lastCompaction && <p className="text-muted">{data.lastCompaction.message}</p>}
+        </section>
+        <section className="space-y-2">
+          <h3 className="font-medium">最近一次模型用量</h3>
+          {usage ? (
+            <>
+              <p className="break-all text-muted">{usage.model}</p>
+              <p className="text-muted">
+                {usage.purpose === "compaction"
+                  ? "上下文摘要"
+                  : usage.purpose === "analysis"
+                    ? "资料分析"
+                    : "会话响应"}
+              </p>
+              <p>
+                输入 {number(usage.inputTokens)} · 输出 {number(usage.outputTokens)}
+              </p>
+              <p className="text-muted">
+                缓存读取 {number(usage.cacheReadTokens)} · 写入 {number(usage.cacheWriteTokens)}
+              </p>
+              <p className="text-muted">模型实际返回的用量，非整段会话累计。</p>
+            </>
+          ) : (
+            <p className="text-muted">模型响应后显示真实用量。</p>
+          )}
+        </section>
+        <section className="space-y-2">
+          <h3 className="font-medium">最近使用的工具</h3>
+          <p className="break-all leading-5 text-muted">
+            {data?.usedTools.join("、") || "暂无工具调用"}
+          </p>
+        </section>
+        {data?.task && (
+          <Button size="sm" variant="secondary" onClick={() => setArtifactsOpen(true)}>
+            查看成果（{data.artifacts.length}）
+          </Button>
+        )}
+      </div>
       <Dialog
         open={artifactsOpen}
         onOpenChange={setArtifactsOpen}

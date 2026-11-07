@@ -13,7 +13,15 @@ import {
   X,
 } from "lucide-react";
 import type { AgentStreamEvent, Artifact } from "@agentdesk/shared";
-import { Button, Spinner, cn } from "@agentdesk/ui";
+import {
+  Button,
+  PanelResizeHandle,
+  Spinner,
+  cn,
+  motion,
+  surfaceTransition,
+  useReducedMotion,
+} from "@agentdesk/ui";
 import { useApiUrl } from "../../hooks/useApiUrl";
 import { artifactsApi } from "../code/artifacts-api";
 import { ArtifactPreview, staticHtml } from "../code/ArtifactWorkspace";
@@ -79,7 +87,11 @@ function PreviewShell({
   children: ReactNode;
 }) {
   const [width, setWidth] = useState(() => readStoredWidth(Boolean(wide)));
-  const dragRef = useRef<{ startX: number; startWidth: number } | null>(null);
+  const panel = useRef<HTMLElement>(null);
+  const reduced = useReducedMotion();
+  const [maxWidth, setMaxWidth] = useState(() =>
+    Math.max(PANEL_WIDTH_MIN, Math.floor(window.innerWidth * 0.65)),
+  );
 
   useEffect(() => {
     try {
@@ -90,32 +102,29 @@ function PreviewShell({
   }, [width]);
 
   useEffect(() => {
-    const onMove = (event: PointerEvent) => {
-      const drag = dragRef.current;
-      if (!drag) return;
-      const max = Math.floor(window.innerWidth * 0.75);
-      const next = Math.min(
-        max,
-        Math.max(PANEL_WIDTH_MIN, drag.startWidth + (drag.startX - event.clientX)),
-      );
-      setWidth(next);
+    const workspace = panel.current?.parentElement;
+    const chat = workspace?.querySelector<HTMLElement>(".chat-main");
+    if (!workspace || !chat) return;
+    const resize = () => {
+      // 为正文保留阅读宽度，同时适应全局导航栏展开和窗口缩放。
+      const available = workspace.getBoundingClientRect().right - chat.getBoundingClientRect().left;
+      setMaxWidth(Math.max(PANEL_WIDTH_MIN, Math.floor(available - 400)));
     };
-    const onUp = () => {
-      dragRef.current = null;
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-    };
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
-    return () => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-    };
+    const observer = new ResizeObserver(resize);
+    observer.observe(workspace);
+    resize();
+    return () => observer.disconnect();
   }, []);
 
   if (mode === "collapsed") {
     return (
-      <aside aria-label={ariaLabel} className={panelShellClass(mode)}>
+      <motion.aside
+        ref={panel}
+        aria-label={ariaLabel}
+        className={panelShellClass(mode)}
+        exit={{ opacity: 0 }}
+        transition={{ duration: reduced ? 0 : 0.12 }}
+      >
         <div className="flex flex-1 flex-col items-center gap-2 pt-14 pb-3">
           <Button
             variant="ghost"
@@ -129,50 +138,39 @@ function PreviewShell({
             <X className="h-4 w-4" />
           </Button>
         </div>
-      </aside>
+      </motion.aside>
     );
   }
 
   return (
-    <aside
+    <motion.aside
+      ref={panel}
+      initial={{ opacity: 0, x: reduced ? 0 : 16 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: reduced ? 0 : 16 }}
+      transition={reduced ? { duration: 0 } : surfaceTransition}
       aria-label={ariaLabel}
       className={cn(
         panelShellClass(mode),
-        "relative",
-        mode === "docked" && "xl:w-[var(--preview-panel-w)]",
+        mode === "docked" && "xl:relative xl:w-[var(--preview-panel-w)]",
       )}
       style={
-        mode === "docked" ? ({ ["--preview-panel-w"]: `${width}px` } as CSSProperties) : undefined
+        mode === "docked"
+          ? ({ ["--preview-panel-w"]: `${Math.min(width, maxWidth)}px` } as CSSProperties)
+          : undefined
       }
     >
       {mode === "docked" ? (
-        <div
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="调整预览面板宽度"
-          aria-valuemin={PANEL_WIDTH_MIN}
-          aria-valuemax={Math.floor(
-            typeof window === "undefined" ? 1200 : window.innerWidth * 0.75,
-          )}
-          aria-valuenow={width}
-          tabIndex={0}
-          onPointerDown={(event) => {
-            event.preventDefault();
-            dragRef.current = { startX: event.clientX, startWidth: width };
-            document.body.style.cursor = "col-resize";
-            document.body.style.userSelect = "none";
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "ArrowLeft")
-              setWidth((w) => Math.min(Math.floor(window.innerWidth * 0.75), w + 24));
-            if (event.key === "ArrowRight") setWidth((w) => Math.max(PANEL_WIDTH_MIN, w - 24));
-          }}
-          className="absolute inset-y-0 left-0 z-20 hidden w-1.5 -translate-x-1/2 cursor-col-resize xl:block"
-        >
-          <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border hover:bg-brand" />
-        </div>
+        <PanelResizeHandle
+          label="调整预览面板宽度"
+          value={Math.min(width, maxWidth)}
+          min={PANEL_WIDTH_MIN}
+          max={maxWidth}
+          onChange={setWidth}
+          onReset={() => setWidth(wide ? PANEL_WIDTH_DEFAULT_WIDE : PANEL_WIDTH_DEFAULT)}
+        />
       ) : null}
-      <div className="flex h-11 shrink-0 items-center gap-1 border-b px-2">
+      <div className="flex h-12 shrink-0 items-center gap-1 border-b border-border/60 bg-surface-2/35 px-3">
         {embedHeader ? (
           <>
             <div className="min-w-0 flex-1 px-1">{title}</div>
@@ -236,7 +234,7 @@ function PreviewShell({
         </header>
       )}
       {children}
-    </aside>
+    </motion.aside>
   );
 }
 
@@ -507,13 +505,8 @@ export function ChatArtifactPanel({
   const isSlideDeck = isSlideDeckArtifact(artifact);
   const previewId = meta.previewArtifactId;
   const view = useQuery({
-    queryKey: [
-      "artifact-content",
-      "workbench",
-      artifact.taskId,
-      isPptx ? (previewId ?? artifact.id) : artifact.id,
-    ],
-    queryFn: () => client.content(artifact.taskId, isPptx && previewId ? previewId : artifact.id),
+    queryKey: ["artifact-content", "workbench", artifact.taskId, previewId ?? artifact.id],
+    queryFn: () => client.content(artifact.taskId, previewId ?? artifact.id),
     enabled: !isPptx,
   });
   const slides = useMemo((): SlidePage[] => {
