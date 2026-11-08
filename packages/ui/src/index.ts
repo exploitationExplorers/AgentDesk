@@ -8,3 +8,7 @@ export * from "./choice-menu";
 export * from "./disclosure";
 export * from "./panel-resize-handle";
 export * from "./page-surface";
+export { GlassSurface } from "./leibox/glass-surface";
+export { GlassTabMenu, GlassSelection } from "./leibox/glass-tab-menu";
+export { DeepAgentComposer } from "./leibox/deep-agent-composer";
+export { Glass } from "./leibox/glass/Glass";

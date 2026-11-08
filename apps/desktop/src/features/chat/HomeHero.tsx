@@ -10,7 +10,7 @@ import {
   Telescope,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { Badge } from "@agentdesk/ui";
+import { Badge, Glass, GlassSurface } from "@agentdesk/ui";
 import { AppMark, useAppAvatar } from "../../components/AppMark";
 import { api } from "../../lib/api";
 import { compactNumber, greeting, todayLocal } from "../../lib/format";
@@ -67,21 +67,24 @@ export function HomeHero({
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
       <div className="chat-hero-in mx-auto flex w-full max-w-[820px] flex-col px-5 pt-10 pb-10 sm:px-9 sm:pt-[clamp(40px,11vh,120px)]">
-        <div className="mb-8">
+        <Glass className="mb-8" size={64} depth={60} shine={0.35} zoom={1.12}>
           <div className="mb-6 flex items-center gap-2.5">
             <AppMark src={avatar} className="h-8 w-8 rounded-[11px]" />
             <span className="text-[12px] font-medium tracking-wide text-muted">
               你的 Agent 工作空间
             </span>
           </div>
-          <h1 className="text-[27px] font-semibold leading-snug tracking-tight sm:text-[34px]">
+          <h1
+            data-glass-target
+            className="text-[27px] font-semibold leading-snug tracking-tight sm:text-[34px]"
+          >
             {greeting()}，<br className="sm:hidden" />
             今天想做什么？
           </h1>
           <p className="mt-3 text-[13px] leading-6 text-muted">
             从一个想法开始。查资料、写代码、推进项目，与你的 Agent 团队一起完成。
           </p>
-        </div>
+        </Glass>
 
         {providers.data && providers.data.length === 0 ? (
           <Link
@@ -99,20 +102,21 @@ export function HomeHero({
 
         <div className="mt-5 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
           {SUGGESTIONS.map((s) => (
-            <button
-              key={s.title}
-              type="button"
-              onClick={() => onPick(s.prompt, s.agent)}
-              className="chat-suggestion group flex items-start gap-3 rounded-2xl px-4 py-3.5 text-left"
-            >
-              <span className="mt-0.5 rounded-lg bg-brand/6 p-1.5 text-muted group-hover:text-brand">
-                {s.icon}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-[13px] font-medium">{s.title}</span>
-                <span className="mt-0.5 line-clamp-1 text-[12px] text-subtle">{s.prompt}</span>
-              </span>
-            </button>
+            <GlassSurface asChild key={s.title}>
+              <button
+                type="button"
+                onClick={() => onPick(s.prompt, s.agent)}
+                className="chat-suggestion group flex items-start gap-3 rounded-2xl px-4 py-3.5 text-left"
+              >
+                <span className="mt-0.5 rounded-lg bg-brand/6 p-1.5 text-muted group-hover:text-brand">
+                  {s.icon}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[13px] font-medium">{s.title}</span>
+                  <span className="mt-0.5 line-clamp-1 text-[12px] text-subtle">{s.prompt}</span>
+                </span>
+              </button>
+            </GlassSurface>
           ))}
         </div>
 

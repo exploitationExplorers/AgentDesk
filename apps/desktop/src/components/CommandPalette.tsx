@@ -72,7 +72,7 @@ export function CommandPalette() {
       onOpenChange={setOpen}
       label="命令面板"
       overlayClassName="fixed inset-0 z-50 bg-black/50 backdrop-blur-[2px]"
-      contentClassName="fixed left-1/2 top-[18%] z-50 w-[min(620px,92vw)] -translate-x-1/2 overflow-hidden rounded-2xl border bg-elevated shadow-2xl animate-fade-in"
+      contentClassName="lb-glass lb-glass-elevated fixed left-1/2 top-[18%] z-50 w-[min(620px,92vw)] -translate-x-1/2 overflow-hidden rounded-2xl animate-fade-in"
     >
       <Command.Input
         placeholder="搜索页面、项目、工作流，或输入问题…"

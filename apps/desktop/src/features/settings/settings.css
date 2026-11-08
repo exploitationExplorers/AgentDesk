@@ -10,14 +10,12 @@
   gap: 4px;
   width: 100%;
   min-width: 0;
-  border: 0;
   border-radius: 18px;
   padding: 6px;
-  background: color-mix(in srgb, var(--ad-surface-2) 65%, transparent);
 }
 .settings-nav-item {
   position: relative;
-  isolation: isolate;
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -30,15 +28,6 @@
 }
 .settings-nav-item[data-state="active"] {
   color: var(--ad-brand);
-}
-.settings-nav-selection {
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  border: 1px solid var(--ad-border);
-  border-radius: inherit;
-  background: var(--ad-surface);
-  box-shadow: 0 2px 5px -2px color-mix(in srgb, var(--ad-fg) 12%, transparent);
 }
 @media (max-width: 767px) {
   .settings-layout {

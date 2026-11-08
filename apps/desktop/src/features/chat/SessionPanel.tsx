@@ -93,7 +93,7 @@ export function SessionPanel({
     <aside
       aria-label="会话状态"
       style={{ width }}
-      className="relative flex h-full max-w-[calc(100vw-24px)] shrink-0 flex-col border-l bg-surface text-xs"
+      className="lb-glass lb-glass-elevated relative flex h-full max-w-[calc(100vw-24px)] shrink-0 flex-col border-l text-xs"
     >
       <PanelResizeHandle
         label="调整工作台宽度"
@@ -124,13 +124,13 @@ export function SessionPanel({
             {state.error.message}
           </p>
         )}
-        <section className="space-y-2">
+        <section className="lb-glass space-y-2">
           <h3 className="font-medium">工作环境</h3>
           <p className="break-all text-muted">{data?.workspace ?? "尚未关联项目"}</p>
           <p className="break-all text-muted">{context?.model ?? "尚未配置模型"}</p>
         </section>
         {data?.task && (
-          <section className="space-y-2">
+          <section className="lb-glass space-y-2">
             <h3 className="font-medium">
               当前任务 ·{" "}
               {data.task.automationStatus
@@ -151,7 +151,7 @@ export function SessionPanel({
             </Link>
           </section>
         )}
-        <section className="space-y-3">
+        <section className="lb-glass space-y-3">
           <h3 className="font-medium">上下文预算</h3>
           {context ? (
             <>
@@ -223,7 +223,7 @@ export function SessionPanel({
           )}
           {data?.lastCompaction && <p className="text-muted">{data.lastCompaction.message}</p>}
         </section>
-        <section className="space-y-2">
+        <section className="lb-glass space-y-2">
           <h3 className="font-medium">最近一次模型用量</h3>
           {usage ? (
             <>
@@ -247,7 +247,7 @@ export function SessionPanel({
             <p className="text-muted">模型响应后显示真实用量。</p>
           )}
         </section>
-        <section className="space-y-2">
+        <section className="lb-glass space-y-2">
           <h3 className="font-medium">最近使用的工具</h3>
           <p className="break-all leading-5 text-muted">
             {data?.usedTools.join("、") || "暂无工具调用"}

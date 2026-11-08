@@ -1,6 +1,6 @@
 .chat-workspace {
   --chat-line: color-mix(in srgb, var(--ad-border) 72%, transparent);
-  --chat-canvas: color-mix(in srgb, var(--ad-bg) 70%, var(--ad-surface));
+  --chat-canvas: transparent;
   --chat-shadow: 0 8px 32px -16px color-mix(in srgb, var(--ad-fg) 18%, transparent);
   background: var(--chat-canvas);
 }
@@ -9,7 +9,6 @@
   outline-offset: 3px;
 }
 .chat-workspace .chat-history {
-  background: color-mix(in srgb, var(--ad-surface-2) 45%, var(--ad-bg));
   border-color: var(--chat-line);
 }
 .chat-main {
@@ -17,50 +16,6 @@
 }
 .chat-header {
   border-color: var(--chat-line);
-}
-.chat-composer {
-  position: relative;
-  border: 1px solid var(--ad-border);
-  border-radius: 22px;
-  background: var(--ad-surface);
-  box-shadow:
-    0 3px 5px -3px color-mix(in srgb, var(--ad-fg) 8%, transparent),
-    0 12px 36px -20px color-mix(in srgb, var(--ad-fg) 18%, transparent);
-  transition:
-    border-color 160ms,
-    box-shadow 160ms;
-}
-.chat-composer:focus-within {
-  border-color: color-mix(in srgb, var(--ad-brand) 48%, var(--ad-border));
-  box-shadow:
-    0 0 0 3px color-mix(in srgb, var(--ad-brand) 5%, transparent),
-    0 8px 32px -16px color-mix(in srgb, var(--ad-fg) 18%, transparent);
-}
-.chat-composer-large {
-  border-radius: 26px;
-}
-.chat-composer-large textarea {
-  min-height: 110px;
-}
-.chat-send {
-  background: var(--ad-brand);
-  color: white;
-  transition:
-    background 140ms,
-    box-shadow 140ms,
-    opacity 140ms;
-}
-.chat-send:hover:not(:disabled) {
-  box-shadow: 0 3px 12px color-mix(in srgb, var(--ad-brand) 25%, transparent);
-}
-.chat-send:disabled {
-  color: var(--ad-subtle);
-  background: var(--ad-surface-2);
-  cursor: default;
-}
-.chat-send.is-running {
-  color: var(--ad-fg);
-  background: var(--ad-surface-2);
 }
 .chat-message-user {
   border: 1px solid color-mix(in srgb, var(--ad-brand) 9%, var(--ad-border));
@@ -77,8 +32,6 @@
   background: linear-gradient(transparent, var(--chat-canvas) 20px);
 }
 .chat-suggestion {
-  border: 1px solid var(--chat-line);
-  background: color-mix(in srgb, var(--ad-surface) 75%, transparent);
   transition:
     transform 180ms,
     border-color 180ms,
@@ -96,7 +49,6 @@
   border: 1px solid var(--ad-border);
   border-radius: 14px;
   padding: 14px;
-  background: color-mix(in srgb, var(--ad-surface-2) 35%, var(--ad-surface));
 }
 .chat-session-body > section h3 {
   font-size: 12px;
@@ -158,7 +110,7 @@
     transition: none;
   }
   .chat-workspace *,
-  .chat-composer * {
+  .lb-composer * {
     animation-duration: 0s !important;
     transition-duration: 0s !important;
     scroll-behavior: auto !important;

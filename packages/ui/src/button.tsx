@@ -1,20 +1,21 @@
-import { Slot } from "@radix-ui/react-slot";
+import { Slot, Slottable } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
 import { Loader2 } from "lucide-react";
 import { forwardRef, type ButtonHTMLAttributes } from "react";
 import { cn } from "./cn";
+import { TactilePushButton } from "./leibox/tactile-push-button";
 
 const buttonVariants = cva(
   "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-xl text-[13px] font-medium transition-colors select-none disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50",
   {
     variants: {
       variant: {
-        primary: "bg-accent text-accent-fg hover:opacity-90",
-        secondary: "bg-surface-2 text-fg hover:bg-elevated border border-border",
-        outline: "border border-border bg-transparent text-fg hover:bg-surface-2",
-        ghost: "text-muted hover:text-fg hover:bg-surface-2",
-        brand: "bg-brand text-white hover:opacity-90",
-        danger: "bg-danger/90 text-white hover:bg-danger",
+        primary: "lb-button-primary text-accent-fg",
+        secondary: "lb-button-secondary text-fg",
+        outline: "lb-button-outline border border-border text-fg",
+        ghost: "lb-button-ghost text-muted hover:text-fg",
+        brand: "lb-button-brand text-white",
+        danger: "lb-button-danger text-white",
       },
       size: {
         sm: "h-7 px-2.5 text-[12px]",
@@ -38,13 +39,22 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     if (asChild) {
       // Slot 只接受单个子元素，loading 态不适用于自定义元素
       return (
-        <Slot ref={ref} className={cn(buttonVariants({ variant, size }), className)} {...props}>
-          {children}
+        <Slot
+          ref={ref}
+          data-leibox="tactile-push-button"
+          aria-disabled={disabled || undefined}
+          className={cn("lb-button", buttonVariants({ variant, size }), className)}
+          {...props}
+        >
+          <span className="button-outer" aria-hidden="true">
+            <span className="button-inner" />
+          </span>
+          <Slottable>{children}</Slottable>
         </Slot>
       );
     }
     return (
-      <button
+      <TactilePushButton
         ref={ref}
         className={cn(buttonVariants({ variant, size }), className)}
         disabled={disabled || loading}
@@ -52,7 +62,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       >
         {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
         {children}
-      </button>
+      </TactilePushButton>
     );
   },
 );

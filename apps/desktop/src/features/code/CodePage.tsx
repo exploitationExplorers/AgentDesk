@@ -22,7 +22,7 @@ import {
   XCircle,
 } from "lucide-react";
 import type { Approval, Run, Task } from "@agentdesk/shared";
-import { Button, Tabs, TabsContent, TabsList, TabsTrigger, cn } from "@agentdesk/ui";
+import { Button, Segmented, Tabs, TabsContent, TabsList, TabsTrigger, cn } from "@agentdesk/ui";
 import { AppMark } from "../../components/AppMark";
 import { Markdown } from "../../components/Markdown";
 import { TOOL_LABELS } from "../../lib/agents";
@@ -816,7 +816,7 @@ export function CodePage() {
     void navigate({ to: "/code", search: { source, task: id } });
   };
   return (
-    <div className="flex h-full flex-col bg-bg">
+    <div className="flex h-full flex-col">
       <header className="flex shrink-0 flex-wrap items-center gap-4 border-b px-6 py-5 pr-16">
         <AppMark alt="AgentDesk" className="h-10 w-10 shrink-0" />
         <div>
@@ -829,25 +829,18 @@ export function CodePage() {
               <Terminal className="h-3.5 w-3.5" /> 与 CLI 同步
             </span>
           ) : (
-            <div className="flex rounded-lg border bg-surface p-0.5">
-              {(["workbench", "cli"] as const).map((value) => (
-                <button
-                  type="button"
-                  key={value}
-                  onClick={() => {
-                    setCreating(false);
-                    void navigate({ to: "/code", search: { source: value } });
-                  }}
-                  aria-pressed={source === value}
-                  className={cn(
-                    "rounded-md px-3 py-1.5 text-xs",
-                    source === value ? "bg-surface-2 font-medium text-fg" : "text-muted",
-                  )}
-                >
-                  {value === "cli" ? "CLI 会话" : "工作台"}
-                </button>
-              ))}
-            </div>
+            <Segmented
+              label="编码会话来源"
+              value={source}
+              options={[
+                { value: "workbench", label: "工作台" },
+                { value: "cli", label: "CLI 会话" },
+              ]}
+              onChange={(value) => {
+                setCreating(false);
+                void navigate({ to: "/code", search: { source: value } });
+              }}
+            />
           )}
           <Button size="sm" variant="primary" onClick={() => setCreating(true)}>
             <Plus className="mr-1.5 h-3.5 w-3.5" />
@@ -857,7 +850,7 @@ export function CodePage() {
       </header>
       <div className="flex min-h-0 flex-1">
         <aside
-          className="flex w-[220px] shrink-0 flex-col border-r bg-surface/30 max-md:w-[170px]"
+          className="lb-glass flex w-[220px] shrink-0 flex-col border-r max-md:w-[170px]"
           aria-label="编码任务列表"
         >
           <div className="flex items-center justify-between px-4 py-4">

@@ -1,0 +1,178 @@
+/*! LeiBox Tactile Push Button — 少荃 (Douyin: 宝龙体育优品小铺). Adapted for AgentDesk. */
+@layer components {
+  .lb-button {
+    /* 外观参数：字号和内边距使用有效 CSS 尺寸，颜色使用有效 CSS 颜色值。 */
+    --button-font-size: 48px; /* 按钮字号，也是 em 尺寸的缩放基准 */
+    --button-padding-x: 1.5em; /* 文字左右两侧的留白 */
+    --button-padding-y: 1em; /* 文字上下两侧的留白 */
+    --button-surface-start: #e6e6e6; /* 按钮表面渐变的起始色，位于左上方向 */
+    --button-surface-end: #b4b4b4; /* 按钮表面渐变的结束色，位于右下方向 */
+    --button-text-start: #191919; /* 文字渐变的起始色 */
+    --button-text-end: #4b4b4b; /* 文字渐变的结束色 */
+
+    /*
+   * 动画参数：两项缩放倍率均限制在 0.8～1.05，速度倍率限制在 0.25～3。
+   * 使用参数时由 clamp() 将越界数值限制到最近的端点。
+   * 速度为 1 时，阴影过渡为 300ms，裁剪与缩放过渡为 250ms。
+   */
+    --button-press-scale: 0.93; /* 按下时整个表面层的缩放倍率，包含文字 */
+    --button-hover-text-scale: 0.975; /* 悬停时仅文字层的缩放倍率 */
+    --button-motion-speed: 1; /* 动画速度倍率；数值越大，过渡时间越短 */
+
+    /* 清除原生按钮外观，再设置本组件的字体、形状与指针样式。 */
+    cursor: pointer;
+    -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
+    position: relative;
+
+    background-color: rgba(0, 0, 0, 0.75);
+    box-shadow:
+      -0.15em -0.15em 0.15em -0.075em rgba(5, 5, 5, 0.25),
+      0.0375em 0.0375em 0.0675em 0 rgba(5, 5, 5, 0.1);
+  }
+
+  /*
+ * 底座周围的柔化暗边：向四周扩展 0.15em，并用正片叠底融入页面背景。
+ * 此层仅负责装饰，鼠标与触摸事件交由按钮接收。
+ */
+  .lb-button::after {
+    pointer-events: none;
+    content: "";
+    position: absolute;
+    z-index: 0;
+    width: calc(100% + 0.3em);
+    height: calc(100% + 0.3em);
+    top: -0.15em;
+    left: -0.15em;
+    border-radius: inherit;
+    background: linear-gradient(-135deg, rgba(5, 5, 5, 0.5), transparent 20%, transparent 100%);
+    filter: blur(0.0125em);
+    opacity: 0.25;
+    mix-blend-mode: multiply;
+  }
+
+  /* 外层：用贴近底部的细阴影与右下方投影，表现按钮表面的抬起高度。 */
+  .lb-button .button-outer {
+    display: block;
+    position: relative;
+    z-index: 1;
+    border-radius: inherit;
+    transition: box-shadow calc(300ms / clamp(0.25, var(--button-motion-speed), 3)) ease;
+    box-shadow:
+      0 0.05em 0.05em -0.01em rgba(5, 5, 5, 1),
+      0 0.01em 0.01em -0.01em rgba(5, 5, 5, 0.5),
+      0.15em 0.3em 0.1em -0.01em rgba(5, 5, 5, 0.25);
+  }
+
+  /* 悬停时将外层投影收至零，配合内层暗部形成下沉效果。 */
+  .lb-button:hover .button-outer {
+    box-shadow:
+      0 0 0 0 rgba(5, 5, 5, 1),
+      0 0 0 0 rgba(5, 5, 5, 0.5),
+      0 0 0 0 rgba(5, 5, 5, 0.25);
+  }
+
+  /* 内层：承载表面渐变、文字留白、内阴影，以及按下时的整体缩放。 */
+  .lb-button .button-inner {
+    display: block;
+    position: relative;
+    z-index: 1;
+    border-radius: inherit;
+    padding: var(--button-padding-y) var(--button-padding-x);
+    background-image: linear-gradient(
+      135deg,
+      var(--button-surface-start),
+      var(--button-surface-end)
+    );
+    transition:
+      box-shadow calc(300ms / clamp(0.25, var(--button-motion-speed), 3)) ease,
+      clip-path calc(250ms / clamp(0.25, var(--button-motion-speed), 3)) ease,
+      background-image calc(250ms / clamp(0.25, var(--button-motion-speed), 3)) ease,
+      transform calc(250ms / clamp(0.25, var(--button-motion-speed), 3)) ease;
+    overflow: clip;
+    /* 初始裁剪沿胶囊外缘展开；悬停时从四边向内收缩。 */
+    clip-path: inset(0 0 0 0 round var(--button-radius, 14px));
+    /*
+   * 七层内阴影共同构成表面质感；悬停前后保持相同的层数、顺序和 inset 类型，
+   * 让浏览器逐层计算阴影过渡。初始尺寸为零的层用于衔接悬停时出现的暗部。
+   */
+    box-shadow:
+        /* 第一层：左上近缘暗部的初始零尺寸 */
+      0 0 0 0 inset rgba(5, 5, 5, 0.1),
+      /* 第二层：右下边缘的细窄暗部 */ -0.05em -0.05em 0.05em 0 inset rgba(5, 5, 5, 0.25),
+      /* 第三层：左上宽暗部的初始零尺寸 */ 0 0 0 0 inset rgba(5, 5, 5, 0.1),
+      /* 第四层：沿内缘扩散的柔和亮边 */ 0 0 0.05em 0.2em inset rgba(255, 255, 255, 0.25),
+      /* 第五层：左上边缘的明亮高光 */ 0.025em 0.05em 0.1em 0 inset rgba(255, 255, 255, 1),
+      /* 第六层：左上区域的柔和补光 */ 0.12em 0.12em 0.12em inset rgba(255, 255, 255, 0.25),
+      /* 第七层：右下区域的宽暗部 */ -0.075em -0.25em 0.25em 0.1em inset rgba(5, 5, 5, 0.25);
+  }
+
+  /* 悬停时四边各向内裁剪 1～2px，同时调整内阴影，露出深色底座。 */
+  .lb-button:hover .button-inner {
+    clip-path: inset(
+      clamp(1px, 0.0625em, 2px) clamp(1px, 0.0625em, 2px) clamp(1px, 0.0625em, 2px)
+        clamp(1px, 0.0625em, 2px) round var(--button-radius, 14px)
+    );
+
+    box-shadow:
+    /* 第一层：增强左上近缘暗部 */
+      0.1em 0.15em 0.05em 0 inset rgba(5, 5, 5, 0.75),
+      /* 第二层：调整右下细暗边的偏移与宽度 */ -0.025em -0.03em 0.05em 0.025em inset
+        rgba(5, 5, 5, 0.5),
+      /* 第三层：展开左上宽暗部，形成凹陷感 */ 0.25em 0.25em 0.2em 0 inset rgba(5, 5, 5, 0.5),
+      /* 第四层：扩大内缘亮边并降低不透明度 */ 0 0 0.05em 0.5em inset rgba(255, 255, 255, 0.15),
+      /* 第五层：将左上明亮高光收至零 */ 0 0 0 0 inset rgba(255, 255, 255, 1),
+      /* 第六层：保留左上柔和补光 */ 0.12em 0.12em 0.12em inset rgba(255, 255, 255, 0.25),
+      /* 第七层：收紧右下宽暗部 */ -0.075em -0.12em 0.2em 0.1em inset rgba(5, 5, 5, 0.25);
+  }
+
+  /* 文字层：居中显示多行内容，并将渐变背景裁剪成文字形状。 */
+  .lb-button .lb-button-content {
+    /* 保留文本中的换行与空格；可在最内层 span 中直接换行或插入 <br>。 */
+    white-space: pre-wrap;
+    text-align: center;
+    position: relative;
+    z-index: 4;
+    letter-spacing: -0.05em;
+    font-weight: 500;
+    /* 将字色设为透明，使下方的文字渐变可见。 */
+    color: rgba(0, 0, 0, 0);
+    background-image: linear-gradient(135deg, var(--button-text-start), var(--button-text-end));
+    -webkit-background-clip: text;
+    background-clip: text;
+    transition: transform calc(250ms / clamp(0.25, var(--button-motion-speed), 3)) ease;
+    display: block;
+    text-shadow: rgba(0, 0, 0, 0.1) 0 0 0.1em;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+  }
+
+  /* 悬停时缩放文字，表面层继续由内阴影和裁剪表现下沉。 */
+  .lb-button:hover .lb-button-content {
+    transform: scale(clamp(0.8, var(--button-hover-text-scale), 1.05));
+  }
+
+  /*
+ * 激活期间缩放整个表面层，默认倍率为 0.93。
+ * 鼠标同时处于悬停状态时，文字层还会叠加自身的悬停缩放。
+ */
+  .lb-button:active .button-inner {
+    transform: scale(clamp(0.8, var(--button-press-scale), 1.05));
+  }
+
+  /* 显示键盘操作所需的焦点轮廓，便于定位当前按钮。 */
+  .lb-button:focus-visible {
+    outline: 3px solid #23785c;
+    outline-offset: 0.2em;
+  }
+
+  /* 系统启用“减少动态效果”时，状态样式立即切换，关闭过渡动画。 */
+  @media (prefers-reduced-motion: reduce) {
+    .lb-button .button-outer,
+    .lb-button .button-inner,
+    .lb-button .lb-button-content {
+      transition: none;
+    }
+  }
+}

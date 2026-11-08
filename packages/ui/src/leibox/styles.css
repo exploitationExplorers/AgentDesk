@@ -1,0 +1,356 @@
+@import "./tactile.css";
+
+:root {
+  --lb-panel-start: rgba(255, 255, 255, 0.7);
+  --lb-panel-end: rgba(255, 255, 255, 0.38);
+  --lb-rim: rgba(255, 255, 255, 0.9);
+  --lb-shadow: rgba(76, 73, 91, 0.14);
+  --lb-highlight: rgba(255, 255, 255, 0.95);
+  --lb-selection: 255, 255, 255;
+  --lb-field: rgba(255, 255, 255, 0.48);
+}
+.dark {
+  --lb-panel-start: rgba(50, 47, 64, 0.72);
+  --lb-panel-end: rgba(32, 32, 42, 0.48);
+  --lb-rim: rgba(219, 214, 255, 0.14);
+  --lb-shadow: rgba(0, 0, 0, 0.35);
+  --lb-highlight: rgba(255, 255, 255, 0.12);
+  --lb-selection: 69, 64, 87;
+  --lb-field: rgba(18, 18, 26, 0.4);
+}
+
+@layer components {
+  /* LeiBox gt-panel：保留透光渐变、内缘高光和磨砂层。 */
+  .lb-glass {
+    border: 1px solid var(--lb-rim);
+    background: linear-gradient(160deg, var(--lb-panel-start), var(--lb-panel-end));
+    box-shadow:
+      inset 0 1px 2px var(--lb-highlight),
+      inset 0 0 16px rgba(255, 255, 255, 0.04),
+      0 13px 42px -13px var(--lb-shadow);
+    backdrop-filter: blur(25px) saturate(1.1);
+    -webkit-backdrop-filter: blur(25px) saturate(1.1);
+  }
+  .lb-glass-elevated {
+    --lb-panel-start: color-mix(in srgb, var(--ad-elevated) 96%, transparent);
+    --lb-panel-end: color-mix(in srgb, var(--ad-elevated) 88%, transparent);
+    box-shadow:
+      inset 0 1px 2px var(--lb-highlight),
+      0 24px 70px -20px var(--lb-shadow);
+  }
+  .lb-app {
+    background:
+      radial-gradient(
+        ellipse at 12% 0%,
+        color-mix(in srgb, var(--ad-brand) 13%, transparent),
+        transparent 52%
+      ),
+      radial-gradient(
+        ellipse at 92% 90%,
+        color-mix(in srgb, #c09eae 13%, transparent),
+        transparent 50%
+      ),
+      var(--ad-bg);
+  }
+  .lb-navigation {
+    border-radius: 24px;
+  }
+  .lb-navigation nav,
+  .lb-navigation-footer {
+    position: relative;
+    isolation: isolate;
+  }
+  .lb-navigation a {
+    z-index: 1;
+  }
+  .lb-selection {
+    position: absolute;
+    left: 0;
+    top: 0;
+    z-index: 0;
+    pointer-events: none;
+    border: 1px solid var(--lb-rim);
+    border-radius: 12px;
+    background: rgba(var(--lb-selection), calc(0.98 - 0.65 * var(--lb-travel, 0)));
+    box-shadow:
+      0 7px 17px var(--lb-shadow),
+      inset 0 1px 1px var(--lb-highlight);
+  }
+  .lb-tab-menu {
+    position: relative;
+    isolation: isolate;
+    display: inline-flex;
+    max-width: 100%;
+    min-width: 0;
+    gap: 2px;
+    padding: 5px;
+    overflow-x: auto;
+    border-radius: 18px;
+  }
+  .lb-tab {
+    position: relative;
+    z-index: 1;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    border-radius: 12px;
+    padding: 8px 14px;
+    color: var(--ad-muted);
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: color 160ms;
+  }
+  .lb-tab[aria-pressed="true"],
+  .lb-tab:hover {
+    color: var(--ad-fg);
+  }
+  .lb-tab:focus-visible {
+    outline: 2px solid var(--ad-brand);
+    outline-offset: -2px;
+  }
+  .lb-button {
+    --button-surface-start: color-mix(in srgb, var(--ad-surface) 88%, white);
+    --button-surface-end: color-mix(in srgb, var(--ad-surface-2) 92%, var(--ad-muted));
+    --button-padding-x: 0;
+    --button-padding-y: 0;
+    --button-motion-speed: 1.5;
+    --button-press-scale: 0.96;
+    --button-hover-text-scale: 0.99;
+    position: relative;
+    isolation: isolate;
+    box-shadow: 0 1px 2px var(--lb-shadow);
+    background-color: color-mix(in srgb, var(--ad-fg) 12%, transparent);
+  }
+  .lb-button .button-outer {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    box-shadow:
+      0 0.04em 0.05em rgba(5, 5, 5, 0.24),
+      0.08em 0.18em 0.18em -0.08em rgba(5, 5, 5, 0.22);
+  }
+  .lb-button .button-inner {
+    width: 100%;
+    height: 100%;
+  }
+  .lb-button .lb-button-content {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: inherit;
+    color: inherit;
+    background: none;
+    text-shadow: none;
+    letter-spacing: inherit;
+    font: inherit;
+    white-space: inherit;
+  }
+  .lb-button:focus-visible {
+    outline: 2px solid var(--ad-brand);
+    outline-offset: 3px;
+  }
+  .lb-button:disabled,
+  .lb-button[aria-disabled="true"] {
+    pointer-events: none;
+    opacity: 0.5;
+  }
+  .lb-button-primary {
+    --button-surface-start: color-mix(in srgb, var(--ad-accent) 85%, white);
+    --button-surface-end: var(--ad-accent);
+  }
+  .lb-button-brand {
+    --button-surface-start: color-mix(in srgb, var(--ad-brand) 78%, white);
+    --button-surface-end: var(--ad-brand);
+  }
+  .lb-button-danger {
+    --button-surface-start: #fb847e;
+    --button-surface-end: #cb332e;
+  }
+  .lb-button-ghost {
+    box-shadow: none;
+    background: transparent;
+  }
+  .lb-button-ghost::after,
+  .lb-button-ghost .button-outer {
+    opacity: 0;
+    transition: opacity 160ms;
+  }
+  .lb-button-ghost:hover .button-outer,
+  .lb-button-ghost:focus-visible .button-outer {
+    opacity: 0.7;
+  }
+  .lb-button-outline {
+    --button-surface-start: var(--lb-panel-start);
+    --button-surface-end: var(--lb-panel-end);
+  }
+  .lb-field {
+    background: var(--lb-field);
+    border-color: color-mix(in srgb, var(--ad-border) 65%, transparent);
+    box-shadow: inset 0 1px 3px var(--lb-shadow);
+  }
+  .lb-field:focus {
+    background: var(--ad-surface);
+  }
+  .lb-composer {
+    position: relative;
+    border-radius: 28px;
+    padding: 16px;
+    transition:
+      border-color 180ms,
+      box-shadow 180ms;
+  }
+  .lb-composer:focus-within {
+    border-color: color-mix(in srgb, var(--ad-brand) 36%, var(--lb-rim));
+    box-shadow:
+      inset 0 1px 2px var(--lb-highlight),
+      0 0 0 3px color-mix(in srgb, var(--ad-brand) 6%, transparent),
+      0 16px 44px -16px var(--lb-shadow);
+  }
+  .lb-composer-editor {
+    position: relative;
+    width: 100%;
+  }
+  .lb-composer-textarea {
+    display: block;
+    width: 100%;
+    min-height: 68px;
+    max-height: 220px;
+    resize: none;
+    border: 0;
+    padding: 3px 4px 8px;
+    background: transparent;
+    outline: none;
+    color: var(--ad-fg);
+    font-size: 14px;
+    line-height: 1.75;
+  }
+  .lb-composer-textarea::placeholder {
+    color: var(--ad-subtle);
+  }
+  .lb-composer-textarea:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+  .lb-composer-large .lb-composer-textarea {
+    min-height: 110px;
+  }
+  .lb-composer-toolbar {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .lb-composer-primary-tools {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    align-items: center;
+    gap: 6px;
+  }
+  .lb-composer-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .lb-composer-send {
+    border-radius: 50%;
+    --button-radius: 50%;
+  }
+  .lb-glass-lens {
+    position: relative;
+  }
+  .lb-glass-lens-content {
+    position: relative;
+  }
+  .lb-glass-lens-output {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+  .lb-glass-lens-output[hidden] {
+    display: none;
+  }
+  .lb-tabs-list {
+    position: relative;
+    isolation: isolate;
+    display: inline-flex;
+    gap: 4px;
+    padding: 5px;
+    border-radius: 16px;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+  .lb-tabs-trigger {
+    position: relative;
+    z-index: 1;
+    flex-shrink: 0;
+    border: 0;
+    border-radius: 12px;
+    padding: 8px 12px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ad-muted);
+    white-space: nowrap;
+  }
+  .lb-tabs-trigger[data-state="active"] {
+    color: var(--ad-fg);
+  }
+  .lb-tabs-trigger:focus-visible {
+    outline: 2px solid var(--ad-brand);
+    outline-offset: -2px;
+  }
+  .lb-popover {
+    animation: lb-popover-in 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  @keyframes lb-popover-in {
+    from {
+      opacity: 0;
+      translate: 0 5px;
+      scale: 0.98;
+    }
+    to {
+      opacity: 1;
+      translate: 0 0;
+      scale: 1;
+    }
+  }
+  @supports not (backdrop-filter: blur(1px)) {
+    .lb-glass {
+      background: var(--ad-surface);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .lb-button *,
+    .lb-composer,
+    .lb-popover {
+      animation: none !important;
+      transition: none !important;
+    }
+    .lb-button:active .button-inner,
+    .lb-button:hover .lb-button-content {
+      transform: none;
+    }
+  }
+  @media (forced-colors: active) {
+    .lb-glass,
+    .lb-button {
+      background: Canvas;
+      border: 1px solid ButtonText;
+    }
+    .lb-selection {
+      border: 2px solid Highlight;
+    }
+    .lb-button .button-outer {
+      display: none;
+    }
+  }
+}

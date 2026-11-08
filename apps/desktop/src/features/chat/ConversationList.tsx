@@ -140,7 +140,10 @@ export function ConversationList({ activeId }: { activeId?: string }) {
   const error = conversations.error ?? groups.error ?? patch.error ?? remove.error;
 
   return (
-    <aside className="chat-history flex w-[248px] shrink-0 flex-col border-r" aria-label="会话列表">
+    <aside
+      className="lb-glass chat-history flex w-[248px] shrink-0 flex-col border-r"
+      aria-label="会话列表"
+    >
       <div className="grid gap-3 p-4">
         <div className="flex h-7 items-center justify-between">
           <h2 className="text-[13px] font-semibold tracking-wide">对话</h2>

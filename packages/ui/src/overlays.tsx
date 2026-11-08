@@ -5,6 +5,7 @@ import { X } from "lucide-react";
 import type { ComponentPropsWithoutRef, ReactNode } from "react";
 import { cn } from "./cn";
 import { AnimatePresence, drawerVariants, motion, panelVariants } from "./motion";
+import { GlassSelection } from "./leibox/glass-tab-menu";
 
 export function Dialog({
   open,
@@ -44,7 +45,7 @@ export function Dialog({
                 animate="visible"
                 exit="exit"
                 className={cn(
-                  "fixed left-1/2 top-1/2 z-50 flex max-h-[86vh] w-[min(560px,92vw)] -translate-x-1/2 -translate-y-1/2 flex-col rounded-2xl border bg-surface shadow-2xl focus:outline-none",
+                  "lb-glass lb-glass-elevated fixed left-1/2 top-1/2 z-50 flex max-h-[86vh] w-[min(560px,92vw)] -translate-x-1/2 -translate-y-1/2 flex-col rounded-2xl focus:outline-none",
                   className,
                 )}
               >
@@ -117,7 +118,7 @@ export function Drawer({
                 initial="hidden"
                 animate="visible"
                 exit="exit"
-                className="fixed right-0 top-0 z-50 flex h-full max-w-[94vw] flex-col border-l bg-surface shadow-2xl focus:outline-none"
+                className="lb-glass lb-glass-elevated fixed right-0 top-0 z-50 flex h-full max-w-[94vw] flex-col border-l focus:outline-none"
               >
                 <div className="flex items-center justify-between border-b px-5 py-3.5">
                   <DialogPrimitive.Title className="text-[15px] font-semibold">
@@ -147,10 +148,18 @@ export const Tabs = TabsPrimitive.Root;
 
 export function TabsList({
   className,
+  children,
   ...props
 }: ComponentPropsWithoutRef<typeof TabsPrimitive.List>) {
   return (
-    <TabsPrimitive.List className={cn("inline-flex gap-1 border-b w-full", className)} {...props} />
+    <TabsPrimitive.List
+      data-leibox="glass-tab-menu"
+      className={cn("lb-glass lb-tabs-list", className)}
+      {...props}
+    >
+      <GlassSelection selector="[role=tab][data-state=active]" />
+      {children}
+    </TabsPrimitive.List>
   );
 }
 
@@ -160,10 +169,7 @@ export function TabsTrigger({
 }: ComponentPropsWithoutRef<typeof TabsPrimitive.Trigger>) {
   return (
     <TabsPrimitive.Trigger
-      className={cn(
-        "-mb-px border-b-2 border-transparent px-3 py-2 text-[13px] font-medium text-muted transition-colors hover:text-fg data-[state=active]:border-fg data-[state=active]:text-fg",
-        className,
-      )}
+      className={cn("lb-tabs-trigger transition-colors hover:text-fg", className)}
       {...props}
     />
   );
@@ -194,7 +200,7 @@ export function Tooltip({
         <TooltipPrimitive.Content
           side={side}
           sideOffset={8}
-          className="z-50 rounded-lg border bg-elevated px-2 py-1 text-[12px] text-fg shadow-lg animate-fade-in"
+          className="lb-glass lb-glass-elevated z-50 rounded-lg px-2 py-1 text-[12px] text-fg animate-fade-in"
         >
           {content}
         </TooltipPrimitive.Content>

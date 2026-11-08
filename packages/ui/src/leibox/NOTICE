@@ -1,0 +1,29 @@
+LeiBox source components in AgentDesk
+Retrieved 2026-11-08 from https://leibox.pantoria.cn and https://github.com/leishifu666/LeiBox.
+
+Glass Tab Menu
+Source: https://leibox.pantoria.cn/ai/packages/glass-tab-menu/react.json
+Design reference: solutionb, https://x.com/SolutionB2u/status/2113575003341881728/video/1
+Original engine SHA-256: 9d9a71e55099e60cda50232974a32282ec03766f9579332f1d74793fc04ee4cb
+Adaptation: original panel/selection/lens material and spring integrator are ported to controlled React components, measured layouts, project themes and reduced motion. Demo icons, fixed canvas geometry and simulated actions are omitted.
+GlassSurface is an AgentDesk extraction of this panel material, not a separate upstream Glass component.
+
+Tactile Push Button
+Source: https://leibox.pantoria.cn/ai/packages/tactile-push-button/react.json
+Original HTML/CSS submitted by 少荃 (Douyin: 宝龙体育优品小铺).
+Original engine SHA-256: 4feacf915ee2e011eb32e24ac431b2315e122c519f2b13fcef1c295bd27a490c
+Community submission; no separate license was supplied.
+Adaptation: outer/inner surface CSS and press interaction, project-size tokens, dark theme, real disabled/loading states, semantic button/link support.
+
+Deep Agent Composer
+Source: https://leibox.pantoria.cn/ai/packages/deep-agent-composer/react.json
+Source notice: Original Deep Agent Composer, ModelThinkingSelector and EffortSlider; UI source preserved.
+Adaptation: composer surface/editor/toolbar structure, native textarea, autosizing and submit interaction. App-owned Agent/model/context controls replace demo permission, thinking and attachment state. The full demo runtime and its duplicate icon/animation dependencies are not shipped.
+
+Glass lens
+Source: https://github.com/leishifu666/LeiBox/tree/main/src/lib/Glass
+Original author: David Haz / Canvas UI, https://canvasui.dev/docs/components/glass
+Copyright (c) 2026 David Haz. MIT + Commons Clause; complete terms in glass/LICENSE.
+GlassVanilla.ts, canvas-viewport.ts, html-in-canvas.ts and rect-cache.ts retain the upstream renderer/capture implementation. Local changes handle strict TypeScript checks, composite ancestor background colors before snapshot capture, refresh capture on theme changes, and expose renderer lifecycle state. The React wrapper keeps interactive DOM outside canvas, uses the upstream DOM snapshot fallback and disables rendering for coarse pointers/reduced motion or unavailable WebGL.
+
+These components are incorporated into the AgentDesk application. Attribution does not imply endorsement or a separate blanket license for LeiBox's catalog.

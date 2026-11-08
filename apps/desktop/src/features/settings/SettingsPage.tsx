@@ -10,7 +10,7 @@ import {
   SlidersHorizontal,
   Sparkles,
 } from "lucide-react";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Badge,
   Card,
@@ -20,9 +20,6 @@ import {
   TabsContent,
   TabsList,
   TabsTrigger,
-  motion,
-  softSpring,
-  useReducedMotion,
 } from "@agentdesk/ui";
 import { api } from "../../lib/api";
 import { settingsRoute } from "../../router";
@@ -124,8 +121,6 @@ export function SettingsPage() {
   const { tab = "providers" } = settingsRoute.useSearch();
   const navigate = useNavigate();
   const selected = SECTIONS.find((section) => section.value === tab) ?? SECTIONS[0];
-  const id = useId();
-  const reduced = useReducedMotion();
   const [narrow, setNarrow] = useState(() => window.matchMedia("(max-width: 767px)").matches);
   useEffect(() => {
     const media = window.matchMedia("(max-width: 767px)");
@@ -150,13 +145,6 @@ export function SettingsPage() {
         <TabsList className="settings-nav" aria-label="设置分类">
           {SECTIONS.map(({ value, label, icon: Icon }) => (
             <TabsTrigger key={value} value={value} className="settings-nav-item">
-              {selected.value === value ? (
-                <motion.span
-                  layoutId={reduced ? undefined : `settings-selection-${id}`}
-                  transition={reduced ? { duration: 0 } : softSpring}
-                  className="settings-nav-selection"
-                />
-              ) : null}
               <Icon className="h-4 w-4 shrink-0" />
               <span>{label}</span>
             </TabsTrigger>

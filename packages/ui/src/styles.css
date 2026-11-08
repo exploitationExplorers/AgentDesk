@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "./leibox/styles.css";
 
 @source "./";
 @source "../../../apps/desktop/src";
@@ -125,11 +126,9 @@
 
 @layer components {
   .ad-page {
-    background: color-mix(in srgb, var(--ad-bg) 70%, var(--ad-surface));
+    background: transparent;
   }
   .ad-page .ad-card {
-    border-color: color-mix(in srgb, var(--ad-border) 78%, transparent);
-    box-shadow: 0 4px 18px -14px color-mix(in srgb, var(--ad-fg) 18%, transparent);
     transition:
       border-color 160ms,
       box-shadow 160ms;
@@ -141,14 +140,6 @@
   .ad-page :where(button, a):focus-visible {
     outline: 2px solid var(--ad-brand);
     outline-offset: 3px;
-  }
-  .ad-page-metrics {
-    background: linear-gradient(
-      115deg,
-      color-mix(in srgb, var(--ad-brand) 4%, var(--ad-surface)),
-      var(--ad-surface) 65%
-    );
-    border-color: color-mix(in srgb, var(--ad-border) 75%, transparent);
   }
   .ad-page-toolbar {
     display: flex;

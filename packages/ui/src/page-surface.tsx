@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { cn } from "./cn";
 import { MotionConfig } from "./motion";
+import { GlassSurface } from "./leibox/glass-surface";
 
 /** 列表与管理页面共用的阅读宽度、表面层级和动效偏好。 */
 export function PageSurface({ children, className }: { children: ReactNode; className?: string }) {
@@ -26,21 +27,23 @@ export function PageMetrics({
   items: Array<{ label: string; value: ReactNode; detail?: string }>;
 }) {
   return (
-    <dl className="ad-page-metrics mb-7 grid grid-cols-3 overflow-hidden rounded-2xl border bg-surface">
-      {items.map((item) => (
-        <div
-          key={item.label}
-          className="min-w-0 border-r px-4 py-4 last:border-r-0 sm:px-6 sm:py-5"
-        >
-          <dt className="text-[11px] text-muted sm:text-xs">{item.label}</dt>
-          <dd className="mt-2 text-[25px] font-semibold leading-none tracking-tight tabular-nums sm:text-[30px]">
-            {item.value}
-          </dd>
-          {item.detail ? (
-            <p className="mt-2 text-[11px] leading-5 text-subtle">{item.detail}</p>
-          ) : null}
-        </div>
-      ))}
-    </dl>
+    <GlassSurface asChild>
+      <dl className="ad-page-metrics mb-7 grid grid-cols-3 overflow-hidden rounded-2xl">
+        {items.map((item) => (
+          <div
+            key={item.label}
+            className="min-w-0 border-r px-4 py-4 last:border-r-0 sm:px-6 sm:py-5"
+          >
+            <dt className="text-[11px] text-muted sm:text-xs">{item.label}</dt>
+            <dd className="mt-2 text-[25px] font-semibold leading-none tracking-tight tabular-nums sm:text-[30px]">
+              {item.value}
+            </dd>
+            {item.detail ? (
+              <p className="mt-2 text-[11px] leading-5 text-subtle">{item.detail}</p>
+            ) : null}
+          </div>
+        ))}
+      </dl>
+    </GlassSurface>
   );
 }

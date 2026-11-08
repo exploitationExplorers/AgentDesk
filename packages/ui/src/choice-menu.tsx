@@ -1,7 +1,7 @@
 import { Check, ChevronDown } from "lucide-react";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { cn } from "./cn";
-import { AnimatePresence, motion, panelVariants, useReducedMotion } from "./motion";
+import { GlassSurface } from "./leibox/glass-surface";
 
 export interface ChoiceOption<T extends string> {
   value: T;
@@ -32,7 +32,6 @@ export function ChoiceMenu<T extends string>({
   const buttons = useRef<(HTMLButtonElement | null)[]>([]);
   const [open, setOpen] = useState(false);
   const [focused, setFocused] = useState(0);
-  const reduced = useReducedMotion();
   const selected = options.find((option) => option.value === value);
   const close = (restoreFocus = false) => {
     setOpen(false);
@@ -98,72 +97,67 @@ export function ChoiceMenu<T extends string>({
           )}
         />
       </button>
-      <AnimatePresence>
-        {open ? (
-          <motion.div
-            id={id}
-            role="listbox"
-            aria-label={label}
-            variants={reduced ? undefined : panelVariants}
-            initial="hidden"
-            animate="visible"
-            exit="exit"
-            className="absolute bottom-[calc(100%+12px)] left-0 z-40 w-64 max-w-[calc(100vw-48px)] origin-bottom-left rounded-2xl border bg-elevated p-1.5 shadow-xl"
-            onKeyDown={(event) => {
-              if (event.key === "Escape") {
-                event.preventDefault();
-                event.stopPropagation();
+      {open ? (
+        <GlassSurface
+          elevated
+          id={id}
+          role="listbox"
+          aria-label={label}
+          className="lb-popover absolute bottom-[calc(100%+12px)] left-0 z-40 w-64 max-w-[calc(100vw-48px)] origin-bottom-left rounded-2xl p-1.5"
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              event.preventDefault();
+              event.stopPropagation();
+              close(true);
+            }
+            if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+              event.preventDefault();
+              setFocused((index) =>
+                event.key === "Home"
+                  ? 0
+                  : event.key === "End"
+                    ? options.length - 1
+                    : (index + (event.key === "ArrowDown" ? 1 : -1) + options.length) %
+                      options.length,
+              );
+            }
+          }}
+        >
+          <p className="px-3 py-2 text-[11px] font-medium text-subtle">{label}</p>
+          {options.map((option, index) => (
+            <button
+              key={option.value}
+              ref={(element) => {
+                buttons.current[index] = element;
+              }}
+              type="button"
+              role="option"
+              aria-selected={option.value === value}
+              tabIndex={index === focused ? 0 : -1}
+              onFocus={() => setFocused(index)}
+              onClick={() => {
+                onChange(option.value);
                 close(true);
-              }
-              if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
-                event.preventDefault();
-                setFocused((index) =>
-                  event.key === "Home"
-                    ? 0
-                    : event.key === "End"
-                      ? options.length - 1
-                      : (index + (event.key === "ArrowDown" ? 1 : -1) + options.length) %
-                        options.length,
-                );
-              }
-            }}
-          >
-            <p className="px-3 py-2 text-[11px] font-medium text-subtle">{label}</p>
-            {options.map((option, index) => (
-              <button
-                key={option.value}
-                ref={(element) => {
-                  buttons.current[index] = element;
-                }}
-                type="button"
-                role="option"
-                aria-selected={option.value === value}
-                tabIndex={index === focused ? 0 : -1}
-                onFocus={() => setFocused(index)}
-                onClick={() => {
-                  onChange(option.value);
-                  close(true);
-                }}
-                className={cn(
-                  "flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left outline-none transition-colors hover:bg-surface-2 focus-visible:bg-surface-2",
-                  option.value === value && "bg-brand/8",
-                )}
-              >
-                <span className="text-brand">{option.icon}</span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-[13px] font-medium">{option.label}</span>
-                  {option.description ? (
-                    <span className="mt-0.5 block text-[11px] leading-4 text-muted">
-                      {option.description}
-                    </span>
-                  ) : null}
-                </span>
-                {option.value === value ? <Check className="h-3.5 w-3.5 text-brand" /> : null}
-              </button>
-            ))}
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
+              }}
+              className={cn(
+                "flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left outline-none transition-colors hover:bg-surface-2 focus-visible:bg-surface-2",
+                option.value === value && "bg-brand/8",
+              )}
+            >
+              <span className="text-brand">{option.icon}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[13px] font-medium">{option.label}</span>
+                {option.description ? (
+                  <span className="mt-0.5 block text-[11px] leading-4 text-muted">
+                    {option.description}
+                  </span>
+                ) : null}
+              </span>
+              {option.value === value ? <Check className="h-3.5 w-3.5 text-brand" /> : null}
+            </button>
+          ))}
+        </GlassSurface>
+      ) : null}
     </div>
   );
 }
