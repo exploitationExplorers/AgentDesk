@@ -51,7 +51,7 @@ export function BindingsTab() {
         用支持图片的模型做视觉兜底。未配置时使用总控 Agent 的设置，再退回第一个可用 Provider。
       </p>
       <Card>
-        <div className="grid grid-cols-[160px_1fr_1fr_1fr] gap-3 border-b px-4 py-2 text-[11.5px] font-medium text-subtle">
+        <div className="hidden grid-cols-[120px_repeat(3,minmax(0,1fr))] gap-3 border-b px-4 py-3 text-[11.5px] font-medium text-subtle xl:grid">
           <span>Agent</span>
           <span>Provider</span>
           <span>模型</span>
@@ -66,56 +66,71 @@ export function BindingsTab() {
           return (
             <div
               key={agent}
-              className="grid grid-cols-[160px_1fr_1fr_1fr] items-center gap-3 border-b px-4 py-2.5 last:border-b-0"
+              className="grid grid-cols-1 items-center gap-3 border-b px-4 py-4 last:border-b-0 sm:grid-cols-3 xl:grid-cols-[120px_repeat(3,minmax(0,1fr))]"
             >
-              <div className="flex items-center gap-2 text-[13px] font-medium">
+              <div className="flex items-center gap-2 text-[13px] font-medium sm:col-span-3 xl:col-span-1">
                 <meta.icon className="h-4 w-4 text-muted" />
                 {meta.label}
               </div>
-              <Select
-                value={value.providerId}
-                onChange={(e) => {
-                  const p = list.find((x) => x.id === e.target.value);
-                  update({ providerId: e.target.value, model: p?.defaultModel ?? "" });
-                }}
-              >
-                <option value="">（默认）</option>
-                {list.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </Select>
-              <div className="flex min-w-0 items-center gap-2">
-                <ModelBrandIcon
-                  model={value.model}
-                  baseUrl={provider?.baseUrl}
-                  api={provider?.api}
-                  size={18}
-                />
-                <Input
-                  list={`models-${agent}`}
-                  value={value.model}
-                  onChange={(e) => update({ model: e.target.value })}
-                  placeholder="模型 ID"
-                  className="min-w-0"
-                />
-              </div>
+              <label className="min-w-0">
+                <span className="mb-1.5 block text-xs text-muted xl:hidden">Provider</span>
+                <Select
+                  aria-label={`${meta.label} Provider`}
+                  value={value.providerId}
+                  onChange={(e) => {
+                    const p = list.find((x) => x.id === e.target.value);
+                    update({ providerId: e.target.value, model: p?.defaultModel ?? "" });
+                  }}
+                >
+                  <option value="">（默认）</option>
+                  {list.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+              <label className="min-w-0">
+                <span className="mb-1.5 block text-xs text-muted xl:hidden">模型</span>
+                <span className="flex min-w-0 items-center gap-2">
+                  <ModelBrandIcon
+                    model={value.model}
+                    baseUrl={provider?.baseUrl}
+                    api={provider?.api}
+                    size={18}
+                  />
+                  <Input
+                    aria-label={`${meta.label}模型`}
+                    list={`models-${agent}`}
+                    value={value.model}
+                    onChange={(e) => update({ model: e.target.value })}
+                    placeholder="模型 ID"
+                    className="min-w-0"
+                  />
+                </span>
+              </label>
               <datalist id={`models-${agent}`}>
                 {provider?.models.map((m) => (
                   <option key={m} value={m} />
                 ))}
               </datalist>
-              <Select value={value.fallback} onChange={(e) => update({ fallback: e.target.value })}>
-                <option value="">（自动）</option>
-                {list
-                  .filter((p) => p.id !== value.providerId)
-                  .map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-              </Select>
+              <label className="min-w-0">
+                <span className="mb-1.5 block text-xs text-muted xl:hidden">备用 Provider</span>
+                <Select
+                  aria-label={`${meta.label}备用 Provider`}
+                  value={value.fallback}
+                  onChange={(e) => update({ fallback: e.target.value })}
+                >
+                  <option value="">（自动）</option>
+                  {list
+                    .filter((p) => p.id !== value.providerId)
+                    .map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                </Select>
+              </label>
             </div>
           );
         })}

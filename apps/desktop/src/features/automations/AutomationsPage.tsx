@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { CalendarClock, ChevronDown, Play, Plus, Repeat2 } from "lucide-react";
+import { CalendarClock, ChevronDown, Play, Plus, Repeat2, Search } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import type { AutomationBinding, AutomationBindingInput, Task } from "@agentdesk/shared";
 import {
+  AnimatedDisclosure,
+  AnimatePresence,
   Badge,
   Button,
   Card,
@@ -12,9 +14,14 @@ import {
   Input,
   Label,
   PageHeader,
+  PageMetrics,
+  PageSurface,
+  Segmented,
   Select,
   Spinner,
   Textarea,
+  motion,
+  gridItemVariants,
 } from "@agentdesk/ui";
 import { api } from "../../lib/api";
 import { automationStatusLabel } from "./status";
@@ -306,9 +313,9 @@ function AutomationItem({ binding }: { binding: AutomationBinding }) {
     onSuccess: () => client.invalidateQueries({ queryKey: ["automations"] }),
   });
   return (
-    <Card className="p-4 sm:p-5">
+    <Card className="p-4 sm:p-6">
       <div className="flex flex-wrap items-start gap-3">
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 basis-[220px]">
           <h2 className="break-words text-base font-semibold">{binding.title}</h2>
           <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-6 text-muted">
             {binding.goal}
@@ -378,14 +385,16 @@ function AutomationItem({ binding }: { binding: AutomationBinding }) {
           任务已提交，可在下方查看进度。
         </p>
       ) : null}
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+      <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-3">
         <button
           type="button"
           aria-expanded={expanded}
           onClick={() => setExpanded((value) => !value)}
           className="flex min-h-10 items-center gap-1.5 text-xs text-muted hover:text-fg"
         >
-          <ChevronDown className={`h-3.5 w-3.5 ${expanded ? "rotate-180" : ""}`} />
+          <ChevronDown
+            className={`h-3.5 w-3.5 transition-transform ${expanded ? "rotate-180" : ""}`}
+          />
           运行记录
         </button>
         {binding.enabled ? (
@@ -399,7 +408,7 @@ function AutomationItem({ binding }: { binding: AutomationBinding }) {
           </Button>
         ) : null}
       </div>
-      {expanded ? (
+      <AnimatedDisclosure open={expanded}>
         <div>
           {tasks.isLoading ? <Spinner /> : null}
           {tasks.error ? (
@@ -417,63 +426,140 @@ function AutomationItem({ binding }: { binding: AutomationBinding }) {
             <p className="border-t py-3 text-sm text-muted">还没有运行记录。</p>
           ) : null}
         </div>
-      ) : null}
+      </AnimatedDisclosure>
     </Card>
   );
 }
 
 export function AutomationsPage() {
   const [creating, setCreating] = useState(false);
+  const [filter, setFilter] = useState<"all" | "enabled" | "disabled">("all");
+  const [query, setQuery] = useState("");
   const bindings = useQuery({ queryKey: ["automations"], queryFn: api.automations });
+  const items = bindings.data ?? [];
+  const visible = items.filter(
+    (item) =>
+      (filter === "all" || item.enabled === (filter === "enabled")) &&
+      `${item.title} ${item.goal}`.toLowerCase().includes(query.trim().toLowerCase()),
+  );
   const status = useQuery({
     queryKey: ["autoloop-status"],
     queryFn: api.autoloopStatus,
     refetchInterval: 10000,
   });
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-5xl px-4 py-6 sm:px-8 sm:py-8">
-        <PageHeader
-          icon={<Repeat2 className="h-5 w-5" />}
-          title="自动化"
-          description="设定目标，让 Agent 持续推进。需要你决定时，在原会话中回答后继续。"
-          actions={
-            <Button variant="primary" onClick={() => setCreating(true)}>
-              <Plus className="h-3.5 w-3.5" />
-              新建自动化
-            </Button>
+    <PageSurface className="max-w-[1120px]">
+      <PageHeader
+        icon={<Repeat2 className="h-5 w-5" />}
+        title="自动化"
+        description="设定目标，让 Agent 持续推进。需要你决定时，在原会话中回答后继续。"
+        actions={
+          <Button variant="primary" onClick={() => setCreating(true)}>
+            <Plus className="h-3.5 w-3.5" />
+            新建自动化
+          </Button>
+        }
+      />
+      <PageMetrics
+        items={[
+          {
+            label: "全部自动化",
+            value: bindings.isLoading ? "—" : items.length,
+            detail: "可复用的任务目标",
+          },
+          {
+            label: "已启用",
+            value: bindings.isLoading ? "—" : items.filter((item) => item.enabled).length,
+            detail: "可接受新的触发",
+          },
+          {
+            label: "定时执行",
+            value: bindings.isLoading
+              ? "—"
+              : items.filter((item) => item.enabled && item.schedule).length,
+            detail: "按计划自动开始",
+          },
+        ]}
+      />
+      <div className="ad-page-toolbar">
+        <Segmented
+          label="自动化筛选"
+          value={filter}
+          onChange={setFilter}
+          options={[
+            { value: "all", label: "全部" },
+            { value: "enabled", label: "已启用" },
+            { value: "disabled", label: "已停用" },
+          ]}
+        />
+        <div className="relative ml-auto w-full sm:w-64">
+          <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-subtle" />
+          <Input
+            aria-label="搜索自动化"
+            placeholder="搜索名称或目标"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            className="bg-surface pl-8"
+          />
+        </div>
+      </div>
+      {status.data?.mode !== "disabled" && status.data && !status.data.available ? (
+        <p
+          role="status"
+          className="mb-4 rounded-xl border border-warning/40 bg-warning/5 p-3 text-sm"
+        >
+          自动化服务暂时不可用。已有任务与成果已保留，服务恢复后可继续。
+        </p>
+      ) : null}
+      {bindings.isLoading ? <Spinner /> : null}
+      {bindings.error ? (
+        <p role="alert" className="text-sm text-danger">
+          {bindings.error.message}
+        </p>
+      ) : null}
+      {visible.length ? (
+        <div className="space-y-4">
+          <AnimatePresence initial={false}>
+            {visible.map((binding) => (
+              <motion.div
+                key={binding.id}
+                layout="position"
+                variants={gridItemVariants}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+              >
+                <AutomationItem binding={binding} />
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </div>
+      ) : bindings.data ? (
+        <EmptyState
+          icon={<Repeat2 className="h-6 w-6" />}
+          title={items.length ? "没有匹配的自动化" : "把重复工作交给 Agent"}
+          description={
+            items.length
+              ? "尝试其他关键词，或重置筛选查看全部自动化。"
+              : "从整理项目资料、生成报告或制作 PPT 开始。你可以随时查看进度和已有成果。"
+          }
+          action={
+            items.length ? (
+              <Button
+                onClick={() => {
+                  setQuery("");
+                  setFilter("all");
+                }}
+              >
+                重置筛选
+              </Button>
+            ) : (
+              <Button onClick={() => setCreating(true)}>创建第一个自动化</Button>
+            )
           }
         />
-        {status.data?.mode !== "disabled" && status.data && !status.data.available ? (
-          <p
-            role="status"
-            className="mb-4 rounded-xl border border-warning/40 bg-warning/5 p-3 text-sm"
-          >
-            自动化服务暂时不可用。已有任务与成果已保留，服务恢复后可继续。
-          </p>
-        ) : null}
-        {bindings.isLoading ? <Spinner /> : null}
-        {bindings.error ? (
-          <p role="alert" className="text-sm text-danger">
-            {bindings.error.message}
-          </p>
-        ) : null}
-        {bindings.data?.length ? (
-          <div className="space-y-4">
-            {bindings.data.map((binding) => (
-              <AutomationItem key={binding.id} binding={binding} />
-            ))}
-          </div>
-        ) : bindings.data ? (
-          <EmptyState
-            icon={<Repeat2 className="h-6 w-6" />}
-            title="把重复工作交给 Agent"
-            description="从整理项目资料、生成报告或制作 PPT 开始。你可以随时查看进度和已有成果。"
-            action={<Button onClick={() => setCreating(true)}>创建第一个自动化</Button>}
-          />
-        ) : null}
-      </div>
+      ) : null}
       {creating ? <CreateAutomation onClose={() => setCreating(false)} /> : null}
-    </div>
+    </PageSurface>
   );
 }

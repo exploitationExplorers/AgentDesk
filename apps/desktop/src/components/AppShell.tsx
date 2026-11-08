@@ -23,13 +23,13 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
-  AnimatePresence,
   StatusDot,
   Tooltip,
   TooltipProvider,
   cn,
   crossfadeVariants,
   motion,
+  useReducedMotion,
 } from "@agentdesk/ui";
 import { useGlobalEvents } from "../hooks/useGlobalEvents";
 import { api } from "../lib/api";
@@ -72,21 +72,23 @@ function NavItem({
 }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const active = to === "/" ? pathname === "/" : pathname.startsWith(to);
+  const reduced = useReducedMotion();
   const content = (
     <Link
       to={to}
       aria-label={collapsed ? label : undefined}
+      aria-current={active ? "page" : undefined}
       className={cn(
-        "relative flex h-9 items-center gap-3 rounded-lg px-2.5 text-[13px] font-medium transition-colors",
-        active ? "text-fg" : "text-muted hover:bg-surface-2/70 hover:text-fg",
+        "relative isolate flex h-9 items-center gap-3 rounded-lg px-2.5 text-[13px] font-medium transition-colors",
+        active ? "text-brand" : "text-muted hover:bg-surface-2/70 hover:text-fg",
         collapsed && "justify-center px-0",
       )}
     >
       {active ? (
         <motion.span
-          layoutId="nav-active-indicator"
-          className="absolute inset-0 -z-10 rounded-lg bg-surface-2"
-          transition={{ type: "spring", stiffness: 500, damping: 40 }}
+          layoutId={reduced ? undefined : "nav-active-indicator"}
+          className="absolute inset-0 -z-10 rounded-lg bg-brand/8"
+          transition={reduced ? { duration: 0 } : { type: "spring", stiffness: 500, damping: 40 }}
         />
       ) : null}
       <Icon className="h-4 w-4 shrink-0" strokeWidth={1.75} />
@@ -115,6 +117,7 @@ function NavItem({
 
 export function AppShell() {
   useGlobalEvents();
+  const reduced = useReducedMotion();
   const { theme, sidebarCollapsed: collapsed, toggleSidebar, setPaletteOpen } = useUi();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const routeSection =
@@ -327,23 +330,16 @@ export function AppShell() {
         </aside>
 
         <main className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
-          {/*
-            路由层必须 absolute 叠放：若进出页都参与文档流，退出页在 opacity:0 时仍占满
-            h-full，新页被挤到 overflow:hidden 视口外，看起来就像白屏，刷新才好。
-            同时不用 mode="wait"，避免复杂页（Bot）exit 不收尾时主区一直空等。
-          */}
-          <AnimatePresence initial={false}>
-            <motion.div
-              key={routeSection}
-              variants={crossfadeVariants}
-              initial="hidden"
-              animate="visible"
-              exit="exit"
-              className="absolute inset-0 h-full w-full"
-            >
-              <Outlet />
-            </motion.div>
-          </AnimatePresence>
+          {/* Outlet 始终只挂载一份；退出动画保留旧 Outlet 会让它也读取新路由并重复渲染。 */}
+          <motion.div
+            key={routeSection}
+            variants={reduced ? undefined : crossfadeVariants}
+            initial="hidden"
+            animate="visible"
+            className="absolute inset-0 h-full w-full"
+          >
+            <Outlet />
+          </motion.div>
         </main>
       </div>
       <LowDiskDialog status={disk.data} />

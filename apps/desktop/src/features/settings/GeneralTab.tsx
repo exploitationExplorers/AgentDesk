@@ -59,8 +59,8 @@ export function GeneralTab() {
 
   return (
     <div className="grid max-w-3xl gap-5">
-      <Card className="flex items-center gap-4 p-5">
-        <AppMark src={form.avatar} className="h-14 w-14 rounded-2xl" />
+      <Card className="flex flex-wrap items-center gap-4 p-5">
+        <AppMark src={form.avatar} className="h-14 w-14 shrink-0 rounded-2xl" />
         <div className="min-w-0 flex-1">
           <h3 className="text-[14px] font-semibold">头像</h3>
           <p className="mt-1 text-[12.5px] text-subtle">
@@ -105,7 +105,7 @@ export function GeneralTab() {
             className="font-mono text-[12.5px]"
           />
         </Field>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Cursor 命令">
             <Input
               value={form.cursorCommand}
@@ -123,7 +123,7 @@ export function GeneralTab() {
 
       <Card className="grid gap-4 p-5">
         <h3 className="text-[14px] font-semibold">热榜与网络</h3>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="每日刷新时间" hint="到点自动抓取并生成速览；错过会在下次启动时补跑">
             <Input
               type="time"
@@ -160,7 +160,7 @@ export function GeneralTab() {
 
       <Card className="grid gap-4 p-5">
         <h3 className="text-[14px] font-semibold">部署与外观</h3>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="自动化浏览器" hint="使用系统已安装的浏览器，无需额外下载">
             <Select
               value={form.browserChannel}
@@ -197,7 +197,7 @@ export function GeneralTab() {
         {save.error ? <span className="text-[12px] text-danger">{save.error.message}</span> : null}
       </div>
 
-      <Card className="grid gap-2 p-5 text-[12.5px] text-muted">
+      <Card className="grid gap-2 break-words p-5 text-[12.5px] text-muted">
         <h3 className="text-[14px] font-semibold text-fg">关于</h3>
         <p>版本：{health.data?.version}</p>
         <p>数据目录：{health.data?.dataDir}</p>

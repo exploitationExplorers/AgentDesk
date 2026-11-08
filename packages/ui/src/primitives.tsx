@@ -2,6 +2,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { Loader2 } from "lucide-react";
 import {
   forwardRef,
+  useId,
   type HTMLAttributes,
   type InputHTMLAttributes,
   type ReactNode,
@@ -9,9 +10,10 @@ import {
   type TextareaHTMLAttributes,
 } from "react";
 import { cn } from "./cn";
+import { motion, softSpring, useReducedMotion } from "./motion";
 
 export function Card({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("rounded-2xl border bg-surface", className)} {...props} />;
+  return <div className={cn("ad-card rounded-2xl border bg-surface", className)} {...props} />;
 }
 
 export function CardHeader({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
@@ -187,19 +189,25 @@ export function PageHeader({
   icon?: ReactNode;
 }) {
   return (
-    <div className="flex flex-wrap items-end justify-between gap-4 pb-5">
-      <div className="flex items-center gap-3">
+    <div className="ad-page-header flex flex-wrap items-start justify-between gap-5 pb-7">
+      <div className="flex min-w-0 flex-1 basis-[280px] items-start gap-3.5">
         {icon ? (
-          <div className="grid h-10 w-10 place-items-center rounded-xl border bg-surface text-muted">
+          <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-brand/12 bg-brand/6 text-brand">
             {icon}
           </div>
         ) : null}
-        <div>
-          <h1 className="text-[20px] font-semibold tracking-tight">{title}</h1>
-          {description ? <p className="mt-0.5 text-[13px] text-muted">{description}</p> : null}
+        <div className="min-w-0">
+          <h1 className="text-[24px] font-semibold leading-tight tracking-tight sm:text-[27px]">
+            {title}
+          </h1>
+          {description ? (
+            <p className="mt-2 max-w-2xl text-[12.5px] leading-6 text-muted">{description}</p>
+          ) : null}
         </div>
       </div>
-      {actions ? <div className="flex items-center gap-2">{actions}</div> : null}
+      {actions ? (
+        <div className="flex max-w-full flex-wrap items-center gap-2">{actions}</div>
+      ) : null}
     </div>
   );
 }
@@ -209,24 +217,43 @@ export function Segmented<T extends string>({
   options,
   onChange,
   className,
+  label,
 }: {
   value: T;
   options: Array<{ value: T; label: ReactNode }>;
   onChange: (value: T) => void;
   className?: string;
+  label?: string;
 }) {
+  const id = useId();
+  const reduced = useReducedMotion();
   return (
-    <div className={cn("inline-flex rounded-xl border bg-surface-2 p-0.5", className)}>
+    <div
+      role="group"
+      aria-label={label}
+      className={cn(
+        "ad-segmented inline-flex max-w-full min-w-0 overflow-x-auto rounded-xl border border-border/60 bg-surface-2/70 p-1",
+        className,
+      )}
+    >
       {options.map((o) => (
         <button
           key={o.value}
           type="button"
+          aria-pressed={o.value === value}
           onClick={() => onChange(o.value)}
           className={cn(
-            "rounded-[10px] px-2.5 py-1 text-[12px] font-medium transition-colors",
-            o.value === value ? "bg-elevated text-fg shadow-sm" : "text-muted hover:text-fg",
+            "relative isolate shrink-0 whitespace-nowrap rounded-lg px-3 py-1.5 text-[12px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-brand focus-visible:-outline-offset-2",
+            o.value === value ? "text-brand" : "text-muted hover:text-fg",
           )}
         >
+          {o.value === value ? (
+            <motion.span
+              layoutId={reduced ? undefined : `segmented-${id}`}
+              transition={reduced ? { duration: 0 } : softSpring}
+              className="absolute inset-0 -z-10 rounded-lg border border-border/60 bg-elevated shadow-sm"
+            />
+          ) : null}
           {o.label}
         </button>
       ))}

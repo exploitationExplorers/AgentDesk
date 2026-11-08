@@ -20,6 +20,7 @@ import {
   EmptyState,
   Input,
   PageHeader,
+  PageSurface,
   Segmented,
   Select,
   Spinner,
@@ -151,135 +152,129 @@ export function FeedPage() {
   };
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-6xl px-8 py-8">
-        <PageHeader
-          icon={<Newspaper className="h-5 w-5" />}
-          title="技术热榜"
-          description="每日 GitHub Trending、HuggingFace、Hacker News，AI 中文摘要与分类"
-          actions={
-            <>
-              <Select value={date} onChange={(e) => setDate(e.target.value)} className="w-36">
-                {dateOptions.map((d) => (
-                  <option key={d} value={d}>
-                    {d === todayLocal() ? `今天 ${d.slice(5)}` : d}
-                  </option>
-                ))}
-              </Select>
-              <Button
-                variant="primary"
-                loading={refresh.isPending}
-                onClick={() => refresh.mutate()}
-              >
-                <RefreshCw className="h-3.5 w-3.5" />
-                立即抓取
-              </Button>
-            </>
-          }
-        />
-        {refresh.data ? (
-          <p className="mb-4 text-[12.5px] text-muted">
-            抓取 {refresh.data.fetched} 条，生成摘要 {refresh.data.summarized} 条
-            {refresh.data.errors.length ? (
-              <span className="text-warning"> · {refresh.data.errors.join("；")}</span>
-            ) : null}
-          </p>
-        ) : null}
-        {refresh.error ? (
-          <p className="mb-4 text-[12.5px] text-danger">{refresh.error.message}</p>
-        ) : null}
-
-        <Card className="ad-glow mb-6 overflow-hidden p-5">
-          <div className="mb-2 flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-brand" />
-            <span className="text-[13px] font-semibold">今日速览</span>
-            <Button
-              className="ml-auto"
-              size="sm"
-              variant="ghost"
-              loading={generate.isPending}
-              onClick={() => generate.mutate()}
-            >
-              {digest.data ? "重新生成" : "生成速览"}
-            </Button>
-          </div>
-          {digest.data ? (
-            <>
-              <p className="mb-2 text-[16px] font-semibold tracking-tight">
-                {digest.data.headline}
-              </p>
-              <Markdown>{digest.data.markdown}</Markdown>
-            </>
-          ) : (
-            <p className="text-[13px] text-muted">
-              {generate.error
-                ? generate.error.message
-                : "让 Research Agent 从今天的热榜里挑出最值得关注的内容，生成一份中文速览。"}
-            </p>
-          )}
-        </Card>
-
-        <div className="mb-5 flex flex-wrap items-center gap-3">
-          <Segmented
-            value={source}
-            onChange={setSource}
-            options={[
-              { value: "all", label: "全部" },
-              { value: "github", label: "GitHub" },
-              { value: "huggingface", label: "HuggingFace" },
-              { value: "hackernews", label: "HN" },
-              { value: "favorite", label: "收藏" },
-            ]}
-          />
-          <Segmented
-            value={tag}
-            onChange={setTag}
-            options={[
-              { value: "" as const, label: "全部领域" },
-              ...(Object.keys(TAG_LABEL) as FeedTag[]).map((t) => ({
-                value: t,
-                label: TAG_LABEL[t],
-              })),
-            ]}
-          />
-          <div className="relative ml-auto w-60">
-            <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-subtle" />
-            <Input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="搜索"
-              className="pl-8"
-            />
-          </div>
-        </div>
-
-        {items.isLoading ? (
-          <Spinner />
-        ) : items.data?.length ? (
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            <AnimatePresence initial={false}>
-              {items.data.map((item) => (
-                <motion.div
-                  key={item.id}
-                  layout
-                  variants={gridItemVariants}
-                  initial="hidden"
-                  animate="visible"
-                  exit="exit"
-                >
-                  <FeedCard item={item} onExplain={() => explain(item)} />
-                </motion.div>
+    <PageSurface>
+      <PageHeader
+        icon={<Newspaper className="h-5 w-5" />}
+        title="技术热榜"
+        description="每日 GitHub Trending、HuggingFace、Hacker News，AI 中文摘要与分类"
+        actions={
+          <>
+            <Select value={date} onChange={(e) => setDate(e.target.value)} className="w-36">
+              {dateOptions.map((d) => (
+                <option key={d} value={d}>
+                  {d === todayLocal() ? `今天 ${d.slice(5)}` : d}
+                </option>
               ))}
-            </AnimatePresence>
-          </div>
+            </Select>
+            <Button variant="primary" loading={refresh.isPending} onClick={() => refresh.mutate()}>
+              <RefreshCw className="h-3.5 w-3.5" />
+              立即抓取
+            </Button>
+          </>
+        }
+      />
+      {refresh.data ? (
+        <p className="mb-4 text-[12.5px] text-muted">
+          抓取 {refresh.data.fetched} 条，生成摘要 {refresh.data.summarized} 条
+          {refresh.data.errors.length ? (
+            <span className="text-warning"> · {refresh.data.errors.join("；")}</span>
+          ) : null}
+        </p>
+      ) : null}
+      {refresh.error ? (
+        <p className="mb-4 text-[12.5px] text-danger">{refresh.error.message}</p>
+      ) : null}
+
+      <Card className="ad-glow mb-6 overflow-hidden p-5">
+        <div className="mb-2 flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-brand" />
+          <span className="text-[13px] font-semibold">今日速览</span>
+          <Button
+            className="ml-auto"
+            size="sm"
+            variant="ghost"
+            loading={generate.isPending}
+            onClick={() => generate.mutate()}
+          >
+            {digest.data ? "重新生成" : "生成速览"}
+          </Button>
+        </div>
+        {digest.data ? (
+          <>
+            <p className="mb-2 text-[16px] font-semibold tracking-tight">{digest.data.headline}</p>
+            <Markdown>{digest.data.markdown}</Markdown>
+          </>
         ) : (
-          <EmptyState
-            icon={<Newspaper className="h-6 w-6" />}
-            title="这里还没有内容"
-            description="点击“立即抓取”获取今日热榜；之后会按设置中的时间每天自动抓取。"
-          />
+          <p className="text-[13px] text-muted">
+            {generate.error
+              ? generate.error.message
+              : "让 Research Agent 从今天的热榜里挑出最值得关注的内容，生成一份中文速览。"}
+          </p>
         )}
+      </Card>
+
+      <div className="ad-page-toolbar">
+        <Segmented
+          label="资讯来源"
+          value={source}
+          onChange={setSource}
+          options={[
+            { value: "all", label: "全部" },
+            { value: "github", label: "GitHub" },
+            { value: "huggingface", label: "HuggingFace" },
+            { value: "hackernews", label: "HN" },
+            { value: "favorite", label: "收藏" },
+          ]}
+        />
+        <Segmented
+          label="资讯领域"
+          value={tag}
+          onChange={setTag}
+          options={[
+            { value: "" as const, label: "全部领域" },
+            ...(Object.keys(TAG_LABEL) as FeedTag[]).map((t) => ({
+              value: t,
+              label: TAG_LABEL[t],
+            })),
+          ]}
+        />
+        <div className="relative ml-auto w-full sm:w-60">
+          <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-subtle" />
+          <Input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="搜索"
+            className="pl-8"
+          />
+        </div>
       </div>
-    </div>
+
+      {items.isLoading ? (
+        <Spinner />
+      ) : items.data?.length ? (
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <AnimatePresence initial={false}>
+            {items.data.map((item) => (
+              <motion.div
+                key={item.id}
+                layout
+                variants={gridItemVariants}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+              >
+                <FeedCard item={item} onExplain={() => explain(item)} />
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </div>
+      ) : (
+        <EmptyState
+          icon={<Newspaper className="h-6 w-6" />}
+          title="这里还没有内容"
+          description="点击“立即抓取”获取今日热榜；之后会按设置中的时间每天自动抓取。"
+        />
+      )}
+    </PageSurface>
   );
 }

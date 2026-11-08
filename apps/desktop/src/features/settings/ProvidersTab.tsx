@@ -401,15 +401,19 @@ function ProviderRow({ provider, onEdit }: { provider: Provider; onEdit: () => v
   });
 
   return (
-    <div className="flex items-center gap-4 border-b px-4 py-3 last:border-b-0">
+    <div className="flex flex-wrap items-center gap-3 border-b px-4 py-4 last:border-b-0">
       <ModelBrandIcon
         model={provider.defaultModel}
         baseUrl={provider.baseUrl}
         api={provider.api}
         size={28}
       />
-      <button type="button" className="min-w-0 flex-1 text-left" onClick={onEdit}>
-        <div className="flex items-center gap-2">
+      <button
+        type="button"
+        className="min-w-0 flex-1 basis-[calc(100%-52px)] rounded-lg text-left xl:basis-[200px]"
+        onClick={onEdit}
+      >
+        <div className="flex flex-wrap items-center gap-2">
           <span className="text-[13.5px] font-medium">{provider.name}</span>
           <Badge>{provider.api === "anthropic-messages" ? "Anthropic" : "OpenAI 兼容"}</Badge>
           <Badge tone="neutral">{SOURCE_LABEL[provider.source]}</Badge>
@@ -466,11 +470,11 @@ export function ProvidersTab() {
 
   return (
     <div className="grid gap-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <p className="text-[13px] text-muted">
           按顺序作为备用：主模型失败时自动切换到下一个可用 Provider。
         </p>
-        <div className="flex gap-2">
+        <div className="flex shrink-0 gap-2">
           <Button variant="secondary" onClick={() => setImporting(true)}>
             <Download className="h-3.5 w-3.5" />
             导入 Key

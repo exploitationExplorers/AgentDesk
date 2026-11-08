@@ -38,6 +38,8 @@ import {
   Field,
   Input,
   PageHeader,
+  PageMetrics,
+  PageSurface,
   Segmented,
   Select,
   Spinner,
@@ -331,15 +333,22 @@ function ProjectCard({
 }) {
   const highlight = project.dirtyFiles > 0 || project.ahead > 0;
   return (
-    <Card
-      className="group cursor-pointer p-4 transition-colors hover:border-border-strong"
-      onClick={onOpen}
-    >
-      <div className="flex items-start gap-3">
-        <div className="min-w-0 flex-1">
+    <Card className="group h-full cursor-pointer p-5" onClick={onOpen}>
+      <div className="flex flex-wrap items-start gap-3">
+        <div className="min-w-0 flex-1 basis-[220px]">
           <div className="flex items-center gap-2">
             <PlatformTag platform={project.platform} />
-            <p className="truncate text-[14px] font-semibold">{project.name}</p>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                onOpen();
+              }}
+              className="truncate rounded text-left text-[14px] font-semibold"
+              aria-label={`查看项目 ${project.name}`}
+            >
+              {project.name}
+            </button>
             <StarBadge project={project} />
             {project.pinned ? <Pin className="h-3 w-3 text-brand" /> : null}
           </div>
@@ -993,140 +1002,177 @@ export function ProjectsPage() {
   const aiCommitProject = data.find((p) => p.id === aiCommitId);
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-6xl px-8 py-8">
-        <PageHeader
-          icon={<FolderGit2 className="h-5 w-5" />}
-          title="项目中心"
-          description="GitHub、Gitee、公司 GitLab 项目统一管理，一键在 Cursor 或 Claude Code 中打开"
-          actions={
-            <>
-              <Button
-                variant="secondary"
-                disabled={data.length === 0}
-                onClick={() => setInsightsProjectId(data[0]?.id ?? null)}
-              >
-                <Sparkles className="h-3.5 w-3.5" />
-                资料转改进
-              </Button>
-              <Button variant="ghost" onClick={() => setAdding(true)}>
-                <Plus className="h-3.5 w-3.5" />
-                添加
-              </Button>
-              <Button variant="primary" loading={scan.isPending} onClick={() => scan.mutate()}>
-                <RefreshCw className="h-3.5 w-3.5" />
-                扫描项目
-              </Button>
-            </>
-          }
-        />
-        {scan.error ? (
-          <div className="mb-4 rounded-xl border border-warning/40 bg-warning/10 px-4 py-2.5 text-[12.5px] text-warning">
-            {scan.error.message}
-            <button
-              type="button"
-              className="ml-2 underline"
-              onClick={() => void navigate({ to: "/settings", search: { tab: "general" } })}
+    <PageSurface>
+      <PageHeader
+        icon={<FolderGit2 className="h-5 w-5" />}
+        title="项目中心"
+        description="集中查看代码、改动与协作进展，从这里继续你的项目。"
+        actions={
+          <>
+            <Button
+              variant="secondary"
+              disabled={data.length === 0}
+              onClick={() => setInsightsProjectId(data[0]?.id ?? null)}
             >
-              去设置
-            </button>
-          </div>
-        ) : null}
-        {scan.data ? (
-          <p className="mb-4 text-[12.5px] text-muted">扫描完成：发现 {scan.data.found} 个仓库</p>
-        ) : null}
-
-        <div className="mb-5 flex flex-wrap items-center gap-3">
-          <Segmented
-            value={view}
-            onChange={setView}
-            options={[
-              { value: "local", label: "本地" },
-              { value: "starred", label: "已 Star" },
-            ]}
-          />
-          {view === "local" ? (
-            <Segmented
-              value={filter}
-              onChange={setFilter}
-              options={[
-                { value: "all", label: `全部 ${counts.all}` },
-                { value: "attention", label: `需关注 ${counts.attention}` },
-                { value: "github", label: `GitHub ${counts.github ?? 0}` },
-                { value: "gitee", label: `Gitee ${counts.gitee ?? 0}` },
-                { value: "gitlab", label: `GitLab ${counts.gitlab ?? 0}` },
-              ]}
-            />
-          ) : null}
-          {view === "local" ? (
-            <div className="relative ml-auto w-64">
-              <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-subtle" />
-              <Input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="搜索项目"
-                className="pl-8"
-              />
-            </div>
-          ) : null}
+              <Sparkles className="h-3.5 w-3.5" />
+              资料转改进
+            </Button>
+            <Button variant="ghost" onClick={() => setAdding(true)}>
+              <Plus className="h-3.5 w-3.5" />
+              添加
+            </Button>
+            <Button variant="primary" loading={scan.isPending} onClick={() => scan.mutate()}>
+              <RefreshCw className="h-3.5 w-3.5" />
+              扫描项目
+            </Button>
+          </>
+        }
+      />
+      {scan.error ? (
+        <div className="mb-4 rounded-xl border border-warning/40 bg-warning/10 px-4 py-2.5 text-[12.5px] text-warning">
+          {scan.error.message}
+          <button
+            type="button"
+            className="ml-2 underline"
+            onClick={() => void navigate({ to: "/settings", search: { tab: "general" } })}
+          >
+            去设置
+          </button>
         </div>
+      ) : null}
+      {scan.data ? (
+        <p className="mb-4 text-[12.5px] text-muted">扫描完成：发现 {scan.data.found} 个仓库</p>
+      ) : null}
 
-        {view === "starred" ? (
-          <StarredSection />
-        ) : isLoading ? (
-          <Spinner />
-        ) : visible.length ? (
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            <AnimatePresence initial={false}>
-              {visible.map((p) => (
-                <motion.div
-                  key={p.id}
-                  layout
-                  variants={gridItemVariants}
-                  initial="hidden"
-                  animate="visible"
-                  exit="exit"
-                >
-                  <ProjectCard
-                    project={p}
-                    onOpen={() => setOpenId(p.id)}
-                    onAiCommit={() => setAiCommitId(p.id)}
-                  />
-                </motion.div>
-              ))}
-            </AnimatePresence>
+      <PageMetrics
+        items={[
+          { label: "本地项目", value: isLoading ? "—" : data.length, detail: "已加入工作台" },
+          {
+            label: "需要关注",
+            value: isLoading ? "—" : counts.attention,
+            detail: "有改动或待同步",
+          },
+          {
+            label: "工作区干净",
+            value: isLoading ? "—" : data.length - (counts.attention ?? 0),
+            detail: "暂无待处理改动",
+          },
+        ]}
+      />
+      <div className="ad-page-toolbar">
+        <Segmented
+          label="项目来源"
+          value={view}
+          onChange={setView}
+          options={[
+            { value: "local", label: "本地" },
+            { value: "starred", label: "已 Star" },
+          ]}
+        />
+        {view === "local" ? (
+          <div className="relative ml-auto w-full sm:w-64">
+            <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-subtle" />
+            <Input
+              aria-label="搜索项目"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="搜索项目、目录或所有者"
+              className="bg-surface pl-8"
+            />
           </div>
-        ) : (
-          <EmptyState
-            icon={<FolderGit2 className="h-6 w-6" />}
-            title={data.length ? "没有匹配的项目" : "还没有项目"}
-            description="在 设置 > 通用 中添加扫描目录（例如 D:\agent），然后点击“扫描项目”。"
-          />
-        )}
-
-        {view === "local" && sessions.data?.length ? (
-          <section className="mt-10">
-            <h2 className="mb-3 flex items-center gap-2 text-[14px] font-semibold">
-              <Bot className="h-4 w-4 text-muted" />
-              最近的 Claude Code 会话
-            </h2>
-            <Card>
-              {sessions.data.slice(0, 8).map((s) => (
-                <div
-                  key={s.id}
-                  className="flex items-center gap-3 border-b px-4 py-2.5 text-[12.5px] last:border-b-0"
-                >
-                  <span className="truncate">{s.title}</span>
-                  <span className="ml-auto shrink-0 truncate font-mono text-[11px] text-subtle">
-                    {s.projectPath}
-                  </span>
-                  <span className="shrink-0 text-[11px] text-subtle">{timeAgo(s.updatedAt)}</span>
-                </div>
-              ))}
-            </Card>
-          </section>
         ) : null}
       </div>
+      {view === "local" ? (
+        <div className="ad-page-toolbar">
+          <Segmented
+            label="项目筛选"
+            value={filter}
+            onChange={setFilter}
+            options={[
+              { value: "all", label: `全部 ${counts.all}` },
+              { value: "attention", label: `需关注 ${counts.attention}` },
+              { value: "github", label: `GitHub ${counts.github ?? 0}` },
+              { value: "gitee", label: `Gitee ${counts.gitee ?? 0}` },
+              { value: "gitlab", label: `GitLab ${counts.gitlab ?? 0}` },
+            ]}
+          />
+          <span className="ml-auto text-xs tabular-nums text-subtle" role="status">
+            显示 {visible.length} 个项目
+          </span>
+        </div>
+      ) : null}
+
+      {view === "starred" ? (
+        <StarredSection />
+      ) : isLoading ? (
+        <Spinner />
+      ) : visible.length ? (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-3">
+          <AnimatePresence initial={false}>
+            {visible.map((p) => (
+              <motion.div
+                key={p.id}
+                layout="position"
+                variants={gridItemVariants}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+              >
+                <ProjectCard
+                  project={p}
+                  onOpen={() => setOpenId(p.id)}
+                  onAiCommit={() => setAiCommitId(p.id)}
+                />
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </div>
+      ) : (
+        <EmptyState
+          icon={<FolderGit2 className="h-6 w-6" />}
+          title={data.length ? "没有匹配的项目" : "还没有项目"}
+          description={
+            data.length
+              ? "换一个关键词，或重置筛选查看所有项目。"
+              : "在设置中添加扫描目录，再扫描本地仓库。"
+          }
+          action={
+            data.length ? (
+              <Button
+                onClick={() => {
+                  setQ("");
+                  setFilter("all");
+                }}
+              >
+                重置筛选
+              </Button>
+            ) : undefined
+          }
+        />
+      )}
+
+      {view === "local" && sessions.data?.length ? (
+        <section className="mt-10">
+          <h2 className="mb-3 flex items-center gap-2 text-[14px] font-semibold">
+            <Bot className="h-4 w-4 text-muted" />
+            最近的 Claude Code 会话
+          </h2>
+          <Card>
+            {sessions.data.slice(0, 8).map((s) => (
+              <div
+                key={s.id}
+                className="flex items-center gap-3 border-b px-4 py-2.5 text-[12.5px] last:border-b-0"
+              >
+                <span className="truncate">{s.title}</span>
+                <span className="ml-auto hidden max-w-[40%] truncate font-mono text-[11px] text-subtle sm:block">
+                  {s.projectPath}
+                </span>
+                <span className="shrink-0 text-[11px] text-subtle">{timeAgo(s.updatedAt)}</span>
+              </div>
+            ))}
+          </Card>
+        </section>
+      ) : null}
       {opened ? (
         <ProjectDrawer
           project={opened}
@@ -1153,6 +1199,6 @@ export function ProjectsPage() {
           onOpenChange={(o) => !o && setAiCommitId(null)}
         />
       ) : null}
-    </div>
+    </PageSurface>
   );
 }

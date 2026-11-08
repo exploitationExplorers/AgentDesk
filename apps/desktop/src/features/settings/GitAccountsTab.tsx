@@ -48,11 +48,11 @@ export function GitAccountsTab() {
           {data.map((a) => (
             <div
               key={`${a.platform}:${a.host}`}
-              className="flex items-center gap-3 border-b px-4 py-3 last:border-b-0"
+              className="flex flex-wrap items-center gap-3 border-b px-4 py-3 last:border-b-0"
             >
               <Github className="h-4 w-4 text-muted" />
               <span className="text-[13px] font-medium capitalize">{a.platform}</span>
-              <span className="font-mono text-[12px] text-subtle">{a.host}</span>
+              <span className="break-all font-mono text-[12px] text-subtle">{a.host}</span>
               <Badge tone={a.hasToken ? "success" : "warning"}>
                 {a.hasToken ? "已配置 Token" : "无 Token"}
               </Badge>
@@ -70,7 +70,7 @@ export function GitAccountsTab() {
         </Card>
       ) : null}
       <Card className="p-4">
-        <div className="grid grid-cols-[140px_1fr] gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-[140px_minmax(0,1fr)]">
           <Field label="平台">
             <Select
               value={form.platform}
@@ -99,7 +99,7 @@ export function GitAccountsTab() {
               }
             />
           </Field>
-          <Field label="Token" hint={TOKEN_HELP[form.platform]} className="col-span-2">
+          <Field label="Token" hint={TOKEN_HELP[form.platform]} className="sm:col-span-2">
             <Input
               type="password"
               value={form.token}

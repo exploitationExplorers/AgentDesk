@@ -10,6 +10,7 @@ import {
   Field,
   Input,
   PageHeader,
+  PageSurface,
   Select,
   Spinner,
   cn,
@@ -298,48 +299,44 @@ export function SkillsPage() {
 
   if (active === "wechat-daily-report") {
     return (
-      <div className="h-full overflow-y-auto">
-        <div className="mx-auto max-w-4xl px-8 py-8">
-          <WechatRunner onBack={() => setActive(null)} />
-        </div>
-      </div>
+      <PageSurface className="max-w-4xl">
+        <WechatRunner onBack={() => setActive(null)} />
+      </PageSurface>
     );
   }
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-6xl px-8 py-8">
-        <PageHeader
+    <PageSurface>
+      <PageHeader
+        icon={<Sparkles className="h-5 w-5" />}
+        title="技能"
+        description="可运行的技能包：选一个技能，按步骤生成结果。也支持在 Bot 里用自然语言触发。"
+      />
+      {skills.isLoading ? <Spinner /> : null}
+      {skills.data?.length ? (
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <AnimatePresence initial={false}>
+            {skills.data.map((s) => (
+              <motion.div
+                key={s.name}
+                layout
+                variants={gridItemVariants}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+              >
+                <SkillCard skill={s} onOpen={() => setActive(s.name)} />
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </div>
+      ) : skills.isFetched ? (
+        <EmptyState
           icon={<Sparkles className="h-5 w-5" />}
-          title="技能"
-          description="可运行的技能包：选一个技能，按步骤生成结果。也支持在 Bot 里用自然语言触发。"
+          title="还没有技能"
+          description="把 SKILL.md 放到数据目录的 skills 文件夹，或使用内置技能。"
         />
-        {skills.isLoading ? <Spinner /> : null}
-        {skills.data?.length ? (
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            <AnimatePresence initial={false}>
-              {skills.data.map((s) => (
-                <motion.div
-                  key={s.name}
-                  layout
-                  variants={gridItemVariants}
-                  initial="hidden"
-                  animate="visible"
-                  exit="exit"
-                >
-                  <SkillCard skill={s} onOpen={() => setActive(s.name)} />
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          </div>
-        ) : skills.isFetched ? (
-          <EmptyState
-            icon={<Sparkles className="h-5 w-5" />}
-            title="还没有技能"
-            description="把 SKILL.md 放到数据目录的 skills 文件夹，或使用内置技能。"
-          />
-        ) : null}
-      </div>
-    </div>
+      ) : null}
+    </PageSurface>
   );
 }

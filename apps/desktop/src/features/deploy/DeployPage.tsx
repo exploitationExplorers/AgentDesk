@@ -17,6 +17,7 @@ import {
   Card,
   EmptyState,
   PageHeader,
+  PageSurface,
   Segmented,
   Spinner,
   cn,
@@ -261,25 +262,26 @@ function RecipesView() {
 export function DeployPage() {
   const [tab, setTab] = useState<"recipes" | "servers">("recipes");
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-6xl px-8 py-8">
-        <PageHeader
-          icon={<Rocket className="h-5 w-5" />}
-          title="自动部署"
-          description="浏览器自动化登录宝塔面板，按配方执行部署，告别手动找链接、登录、点按钮"
-          actions={
-            <Segmented
-              value={tab}
-              onChange={setTab}
-              options={[
-                { value: "recipes", label: "配方与运行" },
-                { value: "servers", label: "服务器" },
-              ]}
-            />
-          }
-        />
+    <PageSurface>
+      <PageHeader
+        icon={<Rocket className="h-5 w-5" />}
+        title="自动部署"
+        description="管理服务器与部署配方，跟踪每一次发布。"
+        actions={
+          <Segmented
+            label="部署视图"
+            value={tab}
+            onChange={setTab}
+            options={[
+              { value: "recipes", label: "配方与运行" },
+              { value: "servers", label: "服务器" },
+            ]}
+          />
+        }
+      />
+      <div key={tab} className="ad-tab-content" data-state="active">
         {tab === "recipes" ? <RecipesView /> : <ServersView />}
       </div>
-    </div>
+    </PageSurface>
   );
 }

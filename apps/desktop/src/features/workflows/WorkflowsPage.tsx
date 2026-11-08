@@ -10,6 +10,7 @@ import {
   Dialog,
   EmptyState,
   PageHeader,
+  PageSurface,
   Spinner,
   gridItemVariants,
   motion,
@@ -74,93 +75,89 @@ export function WorkflowsPage() {
   });
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-6xl px-8 py-8">
-        <PageHeader
-          icon={<WorkflowIcon className="h-5 w-5" />}
-          title="工作流"
-          description="像扣子一样拖拽编排：大模型、Agent、工具、Git、宝塔部署、审批、通知，也可以让 Bot 帮你触发"
-          actions={
-            <Button variant="primary" onClick={() => setCreating(true)}>
-              <Plus className="h-3.5 w-3.5" />
-              新建工作流
-            </Button>
-          }
+    <PageSurface>
+      <PageHeader
+        icon={<WorkflowIcon className="h-5 w-5" />}
+        title="工作流"
+        description="把 Agent、工具与审批编排成可重复执行的流程。"
+        actions={
+          <Button variant="primary" onClick={() => setCreating(true)}>
+            <Plus className="h-3.5 w-3.5" />
+            新建工作流
+          </Button>
+        }
+      />
+      {workflows.isLoading ? <Spinner /> : null}
+      {workflows.data?.length ? (
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <AnimatePresence initial={false}>
+            {workflows.data.map((wf) => {
+              const last = runs.data?.find((r) => r.workflowId === wf.id);
+              return (
+                <motion.div
+                  key={wf.id}
+                  layout
+                  variants={gridItemVariants}
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
+                >
+                  <Card className="group relative p-4 transition-colors hover:border-border-strong">
+                    <Link
+                      to="/workflows/$id"
+                      params={{ id: wf.id }}
+                      className="absolute inset-0"
+                      aria-label={wf.name}
+                    />
+                    <div className="flex items-start gap-2">
+                      <p className="min-w-0 flex-1 truncate text-[14px] font-semibold">{wf.name}</p>
+                      <button
+                        type="button"
+                        aria-label="删除"
+                        className="relative z-10 hidden rounded p-1 text-subtle hover:text-danger group-hover:block"
+                        onClick={() => remove.mutate(wf.id)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                    <p className="mt-1 line-clamp-2 min-h-9 text-[12.5px] text-muted">
+                      {wf.description || "暂无描述"}
+                    </p>
+                    <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                      {wf.trigger.type === "schedule" ? (
+                        <Badge tone="brand">
+                          <CalendarClock className="h-3 w-3" />
+                          每天 {wf.trigger.time}
+                        </Badge>
+                      ) : (
+                        <Badge>
+                          <Hand className="h-3 w-3" />
+                          手动
+                        </Badge>
+                      )}
+                      <Badge>{wf.nodes.length} 个节点</Badge>
+                      <Badge>v{wf.version}</Badge>
+                      {last ? (
+                        <Badge tone={RUN_TONE[last.status]} className="ml-auto">
+                          {RUN_LABEL[last.status]} · {timeAgo(last.startedAt)}
+                        </Badge>
+                      ) : null}
+                    </div>
+                  </Card>
+                </motion.div>
+              );
+            })}
+          </AnimatePresence>
+        </div>
+      ) : workflows.data ? (
+        <EmptyState
+          icon={<WorkflowIcon className="h-6 w-6" />}
+          title="还没有工作流"
+          description="试试“拉代码 → 构建 → 宝塔部署 → 健康检查 → 通知”模板，把 IM 项目的发布流程固化下来。"
+          action={<Button onClick={() => setCreating(true)}>从模板创建</Button>}
         />
-        {workflows.isLoading ? <Spinner /> : null}
-        {workflows.data?.length ? (
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            <AnimatePresence initial={false}>
-              {workflows.data.map((wf) => {
-                const last = runs.data?.find((r) => r.workflowId === wf.id);
-                return (
-                  <motion.div
-                    key={wf.id}
-                    layout
-                    variants={gridItemVariants}
-                    initial="hidden"
-                    animate="visible"
-                    exit="exit"
-                  >
-                    <Card className="group relative p-4 transition-colors hover:border-border-strong">
-                      <Link
-                        to="/workflows/$id"
-                        params={{ id: wf.id }}
-                        className="absolute inset-0"
-                        aria-label={wf.name}
-                      />
-                      <div className="flex items-start gap-2">
-                        <p className="min-w-0 flex-1 truncate text-[14px] font-semibold">
-                          {wf.name}
-                        </p>
-                        <button
-                          type="button"
-                          aria-label="删除"
-                          className="relative z-10 hidden rounded p-1 text-subtle hover:text-danger group-hover:block"
-                          onClick={() => remove.mutate(wf.id)}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                      <p className="mt-1 line-clamp-2 min-h-9 text-[12.5px] text-muted">
-                        {wf.description || "暂无描述"}
-                      </p>
-                      <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                        {wf.trigger.type === "schedule" ? (
-                          <Badge tone="brand">
-                            <CalendarClock className="h-3 w-3" />
-                            每天 {wf.trigger.time}
-                          </Badge>
-                        ) : (
-                          <Badge>
-                            <Hand className="h-3 w-3" />
-                            手动
-                          </Badge>
-                        )}
-                        <Badge>{wf.nodes.length} 个节点</Badge>
-                        <Badge>v{wf.version}</Badge>
-                        {last ? (
-                          <Badge tone={RUN_TONE[last.status]} className="ml-auto">
-                            {RUN_LABEL[last.status]} · {timeAgo(last.startedAt)}
-                          </Badge>
-                        ) : null}
-                      </div>
-                    </Card>
-                  </motion.div>
-                );
-              })}
-            </AnimatePresence>
-          </div>
-        ) : workflows.data ? (
-          <EmptyState
-            icon={<WorkflowIcon className="h-6 w-6" />}
-            title="还没有工作流"
-            description="试试“拉代码 → 构建 → 宝塔部署 → 健康检查 → 通知”模板，把 IM 项目的发布流程固化下来。"
-            action={<Button onClick={() => setCreating(true)}>从模板创建</Button>}
-          />
-        ) : null}
-      </div>
+      ) : null}
       {creating ? <TemplateDialog onClose={() => setCreating(false)} /> : null}
-    </div>
+    </PageSurface>
   );
 }
