@@ -6,7 +6,7 @@ import { createServer } from "vite";
 import { demoTime, deployRun, feed, records, responses, task, workflow } from "./readme-fixtures";
 
 const desktopDir = fileURLToPath(new URL("../", import.meta.url));
-const outputDir = resolve(desktopDir, "../../docs/screenshots");
+const outputDir = resolve(desktopDir, "../../assets/screenshots");
 // 截图仅启动 Vite；API 全部拦截，不启动 sidecar 或调用真实模型。
 process.env.VITE_SIDECAR_URL = "http://127.0.0.1:17951";
 const server = await createServer({
@@ -28,6 +28,12 @@ try {
       serviceWorkers: "block",
     });
     const failures: string[] = [];
+    await context.addInitScript(() => {
+      localStorage.setItem(
+        "agentdesk-ui",
+        JSON.stringify({ state: { theme: "dark" }, version: 0 }),
+      );
+    });
     await context.route("**/*", async (route) => {
       const url = new URL(route.request().url());
       if (url.pathname.startsWith("/api/")) {
@@ -52,6 +58,13 @@ try {
             json: records.filter(
               (record) => record.seq > Number(url.searchParams.get("after") ?? 0),
             ),
+          });
+        if (path === `/tasks/${task.id}/stream`)
+          return route.fulfill({
+            contentType: "text/event-stream",
+            body: records
+              .map((record) => `id: ${record.seq}\ndata: ${JSON.stringify(record)}\n\n`)
+              .join(""),
           });
         if (path in responses) return route.fulfill({ json: responses[path] });
         failures.push(`Missing demo response: ${path}`);
@@ -82,7 +95,7 @@ try {
 
     await page.goto("http://127.0.0.1:1431/#/");
     await expect(page.getByRole("heading", { name: /今天想做什么/ })).toBeVisible();
-    await expect(page.getByText("6 个项目", { exact: false })).toBeVisible();
+    await expect(page.getByRole("textbox").first()).toBeVisible();
     await capture("bot");
 
     await page.setViewportSize({ width: 1240, height: 860 });
@@ -111,6 +124,25 @@ try {
     await page.waitForTimeout(600);
     await page.locator('.react-flow__node[data-id="approve"]').click();
     await capture("workflow");
+
+    await page.goto("http://127.0.0.1:1431/#/automations");
+    await expect(page.getByRole("heading", { name: "每日项目巡检", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "运行记录", exact: true }).first().click();
+    await expect(page.getByText("查看会话与成果", { exact: true }).first()).toBeVisible();
+    await capture("automations");
+
+    await page.goto("http://127.0.0.1:1431/#/learning");
+    await expect(page.getByText("掌握 TypeScript 工程实践", { exact: true })).toBeVisible();
+    await capture("learning");
+
+    await page.setViewportSize({ width: 1440, height: 1200 });
+    await page.goto("http://127.0.0.1:1431/#/learning/interview");
+    await expect(page.getByRole("heading", { name: "面试题", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "展开参考答案" }).click();
+    await expect(page.locator(".iv-markdown")).toContainText("词法环境");
+    await page.locator(".iv-page").evaluate((element) => element.scrollTo(0, 0));
+    await expect(page.getByRole("heading", { name: "面试题", exact: true })).toBeInViewport();
+    await capture("interview");
 
     if (failures.length) throw new Error([...new Set(failures)].join("\n"));
     await context.close();

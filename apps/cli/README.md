@@ -1,12 +1,14 @@
 # AgentDesk CLI
 
-复用 AgentDesk 引擎的独立本地 CLI，内置浏览器工作台。支持后台服务、模型配置、流式聊天、持久化任务、工具审批与诊断。
+复用 AgentDesk 引擎的独立 CLI，内置浏览器工作台。支持后台服务、模型配置、多轮交互会话、流式聊天、持久化任务、工具审批与诊断，也可通过电脑连接器配对自部署远程工作台。
 
-npm 包名为 `chuxin-agentdesk`，安装后命令是 `agentdesk`。许可证目前为 `UNLICENSED`（保留权利，不是开源许可）。浏览器工作台仅连接本机；远程机器和团队账号尚未提供。
+npm 包名为 `chuxin-agentdesk`，安装后命令是 `agentdesk`。许可证目前为 `UNLICENSED`（保留权利，不是开源许可）。`agentdesk web` 打开本机工作台；手机访问需要另行部署远程网关与 Runner，并对电脑项目完成配对授权，见[电脑连接器](#电脑连接器与远程工作台)。
+
+当前界面与功能展示见[主 README](../../README.md#界面预览)。
 
 ## 安装
 
-需要 Node.js 22.12+、Git。
+需要 Node.js 22.12+、Git。当前随包提供的 Autoloop 自动化运行时面向 Windows x64。
 
 ```powershell
 npm install -g chuxin-agentdesk
@@ -17,7 +19,7 @@ agentdesk web          # 随时打开浏览器工作台
 
 ## 本地构建
 
-源码构建使用仓库声明的 `pnpm@10.33.3`（要求 pnpm 10+），请在仓库根目录执行以下命令。`build:cli` 会打包 CLI、运行时、公开技能和浏览器工作台（调用桌面前端的 Vite CLI 模式构建），不构建或安装桌面应用。`pack` 的 `prepack` 脚本也会执行构建。tarball 名称基于 npm 包名与版本，例如当前 `0.1.2` 对应 `chuxin-agentdesk-0.1.2.tgz`；以实际输出为准。
+源码构建使用仓库声明的 `pnpm@10.33.3`（要求 pnpm 10+），并需要 Rust 工具链和[固定的 Autoloop Node 运行时](../../packages/autoloop-runtime/README.md#固定版本与构建)。请在仓库根目录执行以下命令。`build:cli` 会打包 CLI、运行时、公开技能和浏览器工作台（调用桌面前端的 Vite CLI 模式构建），不构建或安装桌面应用。`pack` 的 `prepack` 脚本也会执行构建。tarball 名称基于 npm 包名与版本，例如当前 `0.1.2` 对应 `chuxin-agentdesk-0.1.2.tgz`；以实际输出为准。
 
 ```powershell
 pnpm install
@@ -29,7 +31,7 @@ npm install --prefix <安装目录> <tarball路径>
 <安装目录>/node_modules/.bin/agentdesk --help
 ```
 
-运行包不包含构建机的 Node 二进制、预编译数据库模块、开发环境配置或私有技能。`better-sqlite3` 与 `playwright-core` 作为正式依赖在目标环境安装。原生依赖没有匹配预编译文件时需要对应平台的构建工具。`playwright-core` 不下载浏览器，浏览器工具需要机器上可用的 Chrome 或 Edge。
+CLI 主进程使用目标机器的 Node；Autoloop 自动化另行包含经过哈希校验的固定 Node 运行时与 Supervisor，当前发行目标为 Windows x64，详见 [runtime 文档](../../packages/autoloop-runtime/README.md)。运行包不包含开发环境配置或私有技能。`better-sqlite3` 与 `playwright-core` 作为正式依赖在目标环境安装。原生依赖没有匹配预编译文件时需要对应平台的构建工具。`playwright-core` 不下载浏览器，浏览器工具需要机器上可用的 Chrome 或 Edge。
 
 ## 使用
 
@@ -61,7 +63,7 @@ agentdesk web --no-open                      # 只打印连接地址，手动复
 agentdesk web --json                         # 只输出 { url, expiresAt }，不打开浏览器
 ```
 
-工作台页面随 npm 包安装，不需要克隆源码、启动 Vite 或安装桌面端。`web` 自动打开系统默认浏览器，无法自动打开时打印可复制的连接地址。进入后可以查看 Bot、编码现场、项目、工作流和设置。在设置里添加模型和项目，也可先用 `agentdesk init` 配置模型。
+工作台页面随 npm 包安装，不需要克隆源码、启动 Vite 或安装桌面端。`web` 自动打开系统默认浏览器，无法自动打开时打印可复制的连接地址。进入后可以使用 Bot、编码现场、项目、成长中心、面试题库、工作流、自动化与设置等页面；自动化依赖可用的 Autoloop 运行时。在设置里添加模型和项目，也可先用 `agentdesk init` 配置模型。
 
 浏览器与使用相同 `--data-dir` 的 CLI 共用模型、对话、任务和审批。「编码现场」会显示当前实例的任务，不需要再次切换到 CLI 会话。关闭终端或页面后，后台服务与持久化任务继续运行；实时聊天断开则会取消当前轮次。使用 `agentdesk stop` 停止服务。
 
@@ -112,7 +114,7 @@ agentdesk init --base-url https://api.example.com/v1 --model <模型名称> --ap
 - 默认监听 `127.0.0.1:17891`；`start --port 0` 自动选空闲端口，或 `--port <端口>` 指定。
 - CLI 与它打开的浏览器工作台共用数据；桌面默认使用不同数据目录、数据库和端口，当前不自动同步桌面数据。
 - 每次服务启动生成随机认证令牌。CLI 从本地实例状态读取，正常命令不会打印令牌。
-- `start` 默认脱离终端后台运行，`start --foreground` 在当前终端运行，适合交给 systemd、pm2 或容器管理。首版不包含开机自启或崩溃自动拉起；可由外部进程管理器提供。
+- `start` 默认脱离终端后台运行，`start --foreground` 在当前终端运行，适合交给外部进程管理器。Windows 电脑连接器可用 `connect install` 安装当前用户登录自启动与连接进程恢复。
 - `stop` 通过带认证且身份匹配的服务接口关闭实例，不对无法确认身份的 PID 强制结束。
 - `restart` 保留当前端口，已停止实例默认回到 17891；指定端口可覆盖。
 - 后台日志超过 10 MB 时在下次启动轮转，保留一份 `.1`。前台日志由当前终端或外部进程管理器收集。
@@ -208,7 +210,29 @@ agentdesk approve <审批ID>
 agentdesk reject <审批ID>
 ```
 
-`chat` 仍使用实时对话。中断终端或断开连接会取消当前这一轮。持久化任务使用下面的 `run`，不走这条会随连接取消的路径。远程机器接入仍不在本版范围内。
+`chat` 仍使用实时对话。中断终端或断开连接会取消当前这一轮，已保存历史可续接。持久化任务使用下面的 `run`，不走这条会随连接取消的路径。
+
+## 电脑连接器与远程工作台
+
+需要先按 [Linux / 宝塔部署文档](../../deploy/cloud/README.md) 部署 HTTPS 网关与 Runner，配置所有者邮箱及 SMTP。手机登录后，在「公司电脑连接」创建配对码；电脑先通过本机工作台登记要授权的项目，再在交互终端执行：
+
+```powershell
+agentdesk connect pair --server https://agent.example.com
+agentdesk connect status
+agentdesk connect start
+```
+
+配对过程会列出本地项目供选择，要求电脑与手机核对设备指纹和项目范围并分别确认。配对码在隐藏输入中填写，不作为命令行参数。配对成功后，连接器随本地服务在后台发起出站连接；手机可在授权项目内发起任务、处理审批与 Git 操作。配对可能重启当前服务，存在未结束任务时会要求先处理任务，再执行 `connect start`。
+
+Windows 可安装当前用户登录后的自动启动和连接进程恢复：
+
+```powershell
+agentdesk connect install
+agentdesk connect uninstall
+agentdesk connect revoke
+```
+
+`uninstall` 移除登录自启动，`revoke` 断开并撤销本实例的设备连接；若服务器暂不可达，还应在手机设备页撤销记录。电脑睡眠、关机或离线时无法连接。本机 `web` 的一次性地址仍仅限本机使用。远程部署面向单个所有者，完整配对、取回改动与恢复流程以部署文档为准。
 
 ## 持久化任务
 

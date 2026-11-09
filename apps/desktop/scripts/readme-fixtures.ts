@@ -7,12 +7,17 @@ import type {
   RunEventRecord,
   Task,
   TaskStreamEvent,
+  LearningToday,
+  AutomationBinding,
+  InterviewQuestion,
+  InterviewSource,
+  InterviewStats,
 } from "@agentdesk/shared";
 import type { Workflow } from "@agentdesk/workflow/dsl";
 
 // 仅供文档截图使用的演示数据，不读取本机配置、仓库或会话。
-export const demoTime = "2026-10-29T02:30:00.000Z";
-const updatedAt = "2026-10-29T02:20:00.000Z";
+export const demoTime = "2026-11-09T02:30:00.000Z";
+const updatedAt = "2026-11-09T02:20:00.000Z";
 
 const projectNames = [
   "portal-web",
@@ -94,7 +99,7 @@ export const feed: FeedItem[] = [
   language: language!,
   stars: null,
   starsToday: [128, 96, 88, 64, 52, 42][i]!,
-  date: "2026-10-29",
+  date: "2026-11-09",
   favorite: i === 0,
 }));
 
@@ -336,7 +341,198 @@ export const deployRun: DeployRun = {
   })),
 };
 
+const learning: LearningToday = {
+  date: "2026-11-09",
+  profile: {
+    id: "demo-profile",
+    profession: "前端工程师",
+    targetRole: "全栈工程师",
+    dailyBudgetMin: 30,
+    createdAt: updatedAt,
+  },
+  plan: {
+    id: "demo-plan",
+    profileId: "demo-profile",
+    skillName: "TypeScript 工程实践",
+    status: "active",
+    goal: "掌握 TypeScript 工程实践",
+    durationDays: 28,
+    currentVersionId: "demo-plan-v1",
+    createdAt: updatedAt,
+    milestones: [
+      { label: "第 1 周", focus: "类型建模与边界" },
+      { label: "第 2 周", focus: "接口与数据校验" },
+      { label: "第 3 周", focus: "测试与重构" },
+      { label: "第 4 周", focus: "项目实战" },
+    ],
+  },
+  activities: [
+    { title: "阅读：用联合类型表达业务状态", type: "reading", estMinutes: 8, status: "done" },
+    { title: "练习：为任务执行结果建立类型", type: "practice", estMinutes: 12, status: "pending" },
+    { title: "测验：识别可选字段与空值边界", type: "quiz", estMinutes: 5, status: "pending" },
+    { title: "复习：泛型约束与类型收窄", type: "review", estMinutes: 5, status: "pending" },
+  ].map((item, i) => ({
+    ...item,
+    id: `activity-${i}`,
+    planId: "demo-plan",
+    planVersionId: "demo-plan-v1",
+    date: "2026-11-09",
+    orderIndex: i,
+    detail: "结合项目中的任务与接口，完成一次可验证的小练习。",
+    completedAt: i === 0 ? updatedAt : null,
+  })) as LearningToday["activities"],
+  yesterday: {
+    date: "2026-11-08",
+    done: 4,
+    total: 4,
+    minutes: 30,
+    titles: ["类型收窄", "接口建模"],
+  },
+  streak: 7,
+  dueReviews: 6,
+  checkins: Array.from({ length: 7 }, (_, i) => ({
+    date: `2026-11-${String(i + 3).padStart(2, "0")}`,
+    effectiveMinutes: 30,
+    activitiesDone: i === 6 ? 1 : 4,
+  })),
+};
+
+const automations: AutomationBinding[] = [
+  {
+    id: "demo-daily",
+    title: "每日项目巡检",
+    goal: "检查项目改动与测试状态，汇总需要关注的问题，在原会话保留巡检结果。",
+    schedule: { cron: "0 18 * * *", timezone: "Asia/Shanghai" },
+  },
+  {
+    id: "demo-release-check",
+    title: "发布前检查",
+    goal: "核对依赖、构建与回归结果，遇到需要决定的事项时等待确认。",
+    schedule: null,
+  },
+].map((item) => ({
+  ...item,
+  automationId: item.id,
+  hubId: "demo-hub",
+  ruleName: item.id,
+  enabled: true,
+  projectId: "portal-web",
+  workspacePolicy: { root: "D:/Projects/portal-web", allowSubdirectories: true },
+  maxRounds: 20,
+  maxMinutes: 30,
+  createdAt: updatedAt,
+  updatedAt,
+}));
+
+const interviewSources: InterviewSource[] = [
+  {
+    id: "demo-interview-source",
+    name: "前端工程面试笔记",
+    kind: "file",
+    origin: "frontend-interview.md",
+    status: "ready",
+    questionCount: 3,
+    processedParts: 1,
+    totalParts: 1,
+    warnings: [],
+    error: null,
+    createdAt: updatedAt,
+    updatedAt,
+  },
+];
+const interviewQuestions: InterviewQuestion[] = [
+  {
+    question: "什么是闭包？它在实际开发中有哪些用途？",
+    answer:
+      "闭包是函数与其词法环境的组合。函数可以在外部作用域结束后继续访问创建时的变量。\n\n常见用途包括封装私有状态、实现函数工厂，以及保存事件回调所需的上下文。",
+    category: "JavaScript",
+  },
+  {
+    question: "TypeScript 的联合类型如何帮助表达业务状态？",
+    answer: "通过可辨识联合，为不同状态声明各自的数据，并在分支中进行类型收窄。",
+    category: "TypeScript",
+  },
+  {
+    question: "如何设计组件的状态与副作用？",
+    answer: "保持状态最小化，将派生值放在渲染期间计算，为外部订阅提供清理函数。",
+    category: "React",
+  },
+].map((item, i) => ({
+  ...item,
+  id: `demo-question-${i}`,
+  sourceId: interviewSources[0]!.id,
+  sourceName: interviewSources[0]!.name,
+  origin: "frontend-interview.md",
+  answerOrigin: "source",
+  sourceExcerpt: item.answer,
+  favorite: i === 0,
+  mastery: "learning",
+  reviews: 1,
+  dueDate: "2026-11-09",
+  createdAt: updatedAt,
+  updatedAt,
+}));
+const interviewStats: InterviewStats = {
+  date: "2026-11-09",
+  total: 3,
+  mastered: 0,
+  due: 3,
+  favorites: 1,
+  sourceAnswers: 3,
+  aiAnswers: 0,
+  pendingAnswers: 0,
+  todayReviewed: 1,
+  dailyGoal: 3,
+  checkedIn: false,
+  streak: 7,
+  days: Array.from({ length: 84 }, (_, i) => ({
+    date: new Date(Date.parse("2026-11-09T00:00:00Z") - (83 - i) * 86400000)
+      .toISOString()
+      .slice(0, 10),
+    count: i === 83 ? 1 : i > 76 ? 3 : 0,
+    checkedIn: i > 76 && i < 83,
+  })),
+  categories: ["JavaScript", "TypeScript", "React"].map((name) => ({
+    name,
+    total: 1,
+    mastered: 0,
+  })),
+};
+
 export const responses: Record<string, unknown> = {
+  "/autoloop/status": {
+    available: true,
+    mode: "local",
+    protocolVersion: "1",
+    connections: [],
+    lastSyncedAt: updatedAt,
+  },
+  "/automations": automations,
+  "/automations/demo-daily/tasks": [
+    {
+      ...task,
+      id: "demo-automation-task",
+      title: "每日项目巡检 · 11 月 9 日",
+      automationStatus: "completed",
+      status: "completed",
+    },
+  ],
+  "/automations/demo-release-check/tasks": [],
+  "/learning/today": learning,
+  "/learning/interview/sources": interviewSources,
+  "/learning/interview/questions": {
+    items: interviewQuestions,
+    total: interviewQuestions.length,
+    page: 1,
+    pages: 1,
+  },
+  "/learning/interview/stats": interviewStats,
+  "/learning/interview/settings": {
+    dailyGoal: 3,
+    timeZone: "Asia/Shanghai",
+    feishuAppId: "",
+    hasFeishuSecret: false,
+  },
   "/health": {
     ok: true,
     version: "0.1.0",
@@ -371,6 +567,7 @@ export const responses: Record<string, unknown> = {
     },
   ],
   "/agent-bindings": [],
+  "/conversation-groups": [],
   "/conversations": [
     { id: "demo-chat-1", title: "检查项目的待提交改动", createdAt: updatedAt, updatedAt },
     { id: "demo-chat-2", title: "整理今天的 Agent 开源项目", createdAt: updatedAt, updatedAt },
@@ -378,9 +575,9 @@ export const responses: Record<string, unknown> = {
   "/projects": projects,
   "/projects/refresh-stars": { updated: 0, gained: 0 },
   "/claude/sessions": [],
-  "/feed/dates": ["2026-10-29"],
+  "/feed/dates": ["2026-11-09"],
   "/feed/digest": {
-    date: "2026-10-29",
+    date: "2026-11-09",
     headline: "从编码到验证，让 Agent 融入开发流程",
     markdown:
       "今日关注 **编程 Agent、流程编排与自动化验证**。先在本地完成一次小任务，再逐步接入项目工具与审批流程。",
@@ -416,6 +613,7 @@ export const responses: Record<string, unknown> = {
       createdAt: updatedAt,
     },
   ],
+  [`/tasks/${task.id}/artifacts`]: [],
   "/servers": [
     {
       id: "demo-server",
