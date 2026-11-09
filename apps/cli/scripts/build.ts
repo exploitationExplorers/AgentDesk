@@ -8,7 +8,9 @@ import { copyAutoloopRuntime } from "../../../packages/autoloop-runtime/scripts/
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const sidecar = resolve(root, "../sidecar");
-const dist = join(root, "dist");
+const dist = process.env.AGENTDESK_CLI_BUILD_DIR
+  ? resolve(process.env.AGENTDESK_CLI_BUILD_DIR)
+  : join(root, "dist");
 rmSync(dist, { recursive: true, force: true });
 mkdirSync(dist, { recursive: true });
 copyAutoloopRuntime(join(dist, "autoloop"));

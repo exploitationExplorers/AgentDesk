@@ -1,0 +1,30 @@
+# 加入独立 HTTPS 站点的 server 块。证书和 server_name 由宝塔配置。
+# 不把此段放进已有业务站点；保留宝塔证书续期所需的 ACME location。
+client_max_body_size 256k;
+add_header Strict-Transport-Security "max-age=31536000" always;
+
+location / {
+    proxy_pass http://127.0.0.1:17892;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header Connection "";
+    proxy_buffering off;
+    proxy_cache off;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 60s;
+}
+
+location = /device-channel {
+    proxy_pass http://127.0.0.1:17892;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_buffering off;
+    proxy_read_timeout 75s;
+    proxy_send_timeout 60s;
+}

@@ -286,7 +286,7 @@ export const api = {
   messages: (id: string) => http.get<ChatMessage[]>(`/conversations/${id}/messages`),
   deleteConversation: (id: string) => http.delete(`/conversations/${id}`),
   chat: (
-    body: { conversationId?: string; message: string; agent?: string },
+    body: { conversationId?: string; message: string; agent?: string; workspace?: string },
     onEvent: (e: AgentStreamEvent) => void,
     signal?: AbortSignal,
   ) => postStream<AgentStreamEvent>("/chat", body, onEvent, signal),

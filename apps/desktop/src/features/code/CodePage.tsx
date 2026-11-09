@@ -38,6 +38,7 @@ import { FlowGraph } from "./FlowGraph";
 import { useRunTree } from "./useRunTree";
 import { useTaskEvents } from "./useTaskEvents";
 import { CollaborationView } from "./CollaborationView";
+import { CliTerminal } from "./CliTerminal";
 
 const STATUS: Record<Task["status"], string> = {
   pending: "待开始",
@@ -778,6 +779,7 @@ export function CodePage() {
     queryFn: codeApi(source).tasks,
     refetchInterval: 2000,
     retry: false,
+    enabled: source !== "cli",
   });
   const sorted = useMemo(
     () =>
@@ -842,157 +844,171 @@ export function CodePage() {
               }}
             />
           )}
-          <Button size="sm" variant="primary" onClick={() => setCreating(true)}>
-            <Plus className="mr-1.5 h-3.5 w-3.5" />
-            新任务
-          </Button>
+          {source !== "cli" && (
+            <Button size="sm" variant="primary" onClick={() => setCreating(true)}>
+              <Plus className="mr-1.5 h-3.5 w-3.5" />
+              新任务
+            </Button>
+          )}
         </div>
       </header>
       <div className="flex min-h-0 flex-1">
-        <aside
-          className="lb-glass flex w-[220px] shrink-0 flex-col border-r max-md:w-[170px]"
-          aria-label="编码任务列表"
-        >
-          <div className="flex items-center justify-between px-4 py-4">
-            <span className="text-[11px] font-medium text-muted">
-              任务与会话 <span className="ml-1 text-subtle">{sorted.length}</span>
-            </span>
-            <div className="flex items-center gap-0.5">
-              <button
-                type="button"
-                onClick={() => {
-                  if (!clearable.length) {
-                    toast("没有可归档的任务（待验收 / 已完成 / 失败 / 已停止）", { tone: "info" });
-                    return;
-                  }
-                  if (
-                    !window.confirm(
-                      `将归档 ${clearable.length} 项任务（含待验收 / 已完成 / 失败 / 已停止）。进行中的任务会保留。确定清空？`,
-                    )
-                  )
-                    return;
-                  clearTasks.mutate();
-                }}
-                disabled={clearTasks.isPending || !sorted.length}
-                aria-label="清空终态任务"
-                title="清空终态任务"
-                className="rounded p-1 text-subtle hover:bg-surface-2 hover:text-fg disabled:opacity-40"
-              >
-                <Trash2 className={cn("h-3 w-3", clearTasks.isPending && "animate-pulse")} />
-              </button>
-              <button
-                type="button"
-                onClick={() => void tasks.refetch()}
-                aria-label="刷新任务"
-                className="rounded p-1 text-subtle hover:bg-surface-2"
-              >
-                <RefreshCw className={cn("h-3 w-3", tasks.isFetching && "animate-spin")} />
-              </button>
-            </div>
-          </div>
-          <div className="min-h-0 flex-1 overflow-y-auto px-2">
-            {sorted.map((task) => (
-              <button
-                type="button"
-                key={task.id}
-                onClick={() => choose(task.id)}
-                className={cn(
-                  "mb-1 w-full rounded-xl border px-3 py-3 text-left",
-                  selected?.id === task.id && !creating
-                    ? "border-border-strong bg-surface-2"
-                    : "border-transparent hover:bg-surface-2/50",
-                )}
-              >
-                <div className="flex items-start gap-2">
-                  <Circle
-                    className={cn(
-                      "mt-1 h-2 w-2 shrink-0 fill-current",
-                      activeTask(task)
-                        ? "text-emerald-400"
-                        : task.status === "failed"
-                          ? "text-danger"
-                          : "text-subtle",
-                    )}
-                  />
-                  <span className="line-clamp-2 text-xs font-medium leading-5">{task.title}</span>
+        {source === "cli" ? (
+          <CliTerminal />
+        ) : (
+          <>
+            <aside
+              className="lb-glass flex w-[220px] shrink-0 flex-col border-r max-md:w-[170px]"
+              aria-label="编码任务列表"
+            >
+              <div className="flex items-center justify-between px-4 py-4">
+                <span className="text-[11px] font-medium text-muted">
+                  任务与会话 <span className="ml-1 text-subtle">{sorted.length}</span>
+                </span>
+                <div className="flex items-center gap-0.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!clearable.length) {
+                        toast("没有可归档的任务（待验收 / 已完成 / 失败 / 已停止）", {
+                          tone: "info",
+                        });
+                        return;
+                      }
+                      if (
+                        !window.confirm(
+                          `将归档 ${clearable.length} 项任务（含待验收 / 已完成 / 失败 / 已停止）。进行中的任务会保留。确定清空？`,
+                        )
+                      )
+                        return;
+                      clearTasks.mutate();
+                    }}
+                    disabled={clearTasks.isPending || !sorted.length}
+                    aria-label="清空终态任务"
+                    title="清空终态任务"
+                    className="rounded p-1 text-subtle hover:bg-surface-2 hover:text-fg disabled:opacity-40"
+                  >
+                    <Trash2 className={cn("h-3 w-3", clearTasks.isPending && "animate-pulse")} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void tasks.refetch()}
+                    aria-label="刷新任务"
+                    className="rounded p-1 text-subtle hover:bg-surface-2"
+                  >
+                    <RefreshCw className={cn("h-3 w-3", tasks.isFetching && "animate-spin")} />
+                  </button>
                 </div>
-                <div className="mt-2 flex justify-between pl-4 text-[10px] text-subtle">
-                  <span>{STATUS[task.status]}</span>
-                  <span>
-                    {new Date(task.updatedAt).toLocaleDateString("zh-CN", {
-                      month: "2-digit",
-                      day: "2-digit",
-                    })}
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto px-2">
+                {sorted.map((task) => (
+                  <button
+                    type="button"
+                    key={task.id}
+                    onClick={() => choose(task.id)}
+                    className={cn(
+                      "mb-1 w-full rounded-xl border px-3 py-3 text-left",
+                      selected?.id === task.id && !creating
+                        ? "border-border-strong bg-surface-2"
+                        : "border-transparent hover:bg-surface-2/50",
+                    )}
+                  >
+                    <div className="flex items-start gap-2">
+                      <Circle
+                        className={cn(
+                          "mt-1 h-2 w-2 shrink-0 fill-current",
+                          activeTask(task)
+                            ? "text-emerald-400"
+                            : task.status === "failed"
+                              ? "text-danger"
+                              : "text-subtle",
+                        )}
+                      />
+                      <span className="line-clamp-2 text-xs font-medium leading-5">
+                        {task.title}
+                      </span>
+                    </div>
+                    <div className="mt-2 flex justify-between pl-4 text-[10px] text-subtle">
+                      <span>{STATUS[task.status]}</span>
+                      <span>
+                        {new Date(task.updatedAt).toLocaleDateString("zh-CN", {
+                          month: "2-digit",
+                          day: "2-digit",
+                        })}
+                      </span>
+                    </div>
+                  </button>
+                ))}
+                {!sorted.length && (
+                  <p className="px-3 py-8 text-center text-xs text-subtle">
+                    {tasks.isLoading ? "正在连接…" : "还没有任务"}
+                  </p>
+                )}
+              </div>
+              <div className="flex items-center gap-2 border-t px-4 py-3 text-[10px] text-subtle">
+                <Radio
+                  className={cn("h-3 w-3", tasks.error ? "text-danger" : "text-emerald-500")}
+                />
+                {tasks.error ? "连接不可用" : "自动同步 · 本机运行"}
+              </div>
+            </aside>
+            {creating ? (
+              <div className="min-w-0 flex-1 overflow-y-auto p-8">
+                <NewTask
+                  key={source}
+                  source={source}
+                  onClose={() => setCreating(false)}
+                  onCreated={(task) => {
+                    void client.invalidateQueries({ queryKey: ["code", source] });
+                    choose(task.id);
+                  }}
+                />
+              </div>
+            ) : selected ? (
+              <TaskDetail key={`${source}:${selected.id}`} task={selected} source={source} />
+            ) : (
+              <div className="flex min-w-0 flex-1 flex-col items-center justify-center p-8">
+                <AppMark alt="AgentDesk" className="mb-7 h-20 w-20" />
+                <p className="mb-3 font-mono text-[10px] tracking-[0.24em] text-emerald-500">
+                  AGENTDESK / CODE
+                </p>
+                <h2 className="text-2xl font-semibold tracking-tight">看见想法，变成代码。</h2>
+                <p className="mt-3 max-w-md text-center text-sm leading-7 text-muted">
+                  {tasks.error
+                    ? tasks.error.message
+                    : search.task || search.c
+                      ? "暂未找到对应任务，等待会话产生执行记录。"
+                      : "给 Agent 一个明确的目标。文件读取、代码差异与验证结果，会在同一个现场逐步呈现。"}
+                </p>
+                <div className="my-8 flex items-center gap-5 text-xs text-muted">
+                  <span className="flex items-center gap-2">
+                    <FileCode2 className="h-4 w-4" />
+                    读取项目
+                  </span>
+                  <ArrowRight className="h-3 w-3 text-subtle" />
+                  <span className="flex items-center gap-2">
+                    <GitCompareArrows className="h-4 w-4" />
+                    查看差异
+                  </span>
+                  <ArrowRight className="h-3 w-3 text-subtle" />
+                  <span className="flex items-center gap-2">
+                    <Terminal className="h-4 w-4" />
+                    运行验证
                   </span>
                 </div>
-              </button>
-            ))}
-            {!sorted.length && (
-              <p className="px-3 py-8 text-center text-xs text-subtle">
-                {tasks.isLoading ? "正在连接…" : "还没有任务"}
-              </p>
+                <Button
+                  variant="primary"
+                  onClick={() => (tasks.error ? void tasks.refetch() : setCreating(true))}
+                >
+                  {tasks.error ? "重新连接" : "开始第一项任务"}
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+                <Link to="/" className="mt-5 text-xs text-subtle hover:text-fg">
+                  也可以从 Bot 对话中发起 <ArrowDown className="ml-1 inline h-3 w-3" />
+                </Link>
+              </div>
             )}
-          </div>
-          <div className="flex items-center gap-2 border-t px-4 py-3 text-[10px] text-subtle">
-            <Radio className={cn("h-3 w-3", tasks.error ? "text-danger" : "text-emerald-500")} />
-            {tasks.error ? "连接不可用" : "自动同步 · 本机运行"}
-          </div>
-        </aside>
-        {creating ? (
-          <div className="min-w-0 flex-1 overflow-y-auto p-8">
-            <NewTask
-              key={source}
-              source={source}
-              onClose={() => setCreating(false)}
-              onCreated={(task) => {
-                void client.invalidateQueries({ queryKey: ["code", source] });
-                choose(task.id);
-              }}
-            />
-          </div>
-        ) : selected ? (
-          <TaskDetail key={`${source}:${selected.id}`} task={selected} source={source} />
-        ) : (
-          <div className="flex min-w-0 flex-1 flex-col items-center justify-center p-8">
-            <AppMark alt="AgentDesk" className="mb-7 h-20 w-20" />
-            <p className="mb-3 font-mono text-[10px] tracking-[0.24em] text-emerald-500">
-              AGENTDESK / CODE
-            </p>
-            <h2 className="text-2xl font-semibold tracking-tight">看见想法，变成代码。</h2>
-            <p className="mt-3 max-w-md text-center text-sm leading-7 text-muted">
-              {tasks.error
-                ? tasks.error.message
-                : search.task || search.c
-                  ? "暂未找到对应任务，等待会话产生执行记录。"
-                  : "给 Agent 一个明确的目标。文件读取、代码差异与验证结果，会在同一个现场逐步呈现。"}
-            </p>
-            <div className="my-8 flex items-center gap-5 text-xs text-muted">
-              <span className="flex items-center gap-2">
-                <FileCode2 className="h-4 w-4" />
-                读取项目
-              </span>
-              <ArrowRight className="h-3 w-3 text-subtle" />
-              <span className="flex items-center gap-2">
-                <GitCompareArrows className="h-4 w-4" />
-                查看差异
-              </span>
-              <ArrowRight className="h-3 w-3 text-subtle" />
-              <span className="flex items-center gap-2">
-                <Terminal className="h-4 w-4" />
-                运行验证
-              </span>
-            </div>
-            <Button
-              variant="primary"
-              onClick={() => (tasks.error ? void tasks.refetch() : setCreating(true))}
-            >
-              {tasks.error ? "重新连接" : "开始第一项任务"}
-              <ArrowRight className="ml-2 h-4 w-4" />
-            </Button>
-            <Link to="/" className="mt-5 text-xs text-subtle hover:text-fg">
-              也可以从 Bot 对话中发起 <ArrowDown className="ml-1 inline h-3 w-3" />
-            </Link>
-          </div>
+          </>
         )}
       </div>
     </div>

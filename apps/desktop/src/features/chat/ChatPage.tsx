@@ -10,7 +10,9 @@ import { AGENT_META } from "../../lib/agents";
 import { api } from "../../lib/api";
 import { chatRoute } from "../../router";
 import { useUi } from "../../stores/ui";
-import { Composer } from "./Composer";
+import { Composer, type ComposerProject } from "./Composer";
+import { conversationsApi } from "./conversations-api";
+import { toast } from "../../lib/toast";
 import { ActionPrompt } from "./ActionPrompt";
 import { ConversationList } from "./ConversationList";
 import { HomeHero } from "./HomeHero";
@@ -65,6 +67,7 @@ export function ChatPage() {
   const workbench = useSessionWorkbench(conversationId, agent);
   const { chatPrefill, setChatPrefill, browserPanelOpen, activeBrowserSessionId } = useUi();
   const [prefill, setPrefill] = useState<string | undefined>();
+  const [draftProject, setDraftProject] = useState<ComposerProject | null>(null);
   const reduced = useReducedMotion();
 
   const onConversation = useCallback(
@@ -198,6 +201,27 @@ export function ChatPage() {
   }, [chatPrefill, setChatPrefill]);
 
   useEffect(() => setHistoryOpen(false), [conversationId]);
+  useEffect(() => {
+    if (conversationId) setDraftProject(null);
+  }, [conversationId]);
+
+  const linkedProjectId = conversationId
+    ? (workbench.data?.conversation.projectId ?? null)
+    : (draftProject?.id ?? null);
+
+  const handleProjectChange = async (project: ComposerProject | null) => {
+    if (!conversationId) {
+      setDraftProject(project);
+      return;
+    }
+    try {
+      await conversationsApi.patch(conversationId, { projectId: project?.id ?? null });
+      void queryClient.invalidateQueries({ queryKey: ["session-workbench", conversationId] });
+      void queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "关联项目失败", { tone: "danger" });
+    }
+  };
 
   const handleSend = (text: string, forced?: AgentName) => {
     scroll.toBottom(false);
@@ -207,6 +231,7 @@ export function ChatPage() {
       text,
       conversationId,
       (forced ?? agent) === "orchestrator" ? undefined : (forced ?? agent),
+      conversationId ? undefined : (draftProject?.path ?? undefined),
     );
   };
 
@@ -232,6 +257,13 @@ export function ChatPage() {
       autoFocus
       large={!conversationId && !live}
       context={workbench.data?.context}
+      projectId={linkedProjectId}
+      projectName={
+        conversationId
+          ? (workbench.data?.workspace?.split(/[/\\]/).filter(Boolean).at(-1) ?? null)
+          : (draftProject?.name ?? null)
+      }
+      onProjectChange={handleProjectChange}
       onOpenContext={
         conversationId
           ? () => {

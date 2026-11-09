@@ -1,4 +1,7 @@
 export * from "./errors";
+export * from "./contracts/identity";
+export * from "./contracts/remote";
+export * from "./contracts/workspace-transfer";
 export * from "./contracts/provider";
 export * from "./contracts/project";
 export * from "./contracts/deploy";
@@ -21,3 +24,4 @@ export * from "./task-session";
 export * from "./chat-display";
 export * from "./chat-progress";
 export * from "./agentdesk-segments";
+export * from "./contracts/device";

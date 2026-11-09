@@ -20,12 +20,18 @@ import type { ApprovalService } from "./approvals";
 import { ConversationStore } from "./conversation-store";
 import { ConversationService } from "./conversations";
 import type { ConversationContextService } from "./conversation-context";
-import { acquireConversation, conversationActivity } from "./conversation-activity";
+import {
+  acquireConversation,
+  conversationActivity,
+  releaseConversation,
+} from "./conversation-activity";
 import type { MemoryService } from "./memory";
 import type { ProjectInstructionService } from "./project-instructions";
 import { createDelegateHandler } from "./task-executor";
 import type { TaskService } from "./tasks";
 import { readRunToolHistory, RunToolHistory } from "./run-tool-history";
+
+const TERMINAL_TASK = new Set(["completed", "failed", "cancelled", "closed"]);
 
 export class ChatService {
   readonly conversations: ConversationService;
@@ -76,10 +82,27 @@ export class ChatService {
     return this.conversationStore.listMessages(conversationId);
   }
 
-  deleteConversation(id: string): void {
-    if (this.tasks.findByConversation(id)?.automationId)
-      throw new AppError(ErrorCode.Conflict, "自动化会话仍被任务引用，暂不能单独删除");
-    this.tasks.assertConversationAvailable(id);
+  async deleteConversation(id: string, options: { force?: boolean } = {}): Promise<void> {
+    this.getConversation(id);
+    const task = this.tasks.findByConversation(id);
+    if (task?.automationId && !TERMINAL_TASK.has(task.status)) {
+      throw new AppError(ErrorCode.Conflict, "自动化会话仍在执行，暂不能删除");
+    }
+
+    // 单条删除先检查执行、压缩和排队，避免提前释放其他操作持有的锁。
+    if (!options.force) this.tasks.assertConversationAvailable(id);
+
+    const inflight = this.active.get(id);
+    if (inflight) {
+      inflight.controller.abort();
+      // 模型调用可能不立刻响应 abort；限时等待后强制释放并删除，避免清空卡死。
+      await Promise.race([
+        inflight.done.catch(() => undefined),
+        new Promise<void>((resolve) => setTimeout(resolve, options.force ? 250 : 1500)),
+      ]);
+    }
+    releaseConversation(id);
+
     this.conversationStore.deleteProgress(id);
     this.contextService?.forget(id);
     this.db.delete(messages).where(eq(messages.conversationId, id)).run();
@@ -88,6 +111,28 @@ export class ChatService {
       .where(eq(traces.scope, `chat:${id}`))
       .run();
     this.conversations.delete(id);
+  }
+
+  async clearConversations(ids: string[]): Promise<{
+    deleted: string[];
+    skipped: Array<{ id: string; title: string; reason: string }>;
+  }> {
+    const deleted: string[] = [];
+    const skipped: Array<{ id: string; title: string; reason: string }> = [];
+    for (const id of ids) {
+      const current = this.conversations.get(id);
+      if (!current) {
+        deleted.push(id);
+        continue;
+      }
+      try {
+        await this.deleteConversation(id, { force: true });
+        deleted.push(id);
+      } catch (error) {
+        skipped.push({ id, title: current.title, reason: errorMessage(error) });
+      }
+    }
+    return { deleted, skipped };
   }
 
   renameConversation(id: string, title: string): Conversation {
@@ -432,10 +477,11 @@ export class ChatService {
           }
         }
       }
-      this.conversations.put({
-        ...(this.conversations.get(conversationId) ?? conversation),
-        updatedAt: nowIso(),
-      });
+      // 清空/删除后不得用内存快照把会话写回。
+      const existing = this.conversations.get(conversationId);
+      if (existing) {
+        this.conversations.put({ ...existing, updatedAt: nowIso() });
+      }
       traced({ type: "done", messageId: assistantId });
       return conversationId;
     } finally {

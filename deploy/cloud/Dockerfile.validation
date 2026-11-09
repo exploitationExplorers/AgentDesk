@@ -1,0 +1,29 @@
+# C0 验证镜像，不是公开 Gateway 或生产 Runner。
+FROM scratch AS runtime-download
+FROM node:22.21.1-bookworm-slim@sha256:25b3eb23a00590b7499f2a2ce939322727fcce1b15fdd69754fcd09536a3ae2c
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates git python3 make g++ \
+    && rm -rf /var/lib/apt/lists/*
+RUN corepack enable && corepack prepare pnpm@10.33.3 --activate
+WORKDIR /source
+COPY --chown=node:node . .
+RUN --mount=type=cache,id=agentdesk-pnpm,target=/pnpm/store \
+    pnpm install --frozen-lockfile --filter @agentdesk/sidecar... --filter @agentdesk/cloud-gateway... --filter @agentdesk/desktop... \
+      --store-dir /pnpm/store --network-concurrency=8 --fetch-retries=3
+# 可选离线官方归档；安装器仍校验归档及二进制，不把下载缓存写入镜像。
+RUN --mount=type=bind,from=runtime-download,target=/runtime-download \
+    if [ -f /runtime-download/node.tar.gz ]; then \
+      pnpm --filter @agentdesk/autoloop-runtime install:runtime --archive /runtime-download/node.tar.gz; \
+    else pnpm --filter @agentdesk/autoloop-runtime install:runtime; fi
+RUN pnpm --filter @agentdesk/sidecar build
+RUN pnpm --filter @agentdesk/shared typecheck \
+    && pnpm --filter @agentdesk/sidecar typecheck \
+    && pnpm --filter @agentdesk/cloud-gateway typecheck
+RUN pnpm --filter @agentdesk/desktop build:cloud && pnpm --filter @agentdesk/cloud-gateway build
+# 仅测试缓存目录需要可写；不递归修改整棵 node_modules 的所有权。
+RUN mkdir -p apps/sidecar/node_modules/.vite apps/cloud-gateway/node_modules/.vite \
+    && chown -R node:node apps/sidecar/node_modules/.vite apps/cloud-gateway/node_modules/.vite
+USER node
+RUN pnpm --filter @agentdesk/autoloop-runtime test \
+    && pnpm --filter @agentdesk/sidecar exec vitest run test/remote-foundation.test.ts test/remote-approvals.test.ts test/task-queue.test.ts \
+    && pnpm --filter @agentdesk/cloud-gateway test
+CMD ["sh", "-c", "pnpm exec tsx scripts/check-cloud-bundle.ts && pnpm exec tsx scripts/check-gateway-bundle.ts"]

@@ -108,10 +108,14 @@ export async function startAutoloopRuntime(
         dirname(host),
         process.platform === "win32" ? "agentdesk-supervisor.exe" : "agentdesk-supervisor",
       ),
-      resolve(
-        dirname(host),
-        "../../crates/agentdesk-supervisor/target/debug/agentdesk-supervisor.exe",
-      ),
+      ...(process.platform === "win32"
+        ? [
+            resolve(
+              dirname(host),
+              "../../crates/agentdesk-supervisor/target/debug/agentdesk-supervisor.exe",
+            ),
+          ]
+        : []),
     ].find(existsSync);
   const command = supervisor ?? node;
   const args = ["--disable-warning=ExperimentalWarning", host, configFile];

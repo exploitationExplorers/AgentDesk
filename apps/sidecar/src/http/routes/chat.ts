@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
+import { z } from "zod";
 import {
   ChatRequest,
   ConversationPatch,
@@ -12,18 +13,31 @@ import {
 import type { Container } from "../../container";
 import { errorMessage } from "../../util";
 
+const ClearConversationsInput = z
+  .object({ ids: z.array(z.string().min(1)).min(1).max(500) })
+  .strict();
+
 export function chatRoutes({ chat, projectInstructions, providers, tasks, autoloop }: Container) {
   const app = new Hono();
 
   app.get("/conversations", (c) =>
     c.json(chat.listConversations(ConversationQuery.parse(c.req.query()))),
   );
+  // 静态路径须放在 /conversations/:id 之前，避免被当成 id。
+  app.post("/conversations/clear", async (c) => {
+    const body = ClearConversationsInput.parse(await c.req.json());
+    return c.json(await chat.clearConversations(body.ids));
+  });
   app.get("/conversations/:id", (c) => c.json(chat.getConversation(c.req.param("id"))));
   app.get("/conversations/:id/messages", (c) => c.json(chat.messages(c.req.param("id"))));
   app.get("/conversations/:id/traces", (c) => c.json(chat.traces(c.req.param("id"))));
   app.patch("/conversations/:id", async (c) => {
     const patch = ConversationPatch.parse(await c.req.json());
     return c.json(chat.patchConversation(c.req.param("id"), patch));
+  });
+  app.delete("/conversations/:id", async (c) => {
+    await chat.deleteConversation(c.req.param("id"));
+    return c.body(null, 204);
   });
 
   app.get("/conversation-groups", (c) => c.json(chat.conversations.listGroups()));
@@ -37,10 +51,6 @@ export function chatRoutes({ chat, projectInstructions, providers, tasks, autolo
   });
   app.delete("/conversation-groups/:id", (c) => {
     chat.conversations.deleteGroup(c.req.param("id"));
-    return c.body(null, 204);
-  });
-  app.delete("/conversations/:id", (c) => {
-    chat.deleteConversation(c.req.param("id"));
     return c.body(null, 204);
   });
 

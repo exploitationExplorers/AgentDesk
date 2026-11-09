@@ -70,7 +70,12 @@ export function useChatStream(
   useEffect(() => () => controller.current?.abort(), []);
 
   const send = useCallback(
-    async (message: string, conversationId: string | undefined, agent?: AgentName) => {
+    async (
+      message: string,
+      conversationId: string | undefined,
+      agent?: AgentName,
+      workspace?: string,
+    ) => {
       controller.current?.abort();
       const ctrl = new AbortController();
       controller.current = ctrl;
@@ -215,7 +220,7 @@ export function useChatStream(
 
       try {
         await api.chat(
-          { conversationId, message, agent },
+          { conversationId, message, agent, workspace },
           (event) => {
             if (event.type === "conversation" && event.conversationId !== convId) {
               convId = event.conversationId;

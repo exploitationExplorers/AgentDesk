@@ -34,7 +34,8 @@
     "marked": "^15.0.12",
     "marked-terminal": "^7.3.0",
     "playwright-core": "^1.56.0",
-    "react": "19.3.1"
+    "react": "19.3.1",
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@agentdesk/shared": "workspace:*",

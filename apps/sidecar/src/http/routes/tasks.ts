@@ -7,11 +7,9 @@ import {
   ErrorCode,
   RunTrigger,
   TaskStatus,
-  type Conversation,
 } from "@agentdesk/shared";
 import type { Container } from "../../container";
-import { Collection } from "../../db/collection";
-import { newId, nowIso } from "../../util";
+import { TaskSubmissionService } from "../../services/task-submissions";
 import { taskChannelToSse } from "../task-sse";
 import { artifactDownloadName } from "../../services/artifact-files";
 import type { TaskService } from "../../services/tasks";
@@ -42,42 +40,14 @@ const ReviewBody = z.object({
 
 export function taskRoutes({ tasks, approvals, hub, dbHandle, projectInstructions }: Container) {
   const app = new Hono();
-  // 本阶段不抽取共用的 conversation-store：POST /tasks 自动建会话时直接复用
-  // ChatService 创建 Conversation 的逻辑，允许少量临时重复（见开发任务.md 阶段 B 范围说明）。
-  const conversations = new Collection<Conversation>(dbHandle.db, "conversations");
+  const submissions = new TaskSubmissionService(dbHandle, tasks);
 
   app.post("/tasks", async (c) => {
     const body = CreateTaskBody.parse(await c.req.json());
     const workspace = await projectInstructions.validateWorkspace(body.workspace);
-    let conversationId = body.conversationId;
-    if (conversationId) tasks.assertConversationAvailable(conversationId);
-    if (!conversationId) {
-      const conversation = conversations.put({
-        id: newId(),
-        title: body.goal.slice(0, 40),
-        createdAt: nowIso(),
-        updatedAt: nowIso(),
-      });
-      conversationId = conversation.id;
-    }
-    const task = tasks.create({
-      title: body.title,
-      goal: body.goal,
-      agent: body.agent ?? null,
-      conversationId,
-      requiresPlanApproval: body.requiresPlanApproval ?? false,
-    });
-    const run = tasks.createRun({
-      taskId: task.id,
-      kind: "root",
-      agent: body.agent ?? "orchestrator",
-      trigger: "create",
-      idempotencyKey: body.idempotencyKey,
-      input: { userMessage: body.goal, workspace },
-    });
-    const queued = tasks.transition(task.id, "queued");
-    tasks.enqueue(run.id);
-    return c.json(queued, 201);
+    const { task, run, replayed } = submissions.submit({ ...body, workspace });
+    if (run.status === "queued") tasks.enqueue(run.id);
+    return c.json(task, replayed ? 200 : 201);
   });
 
   app.get("/tasks", (c) => {

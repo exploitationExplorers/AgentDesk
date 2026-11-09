@@ -16,6 +16,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { copyAutoloopRuntime } from "../../../packages/autoloop-runtime/scripts/build.mjs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
@@ -26,7 +27,7 @@ import { copyPublicSkills } from "./public-skills";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const dist = join(root, "dist");
-const EXTERNAL = ["better-sqlite3", "playwright-core"];
+const EXTERNAL = ["better-sqlite3", "playwright-core", "node-pty"];
 
 const SEARCH_BASES = [root, resolve(root, "../../packages/integrations")];
 
@@ -53,6 +54,8 @@ const RUNTIME_PACKAGES: Array<[name: string, parent?: string]> = [
   ["bindings", "better-sqlite3"],
   ["file-uri-to-path", "bindings"],
   ["playwright-core"],
+  ["node-pty"],
+  ["node-addon-api", "node-pty"],
 ];
 
 function copyPackage(name: string, parentDir?: string): string {
@@ -114,6 +117,15 @@ await build({
   logLevel: "info",
 });
 cpSync(process.execPath, join(dist, process.platform === "win32" ? "node.exe" : "node"));
+const cli = resolve(root, "../cli");
+const tsxCli = createRequire(join(cli, "package.json")).resolve("tsx/cli");
+mkdirSync(join(dist, "cli"), { recursive: true });
+execFileSync(process.execPath, [tsxCli, join(cli, "scripts/build.ts")], {
+  cwd: cli,
+  stdio: "inherit",
+  env: { ...process.env, AGENTDESK_CLI_BUILD_DIR: join(dist, "cli/dist") },
+});
+cpSync(join(cli, "package.json"), join(dist, "cli/package.json"));
 const hubRuntime = copyAutoloopRuntime(join(dist, "autoloop"));
 const Sqlite = createRequire(import.meta.url)("better-sqlite3") as typeof SqliteDatabase;
 const runtimeProbe = new Sqlite(":memory:");

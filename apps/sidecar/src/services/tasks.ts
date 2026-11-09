@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, inArray } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, sql } from "drizzle-orm";
 import { resolve } from "node:path";
 import {
   AppError,
@@ -114,6 +114,8 @@ export interface TaskServiceOptions {
   artifactRoot?: string;
   maxConcurrentRuns?: number;
   executor?: RunExecutor;
+  /** 远程执行必须由运行入口重新校验身份、lease 和工作区；本地默认不允许远程排队。 */
+  authorizeRemoteRun?: (run: Run) => void;
 }
 
 export const DEFAULT_MAX_CONCURRENT_RUNS = 4;
@@ -130,10 +132,20 @@ export class TaskService {
   private readonly tasks: Collection<Task>;
   private readonly maxConcurrentRuns: number;
   private readonly executor: RunExecutor;
+  private readonly authorizeRemoteRun?: (run: Run) => void;
   private readonly queue: string[] = [];
   private readonly runningSet = new Set<string>();
   private readonly controllers = new Map<string, AbortController>();
   private readonly externalSlots = new Set<symbol>();
+  private readonly executions = new Set<Promise<void>>();
+  private stopping = false;
+
+  /** 停止领取排队任务，等待执行中的任务写完终态后再关闭数据库。 */
+  async shutdown(): Promise<void> {
+    this.stopping = true;
+    for (const controller of this.controllers.values()) controller.abort();
+    await Promise.allSettled([...this.executions]);
+  }
 
   constructor(
     private readonly db: Db,
@@ -144,6 +156,7 @@ export class TaskService {
     this.artifactRoot = options.artifactRoot;
     this.maxConcurrentRuns = options.maxConcurrentRuns ?? DEFAULT_MAX_CONCURRENT_RUNS;
     this.executor = options.executor ?? placeholderExecutor;
+    this.authorizeRemoteRun = options.authorizeRemoteRun;
     this.recoverAfterRestart();
   }
 
@@ -304,6 +317,7 @@ export class TaskService {
 
   /** 对话和委派由调用方驱动，但仍记录真实运行状态并接入取消通道。 */
   startRunDirect(runId: string, controller?: AbortController): void {
+    if (this.stopping) throw new AppError(ErrorCode.Conflict, "任务服务正在关闭");
     const run = this.getRun(runId);
     if (!run) throw new AppError(ErrorCode.NotFound, "运行不存在");
     this.updateRunRow(runId, { status: "running", startedAt: nowIso() });
@@ -370,8 +384,12 @@ export class TaskService {
 
   /** 排队进这条 Run，并尝试立即开始调度（受并发槛位限制）。 */
   enqueue(runId: string): void {
-    if (this.getRun(runId)?.executionOwner === "autoloop")
+    if (this.stopping) throw new AppError(ErrorCode.Conflict, "任务服务正在关闭");
+    const run = this.getRun(runId);
+    if (run?.executionOwner === "autoloop")
       throw new AppError(ErrorCode.Conflict, "托管执行不能进入本地调度队列");
+    if (run && this.isRemoteTask(run.taskId)) this.checkRemoteRun(run);
+    if (this.queue.includes(runId) || this.runningSet.has(runId)) return;
     this.queue.push(runId);
     void this.pump();
   }
@@ -379,12 +397,21 @@ export class TaskService {
   /** 从队首按序领取 Run，直到槛位占满或队列排空；每个槛位空出时会再调用一次自己。 */
   private async pump(): Promise<void> {
     while (
+      !this.stopping &&
       this.queue.length > 0 &&
       this.runningSet.size + this.externalSlots.size < this.maxConcurrentRuns
     ) {
       const runId = this.queue.shift()!;
       const run = this.getRun(runId);
       if (!run || run.status !== "queued" || run.executionOwner === "autoloop") continue;
+      if (this.isRemoteTask(run.taskId)) {
+        try {
+          this.checkRemoteRun(run);
+        } catch (error) {
+          this.finalizeRun(run, { status: "failed", resultError: errorMessage(error) });
+          continue;
+        }
+      }
       if (run.cancelRequested) {
         this.finalizeRun(run, { status: "cancelled", resultError: "排队期间被取消" });
         continue;
@@ -392,11 +419,13 @@ export class TaskService {
       this.runningSet.add(runId);
       const controller = new AbortController();
       this.controllers.set(runId, controller);
-      void this.executeRun(run, controller).finally(() => {
+      const execution = this.executeRun(run, controller).finally(() => {
+        this.executions.delete(execution);
         this.runningSet.delete(runId);
         this.controllers.delete(runId);
         void this.pump();
       });
+      this.executions.add(execution);
     }
   }
 
@@ -443,6 +472,7 @@ export class TaskService {
 
   /** 先保留本机额度再向 Hub claim，避免领取后长时间排队。 */
   reserveExternalSlot(): (() => void) | undefined {
+    if (this.stopping) return undefined;
     if (this.runningSet.size + this.externalSlots.size >= this.maxConcurrentRuns) return undefined;
     const key = Symbol();
     this.externalSlots.add(key);
@@ -550,8 +580,19 @@ export class TaskService {
       .where(and(eq(runs.status, "queued"), eq(runs.executionOwner, "local")))
       .orderBy(asc(runs.createdAt))
       .all();
-    for (const row of queuedRows) this.queue.push(row.id);
+    // 远程队列必须由远程入口重新授权；不能在旧本地入口重启时自动执行。
+    for (const row of queuedRows) if (!this.isRemoteTask(row.taskId)) this.queue.push(row.id);
     if (this.queue.length > 0) void this.pump();
+  }
+
+  private isRemoteTask(taskId: string): boolean {
+    return !!this.db.get(sql`SELECT 1 FROM remote_task_contexts WHERE task_id=${taskId}`);
+  }
+
+  private checkRemoteRun(run: Run): void {
+    if (!this.authorizeRemoteRun)
+      throw new AppError(ErrorCode.Forbidden, "远程任务需要重新验证执行授权");
+    this.authorizeRemoteRun(run);
   }
 
   /** 写入一条 run_events 行并分别广播到 run 频道和 task 频道，返回的记录形状供快照 API 和 SSE 复用。 */

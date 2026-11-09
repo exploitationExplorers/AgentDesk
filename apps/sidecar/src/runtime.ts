@@ -19,9 +19,14 @@ export async function startSidecar(
     configureApp?: (app: Hono, container: Container) => void;
     schedule?: boolean;
     webRoot?: string;
+    office?: Parameters<typeof createContainer>[1] extends infer O
+      ? NonNullable<O> extends { office?: infer R }
+        ? R
+        : never
+      : never;
   } = {},
 ): Promise<SidecarRuntime> {
-  const container = await createContainer(config);
+  const container = await createContainer(config, { office: options.office });
   let server: Server | undefined;
   try {
     applyProxy(resolveProxy(container.settings.get().proxy));

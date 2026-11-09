@@ -6,13 +6,15 @@
   "scripts": {
     "dev": "tsx watch --clear-screen=false src/index.ts",
     "start": "tsx src/index.ts",
+    "start:cloud": "tsx src/cloud.ts",
     "build": "tsx scripts/build.ts",
+    "build:cloud": "tsx scripts/build-cloud.ts",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run"
   },
   "dependencies": {
-    "@agentdesk/autoloop-runtime": "workspace:*",
     "@agentdesk/agent-core": "workspace:*",
+    "@agentdesk/autoloop-runtime": "workspace:*",
     "@agentdesk/integrations": "workspace:*",
     "@agentdesk/shared": "workspace:*",
     "@agentdesk/workflow": "workspace:*",
@@ -22,6 +24,7 @@
     "drizzle-orm": "^0.44.6",
     "hono": "^4.10.1",
     "node-html-parser": "^7.0.1",
+    "node-pty": "^1.1.0",
     "pptxgenjs": "4.0.1",
     "undici": "^7.30.1",
     "zod": "^4.1.12"

@@ -1,8 +1,9 @@
 import type { Edge, Node } from "@xyflow/react";
 import type { RunNode, Step } from "@agentdesk/shared";
 
-export const COLUMN_WIDTH = 250;
-export const ROW_HEIGHT = 118;
+/** Vertical stack: each step advances Y; sibling root runs / branches spread on X. */
+export const COLUMN_WIDTH = 260;
+export const ROW_HEIGHT = 128;
 
 export type FlowCardKind = "run" | "tool" | "route" | "approval" | "note" | "delegate";
 
@@ -76,14 +77,14 @@ export function buildFlowGraph(
     });
   };
 
-  /** 布局一棵 Run：返回末节点 id 与占用的最大列下标。 */
+  /** Layout one Run top→bottom; returns last node id and max row/col used. */
   const layoutRun = (
     runId: string,
     col: number,
     row: number,
-  ): { lastId: string; endCol: number; row: number } => {
+  ): { lastId: string; endCol: number; endRow: number } => {
     const run = runsById[runId];
-    if (!run) return { lastId: `run:${runId}`, endCol: col, row };
+    if (!run) return { lastId: `run:${runId}`, endCol: col, endRow: row };
 
     const runNodeId = `run:${runId}`;
     const runLive = run.runStatus === "running";
@@ -115,18 +116,19 @@ export function buildFlowGraph(
     );
 
     let prevId = runNodeId;
-    let nextCol = col + 1;
-    let cursorRow = row;
+    const cursorCol = col;
+    let nextRow = row + 1;
+    let maxCol = col;
 
     run.steps.forEach((step, index) => {
       if (step.kind === "delegate") {
         const child = runsById[step.runId];
         const childLive = child?.runStatus === "running";
         pushEdge(prevId, `run:${step.runId}`, runLive || Boolean(childLive));
-        const nested = layoutRun(step.runId, nextCol, cursorRow);
+        const nested = layoutRun(step.runId, cursorCol + 1, nextRow);
         prevId = nested.lastId;
-        nextCol = nested.endCol;
-        cursorRow = nested.row;
+        nextRow = nested.endRow + 1;
+        maxCol = Math.max(maxCol, nested.endCol);
         return;
       }
 
@@ -172,29 +174,32 @@ export function buildFlowGraph(
           },
           selected: runId === selectedRunId,
         },
-        nextCol * COLUMN_WIDTH,
-        cursorRow * ROW_HEIGHT,
+        cursorCol * COLUMN_WIDTH,
+        nextRow * ROW_HEIGHT,
       );
       pushEdge(prevId, stepId, live || runLive);
       prevId = stepId;
-      nextCol += 1;
+      nextRow += 1;
     });
 
-    return { lastId: prevId, endCol: nextCol, row: cursorRow };
+    return { lastId: prevId, endCol: maxCol, endRow: nextRow - 1 };
   };
 
-  let row = 0;
+  let col = 0;
+  let maxEndRow = -1;
   for (const rootId of rootOrder) {
     if (!runsById[rootId]) continue;
-    layoutRun(rootId, 0, row);
-    row += 1;
+    const nested = layoutRun(rootId, col, 0);
+    maxEndRow = Math.max(maxEndRow, nested.endRow);
+    col = nested.endCol + 1;
   }
 
-  // 未被 rootOrder 覆盖但仍存在的孤儿 run（防御）
+  // Orphan runs not covered by rootOrder (defensive)
   for (const runId of Object.keys(runsById)) {
     if (!placed.has(`run:${runId}`)) {
-      layoutRun(runId, 0, row);
-      row += 1;
+      const nested = layoutRun(runId, col, maxEndRow + 1);
+      maxEndRow = Math.max(maxEndRow, nested.endRow);
+      col = nested.endCol + 1;
     }
   }
 

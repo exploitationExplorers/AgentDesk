@@ -271,4 +271,49 @@ describe("会话管理 API", () => {
       pinned: true,
     });
   });
+
+  it("一键清空删除列表会话，进行中的收尾不会把会话写回", { timeout: 15_000 }, async () => {
+    let started!: () => void;
+    let finish!: () => void;
+    const didStart = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const release = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    vi.spyOn(container.memory, "captureFromTurn").mockResolvedValue([]);
+    vi.spyOn(container.orchestrator, "run").mockImplementation(async () => {
+      started();
+      await release;
+      return { status: "completed", text: "ok", agent: "code", toolCalls: [] };
+    });
+    container.chat.conversations.put(oldConversation("keep-clear-a", "A"));
+    container.chat.conversations.put(oldConversation("keep-clear-b", "B"));
+    container.chat.conversations.put(oldConversation("keep-clear-live", "Live"));
+    const running = container.chat.send(
+      { conversationId: "keep-clear-live", message: "生成中" },
+      () => {},
+      new AbortController().signal,
+    );
+    await didStart;
+    const cleared = await call(
+      "/conversations/clear",
+      { ids: ["keep-clear-a", "keep-clear-b", "keep-clear-live"] },
+      "POST",
+    );
+    expect(cleared.status).toBe(200);
+    expect(await cleared.json()).toMatchObject({
+      deleted: ["keep-clear-a", "keep-clear-b", "keep-clear-live"],
+      skipped: [],
+    });
+    expect(container.chat.listConversations().map((item) => item.id)).not.toEqual(
+      expect.arrayContaining(["keep-clear-a", "keep-clear-b", "keep-clear-live"]),
+    );
+    finish();
+    await running;
+    expect(() => container.chat.getConversation("keep-clear-live")).toThrow(/不存在/);
+    expect(container.chat.listConversations().map((item) => item.id)).not.toContain(
+      "keep-clear-live",
+    );
+  });
 });

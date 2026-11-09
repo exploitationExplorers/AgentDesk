@@ -1,0 +1,61 @@
+/* LeiBox fluid-tooltip: controlled rail hint for icon sidebars. */
+.ft-tip {
+  --ft-y: 0px;
+  --ft-w: 120px;
+  --ft-o: 0;
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 0;
+  z-index: 40;
+  height: 36px;
+  width: var(--ft-w);
+  overflow: hidden;
+  border-radius: 999px;
+  background: #1e1e23;
+  color: #f4f4f5;
+  box-shadow:
+    0 8px 28px -10px rgba(20, 18, 32, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  pointer-events: none;
+  opacity: var(--ft-o);
+  transform: translate3d(0, var(--ft-y), 0);
+  will-change: transform, width, opacity;
+}
+.dark .ft-tip,
+:host([data-theme="dark"]) .ft-tip {
+  background: #121218;
+  box-shadow:
+    0 10px 32px -12px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.ft-tip-track {
+  position: absolute;
+  left: 14px;
+  top: 0;
+  transform: translate3d(0, calc(var(--ft-y) * -1), 0);
+  will-change: transform;
+}
+
+.ft-tip-row {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  align-items: center;
+  height: 36px;
+  width: max-content;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  color: #f4f4f5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ft-tip,
+  .ft-tip-track {
+    transition: none !important;
+  }
+}

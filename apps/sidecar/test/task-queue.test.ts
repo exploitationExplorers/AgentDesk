@@ -48,6 +48,42 @@ async function waitFor(predicate: () => boolean, timeoutMs = 2000): Promise<void
 }
 
 describe("TaskService 并发队列", () => {
+  it("关闭会取消运行并等待落库，排队任务保留且不再领取", async () => {
+    let release!: () => void;
+    const tasks = createTaskService({
+      maxConcurrentRuns: 1,
+      executor: async (_run, _task, signal) => {
+        await new Promise<void>((resolve) =>
+          signal.addEventListener(
+            "abort",
+            () => {
+              release = resolve;
+            },
+            { once: true },
+          ),
+        );
+        return { status: "cancelled" };
+      },
+    });
+    const first = makeTaskWithRun(tasks, "shutdown-running");
+    const second = makeTaskWithRun(tasks, "shutdown-queued");
+    tasks.enqueue(first.run.id);
+    tasks.enqueue(second.run.id);
+    let drained = false;
+    const closing = tasks.shutdown().then(() => {
+      drained = true;
+    });
+    await Promise.resolve();
+    expect(drained).toBe(false);
+    expect(tasks.reserveExternalSlot()).toBeUndefined();
+    expect(() => tasks.enqueue(second.run.id)).toThrow("正在关闭");
+    release();
+    await closing;
+    expect(tasks.getRun(first.run.id)).toMatchObject({ status: "cancelled" });
+    expect(tasks.get(first.task.id)?.status).toBe("cancelled");
+    expect(tasks.getRun(second.run.id)?.status).toBe("queued");
+    await tasks.shutdown();
+  });
   it.each(["failed", "cancelled"] as const)(
     "%s 任务续跑时同步进入 running，成功后进入 awaiting_review",
     async (status) => {

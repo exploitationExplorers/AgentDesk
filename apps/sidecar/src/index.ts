@@ -1,5 +1,6 @@
 import { loadConfig, loadEnvFiles } from "./config";
 import { startSidecar } from "./runtime";
+import { desktopTerminal } from "./desktop-terminal";
 
 process.on("unhandledRejection", (reason) => {
   console.error("[sidecar] unhandled rejection", reason);
@@ -8,7 +9,10 @@ process.on("unhandledRejection", (reason) => {
 async function main() {
   loadEnvFiles();
   const config = loadConfig();
-  const runtime = await startSidecar(config);
+  const terminal = desktopTerminal(config);
+  const runtime = await startSidecar(config, {
+    configureApp: (app) => app.route("/api/desktop-terminal", terminal.routes),
+  });
   // 保持 Tauri 用于确认 sidecar 就绪的输出协议。
   console.info(`AGENTDESK_READY port=${runtime.port}`);
   console.info(
@@ -20,6 +24,7 @@ async function main() {
     if (stopping) return;
     stopping = true;
     try {
+      terminal.close();
       await runtime.close();
       process.exit(0);
     } catch (error) {

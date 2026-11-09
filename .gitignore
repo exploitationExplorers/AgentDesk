@@ -6,6 +6,7 @@ node_modules
 !/AGENTS.md
 !/CLAUDE.md
 dist
+dist-cloud
 bin
 .turbo
 *.log

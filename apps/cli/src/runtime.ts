@@ -4,6 +4,10 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { loadConfig, loadEnvFiles } from "../../sidecar/src/config";
 import { startSidecar, type SidecarRuntime } from "../../sidecar/src/runtime";
 import { claimState, publishState, removeOwnedState } from "./state.js";
+import { randomBytes } from "node:crypto";
+import { readConnector } from "./connect/credentials.js";
+import { startConnector } from "./connect/channel.js";
+import { createCloudApp } from "../../sidecar/src/cloud-app";
 
 interface RuntimeOptions {
   home: string;
@@ -30,6 +34,7 @@ export async function runCliRuntime(options: RuntimeOptions): Promise<void> {
   // 排他创建发生在数据库打开前，避免同时启动两个服务操作同一数据目录。
   claimState(home, state);
   let runtime: SidecarRuntime | undefined;
+  let connector: ReturnType<typeof startConnector> | undefined;
   try {
     loadEnvFiles([join(home, ".env"), join(home, "data", ".env")]);
     const config = loadConfig({
@@ -46,9 +51,11 @@ export async function runCliRuntime(options: RuntimeOptions): Promise<void> {
       resolveStopped = resolve;
     });
     let stopping: Promise<void> | undefined;
+    const credentials = readConnector(home);
     const stop = () =>
       (stopping ??= (async () => {
         try {
+          connector?.stop();
           await runtime?.close();
         } finally {
           removeOwnedState(home, instanceId);
@@ -56,8 +63,30 @@ export async function runCliRuntime(options: RuntimeOptions): Promise<void> {
         }
       })());
     runtime = await startSidecar(config, {
+      office: credentials
+        ? {
+            hostId: credentials.hostId,
+            taskTimeoutMs: 3_600_000,
+            projects: Object.fromEntries(
+              credentials.identity.projects
+                .filter((p) => credentials.projects.includes(p.id))
+                .map((p) => [p.id, p.path]),
+            ),
+          }
+        : undefined,
       webRoot: fileURLToPath(new URL("./web", import.meta.url)),
-      configureApp(app) {
+      configureApp(app, container) {
+        app.get("/api/cli/connect/status", (c) =>
+          c.json(connector?.status() ?? { state: "stopped" }),
+        );
+        app.post("/api/cli/connect/stop", (c) => {
+          connector?.stop();
+          if (credentials)
+            container.dbHandle.raw
+              .prepare("UPDATE remote_project_grants SET revoked_at=? WHERE host_id=?")
+              .run(new Date().toISOString(), credentials.hostId);
+          return c.json({ stopped: true });
+        });
         app.get("/api/cli/instance", (c) =>
           c.json({
             instanceId,
@@ -81,6 +110,34 @@ export async function runCliRuntime(options: RuntimeOptions): Promise<void> {
         });
       },
     });
+    if (credentials?.enabled) {
+      const remoteToken = randomBytes(32).toString("hex");
+      const remoteApp = createCloudApp(runtime.container, {
+        ...config,
+        kind: "office",
+        hostId: credentials.hostId,
+        name: credentials.identity.name,
+        workspaceRoot: config.dataDir,
+        remoteToken,
+        taskTimeoutMs: 3_600_000,
+        ownerUserId: credentials.userId,
+        allowedProviderHosts: (
+          process.env.PROVIDER_ALLOWED_HOSTS ?? "api.openai.com,api.anthropic.com,api.deepseek.com"
+        )
+          .split(",")
+          .map((v) => v.trim().toLowerCase())
+          .filter(Boolean),
+      });
+      connector = startConnector(
+        credentials,
+        (request) => remoteApp.fetch(request),
+        (request) => {
+          const authenticated = new Request(request);
+          authenticated.headers.set("x-agentdesk-remote-token", remoteToken);
+          return authenticated;
+        },
+      );
+    }
     await publishState(home, { ...state, port: runtime.port });
     console.info(`[cli] ready http://127.0.0.1:${runtime.port} (${mode}, PID ${process.pid})`);
     const onSignal = () => {

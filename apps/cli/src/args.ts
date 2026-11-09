@@ -3,6 +3,7 @@ import { THEME_PALETTES, type ThemePalette } from "./preferences.js";
 
 const COMMON = ["help", "data-dir", "plain", "no-color", "no-motion", "no-emoji", "theme"];
 const COMMAND_OPTIONS = {
+  connect: ["server", "json"],
   start: ["foreground", "port"],
   restart: ["foreground", "port"],
   stop: [],
@@ -32,6 +33,7 @@ export function parseCommand(argv: string[]) {
       help: { type: "boolean", short: "h" },
       version: { type: "boolean", short: "V" },
       "data-dir": { type: "string" },
+      server: { type: "string" },
       plain: { type: "boolean" },
       "no-color": { type: "boolean" },
       "no-motion": { type: "boolean" },
@@ -77,7 +79,17 @@ export function parseCommand(argv: string[]) {
     throw new Error(`--theme 必须是 ${THEME_PALETTES.join(" / ")} 之一。`);
   }
   if (!values.help && !values.version) {
-    if (["approve", "reject"].includes(command)) {
+    if (command === "connect") {
+      if (
+        positionals.length !== 1 ||
+        !["pair", "start", "status", "revoke", "install", "uninstall", "monitor"].includes(
+          positionals[0]!,
+        )
+      )
+        throw new Error("connect 需要 pair、start、status、revoke、install 或 uninstall。");
+      if (values.server && positionals[0] !== "pair")
+        throw new Error("--server 仅用于 connect pair。");
+    } else if (["approve", "reject"].includes(command)) {
       if (positionals.length !== 1) throw new Error(`${command} 需要一个审批 ID。`);
     } else if (["inspect", "cancel", "resume"].includes(command)) {
       if (positionals.length !== 1) throw new Error(`${command} 需要一个任务 ID。`);
@@ -101,6 +113,11 @@ export const HELP = `AgentDesk — 本地 Agent 工作台命令行
   chat                   直接进入终端对话
 
 服务管理
+  connect pair --server https://你的域名
+                         用手机配对码授权本机项目（交互输入，不在命令行记录配对码）
+  connect start / status / revoke
+  connect install / uninstall    Windows 登录自启动与崩溃恢复
+                         启动、查看或撤销公司电脑出站连接
   start                  在后台启动独立本地服务
   start --foreground     在当前终端运行（可由进程管理器管理）
   stop / restart         停止 / 重启当前 CLI 实例

@@ -1,44 +1,63 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import {
-  ArrowUpRight,
-  FolderGit2,
-  GitBranch,
-  Newspaper,
-  Rocket,
-  Sparkles,
-  Telescope,
-} from "lucide-react";
-import type { ReactNode } from "react";
-import { Badge, Glass, GlassSurface } from "@agentdesk/ui";
+import { ArrowUpRight, FolderGit2, Newspaper, Sparkles } from "lucide-react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { Badge, Glass, GlassSurface, ShaderFlood, type ShaderFloodItem } from "@agentdesk/ui";
 import { AppMark, useAppAvatar } from "../../components/AppMark";
 import { api } from "../../lib/api";
 import { compactNumber, greeting, todayLocal } from "../../lib/format";
 
-const SUGGESTIONS: Array<{ icon: ReactNode; title: string; prompt: string; agent?: string }> = [
+function useLeiBoxTheme(): "light" | "dark" {
+  const [theme, setTheme] = useState<"light" | "dark">(() =>
+    typeof document !== "undefined" && document.documentElement.classList.contains("dark")
+      ? "dark"
+      : "light",
+  );
+  useEffect(() => {
+    const root = document.documentElement;
+    const sync = () => setTheme(root.classList.contains("dark") ? "dark" : "light");
+    sync();
+    const observer = new MutationObserver(sync);
+    observer.observe(root, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
+  return theme;
+}
+
+const SUGGESTIONS: Array<{
+  title: string;
+  prompt: string;
+  agent?: string;
+  icon: NonNullable<ShaderFloodItem["icon"]>;
+  colors: [string, string, string];
+}> = [
   {
-    icon: <Newspaper className="h-4 w-4" />,
     title: "今日技术速览",
     prompt: "总结一下今天 GitHub 热榜和 HuggingFace 上最值得关注的 AI、前端、后端项目",
     agent: "research",
+    icon: "layers",
+    colors: ["#3a1a4a", "#d48c55", "#f4c164"],
   },
   {
-    icon: <GitBranch className="h-4 w-4" />,
     title: "项目巡检",
     prompt: "巡检我所有的项目：哪些有未提交改动、未推送提交或待处理的 PR/MR？",
     agent: "project",
+    icon: "zap",
+    colors: ["#0b2a5c", "#3b8cff", "#cfe4ff"],
   },
   {
-    icon: <Rocket className="h-4 w-4" />,
     title: "部署 IM 后端",
     prompt: "帮我把 IM 项目部署到服务器",
     agent: "deploy",
+    icon: "rocket",
+    colors: ["#11280d", "#6fa85a", "#d7f0c8"],
   },
   {
-    icon: <Telescope className="h-4 w-4" />,
     title: "深入讲解",
     prompt: "从今天的热榜里挑一个最值得我学习的 Agent 项目，深入讲解它的原理和用法",
     agent: "research",
+    icon: "aperture",
+    colors: ["#1d0b25", "#a34dff", "#ead9ff"],
   },
 ];
 
@@ -60,8 +79,23 @@ export function HomeHero({
   });
   const projects = useQuery({ queryKey: ["projects"], queryFn: api.projects });
   const avatar = useAppAvatar();
+  const theme = useLeiBoxTheme();
   const needAttention = (projects.data ?? []).filter(
     (p) => p.dirtyFiles > 0 || p.ahead > 0 || p.behind > 0,
+  );
+
+  const floodOptions = useMemo(
+    () => ({
+      height: 448,
+      theme,
+      items: SUGGESTIONS.map((s) => ({
+        title: s.title,
+        description: s.prompt,
+        icon: s.icon,
+        colors: s.colors,
+      })),
+    }),
+    [theme],
   );
 
   return (
@@ -100,77 +134,73 @@ export function HomeHero({
 
         {composer}
 
-        <div className="mt-5 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-          {SUGGESTIONS.map((s) => (
-            <GlassSurface asChild key={s.title}>
-              <button
-                type="button"
-                onClick={() => onPick(s.prompt, s.agent)}
-                className="chat-suggestion group flex items-start gap-3 rounded-2xl px-4 py-3.5 text-left"
-              >
-                <span className="mt-0.5 rounded-lg bg-brand/6 p-1.5 text-muted group-hover:text-brand">
-                  {s.icon}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-[13px] font-medium">{s.title}</span>
-                  <span className="mt-0.5 line-clamp-1 text-[12px] text-subtle">{s.prompt}</span>
-                </span>
-              </button>
-            </GlassSurface>
-          ))}
-        </div>
+        <ShaderFlood
+          className="mt-5"
+          options={floodOptions}
+          onItemSelect={(index) => {
+            const s = SUGGESTIONS[index];
+            if (s) onPick(s.prompt, s.agent);
+          }}
+        />
 
-        <div className="mt-8 grid gap-6 border-t border-border/50 pt-6 md:grid-cols-2">
-          <Link to="/feed" className="rounded-xl p-2 transition-colors hover:bg-surface/70">
-            <div className="mb-3 flex items-center gap-2 text-[12px] font-medium text-subtle">
-              <Newspaper className="h-3.5 w-3.5" />
-              今日热榜
-              {digest.data ? <Badge tone="brand">已生成速览</Badge> : null}
-            </div>
-            {digest.data ? (
-              <p className="mb-2 text-[13.5px] font-medium">{digest.data.headline}</p>
-            ) : null}
-            <ul className="grid gap-1.5">
-              {(feed.data ?? []).slice(0, 4).map((item) => (
-                <li key={item.id} className="flex items-center gap-2 text-[12.5px]">
-                  <span className="truncate text-muted">{item.title}</span>
-                  <span className="ml-auto shrink-0 text-[11px] text-subtle">
-                    +{compactNumber(item.starsToday)}
-                  </span>
-                </li>
-              ))}
-              {feed.data?.length === 0 ? (
-                <li className="text-[12.5px] text-subtle">今天还没有抓取，点击进入刷新</li>
+        <div className="mt-8 grid gap-4 border-t border-border/50 pt-6 md:grid-cols-2">
+          <GlassSurface asChild>
+            <Link to="/feed" className="rounded-2xl p-3.5 transition-colors hover:bg-surface/40">
+              <div className="mb-3 flex items-center gap-2 text-[12px] font-medium text-subtle">
+                <Newspaper className="h-3.5 w-3.5" />
+                今日热榜
+                {digest.data ? <Badge tone="brand">已生成速览</Badge> : null}
+              </div>
+              {digest.data ? (
+                <p className="mb-2 text-[13.5px] font-medium">{digest.data.headline}</p>
               ) : null}
-            </ul>
-          </Link>
-          <Link to="/projects" className="rounded-xl p-2 transition-colors hover:bg-surface/70">
-            <div className="mb-3 flex items-center gap-2 text-[12px] font-medium text-subtle">
-              <FolderGit2 className="h-3.5 w-3.5" />
-              项目动态
-            </div>
-            <p className="text-[13.5px] font-medium">
-              {projects.data?.length ?? 0} 个项目
-              {needAttention.length ? (
-                <span className="text-warning"> · {needAttention.length} 个需要关注</span>
-              ) : null}
-            </p>
-            <ul className="mt-2 grid gap-1.5">
-              {needAttention.slice(0, 3).map((p) => (
-                <li key={p.id} className="flex items-center gap-2 text-[12.5px] text-muted">
-                  <span className="truncate">{p.name}</span>
-                  <span className="ml-auto shrink-0 text-[11px] text-subtle">
-                    {p.dirtyFiles ? `${p.dirtyFiles} 改动 ` : ""}
-                    {p.ahead ? `↑${p.ahead} ` : ""}
-                    {p.behind ? `↓${p.behind}` : ""}
-                  </span>
-                </li>
-              ))}
-              {projects.data?.length === 0 ? (
-                <li className="text-[12.5px] text-subtle">在设置中配置扫描目录后自动发现</li>
-              ) : null}
-            </ul>
-          </Link>
+              <ul className="grid gap-1.5">
+                {(feed.data ?? []).slice(0, 4).map((item) => (
+                  <li key={item.id} className="flex items-center gap-2 text-[12.5px]">
+                    <span className="truncate text-muted">{item.title}</span>
+                    <span className="ml-auto shrink-0 text-[11px] text-subtle">
+                      +{compactNumber(item.starsToday)}
+                    </span>
+                  </li>
+                ))}
+                {feed.data?.length === 0 ? (
+                  <li className="text-[12.5px] text-subtle">今天还没有抓取，点击进入刷新</li>
+                ) : null}
+              </ul>
+            </Link>
+          </GlassSurface>
+          <GlassSurface asChild>
+            <Link
+              to="/projects"
+              className="rounded-2xl p-3.5 transition-colors hover:bg-surface/40"
+            >
+              <div className="mb-3 flex items-center gap-2 text-[12px] font-medium text-subtle">
+                <FolderGit2 className="h-3.5 w-3.5" />
+                项目动态
+              </div>
+              <p className="text-[13.5px] font-medium">
+                {projects.data?.length ?? 0} 个项目
+                {needAttention.length ? (
+                  <span className="text-warning"> · {needAttention.length} 个需要关注</span>
+                ) : null}
+              </p>
+              <ul className="mt-2 grid gap-1.5">
+                {needAttention.slice(0, 3).map((p) => (
+                  <li key={p.id} className="flex items-center gap-2 text-[12.5px] text-muted">
+                    <span className="truncate">{p.name}</span>
+                    <span className="ml-auto shrink-0 text-[11px] text-subtle">
+                      {p.dirtyFiles ? `${p.dirtyFiles} 改动 ` : ""}
+                      {p.ahead ? `↑${p.ahead} ` : ""}
+                      {p.behind ? `↓${p.behind}` : ""}
+                    </span>
+                  </li>
+                ))}
+                {projects.data?.length === 0 ? (
+                  <li className="text-[12.5px] text-subtle">在设置中配置扫描目录后自动发现</li>
+                ) : null}
+              </ul>
+            </Link>
+          </GlassSurface>
         </div>
       </div>
     </div>

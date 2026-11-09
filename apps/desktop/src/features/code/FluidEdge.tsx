@@ -97,7 +97,7 @@ export const FluidEdge = memo(function FluidEdge({
   return (
     <>
       <defs>
-        <linearGradient id={`flow-grad-${gradId}`} x1="0%" y1="0%" x2="100%" y2="0%">
+        <linearGradient id={`flow-grad-${gradId}`} x1="0%" y1="0%" x2="0%" y2="100%">
           <stop offset="0%" stopColor="var(--ad-border)" />
           <stop offset="100%" stopColor={live ? "var(--ad-brand)" : "var(--ad-border-strong)"} />
         </linearGradient>

@@ -74,7 +74,7 @@ const FlowCardView = memo(function FlowCardView({ data, selected }: NodeProps<Fl
     >
       <Handle
         type="target"
-        position={Position.Left}
+        position={Position.Top}
         className="!h-2.5 !w-2.5 !border-2 !border-surface !bg-subtle"
       />
       <div className="flex items-center gap-2 px-3 pt-2.5 pb-2">
@@ -108,7 +108,7 @@ const FlowCardView = memo(function FlowCardView({ data, selected }: NodeProps<Fl
       )}
       <Handle
         type="source"
-        position={Position.Right}
+        position={Position.Bottom}
         className="!h-2.5 !w-2.5 !border-2 !border-surface !bg-brand"
       />
     </div>

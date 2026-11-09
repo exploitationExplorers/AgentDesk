@@ -12,3 +12,6 @@ export { GlassSurface } from "./leibox/glass-surface";
 export { GlassTabMenu, GlassSelection } from "./leibox/glass-tab-menu";
 export { DeepAgentComposer } from "./leibox/deep-agent-composer";
 export { Glass } from "./leibox/glass/Glass";
+export { GlassFolder, type GlassFolderItem } from "./leibox/glass-folder";
+export { ShaderFlood, type ShaderFloodItem } from "./leibox/shader-flood/ShaderFlood";
+export { FluidRailTooltip } from "./leibox/fluid-tooltip";

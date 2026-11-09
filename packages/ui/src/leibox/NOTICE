@@ -26,4 +26,24 @@ Original author: David Haz / Canvas UI, https://canvasui.dev/docs/components/gla
 Copyright (c) 2026 David Haz. MIT + Commons Clause; complete terms in glass/LICENSE.
 GlassVanilla.ts, canvas-viewport.ts, html-in-canvas.ts and rect-cache.ts retain the upstream renderer/capture implementation. Local changes handle strict TypeScript checks, composite ancestor background colors before snapshot capture, refresh capture on theme changes, and expose renderer lifecycle state. The React wrapper keeps interactive DOM outside canvas, uses the upstream DOM snapshot fallback and disables rendering for coarse pointers/reduced motion or unavailable WebGL.
 
+Glass Folder
+Source: https://leibox.pantoria.cn/ai/packages/glass-folder/react.json
+Design reference: https://leibox.pantoria.cn/docs/animations/glass-folder
+Original engine SHA-256: 288405301cb4d255731560f8aaef56e970ebdd8e558c5eedcd919d9825ddf534
+Adaptation: folder hinge/fan/lift CSS variables and sheet layout are ported to a controlled React component with measured scale, project theme tokens and reduced motion. Demo sandbox (three fixed folders), procedural FBM art jobs, add/menu key chrome and shadow-DOM motion-runtime are omitted; sheets bind to app-owned project items.
+
+Shader Flood
+Source: https://leibox.pantoria.cn/ai/packages/shader-flood/react.json
+Design reference: https://leibox.pantoria.cn/docs/animations/shader-flood
+Original engine SHA-256: f5c0b53da7849ab91ca242ecadc26d593cbe23b26787d6950b925e56792a20cc
+Design reference: Ashish Gogula / Planes, https://x.com/Ashishgogula/status/2111150387227156670/video/1
+Lucide icons embedded in the package retain their ISC notice.
+Adaptation: full LeiBox React package (engine + motion-runtime) is shipped. Home layout injects a 2-column grid override and binds card clicks to app suggestion handlers; demo default English items are replaced via options.items.
+
+Fluid Tooltip
+Source: https://leibox.pantoria.cn/ai/packages/fluid-tooltip/react.json
+Design reference: https://leibox.pantoria.cn/docs/animations/fluid-tooltip
+Original engine SHA-256: 7d5d0f0e884922be9b14d444a44e5c9680c9f66eafb554335f686609dddbe229
+Adaptation: black capsule morph (Y travel, width expand, clipped label track, opacity) is ported to a controlled React rail hint. Demo sandbox (fixed six workspace entries, GSAP bundle, painting background, Inter subset, keyboard shortcut chips) is omitted; triggers bind via data-fluid-tip on app nav icons.
+
 These components are incorporated into the AgentDesk application. Attribution does not imply endorsement or a separate blanket license for LeiBox's catalog.

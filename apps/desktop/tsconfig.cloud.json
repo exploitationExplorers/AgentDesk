@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "src/cloud-main.tsx",
+    "src/features/mobile",
+    "src/lib/cloud-api.ts",
+    "vite.cloud.config.ts",
+    "playwright.cloud.config.ts",
+    "e2e-cloud"
+  ]
+}

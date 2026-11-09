@@ -10,6 +10,7 @@ import type {
   AgentStreamEvent,
   ArtifactKind,
   Approval,
+  Task,
   TaskStreamEvent,
   ToolCallRecord,
 } from "@agentdesk/shared";
@@ -148,6 +149,11 @@ export interface RealExecutorDeps {
   projectInstructions: ProjectInstructionService;
   autoApprove: AutoApprove;
   maskFactory: () => MaskStore | undefined;
+  cloudPolicy?: {
+    allowedTools: string[];
+    approvalCreated: (approval: Approval, task: Task) => void;
+    requiresPlan: (task: Task) => boolean;
+  };
 }
 
 /** 阶段 D 的真实 RunExecutor：真正调用 orchestrator，把结果写回会话消息和 run_events。 */
@@ -173,16 +179,23 @@ export function createOrchestratorExecutor(deps: RealExecutorDeps): RunExecutor 
       // 有副作用的操作——把可用工具收紧到"只读工具 + tasks.submit_plan"，不传给模型
       // agents.delegate 等有副作用能力。真正"未经批准不能执行"的硬校验在 TaskService.createRun
       // 里（服务层），这里只是约束模型这一轮能调用什么。
-      const isPlanGate = task.requiresPlanApproval && run.trigger === "create";
-      const allowedTools = isPlanGate
-        ? [
-            ...registry
-              .list()
-              .filter((t) => t.risk === "safe")
-              .map((t) => t.name),
-            "tasks.submit_plan",
-          ]
-        : undefined;
+      const isPlanGate =
+        deps.cloudPolicy?.requiresPlan(task) ??
+        (task.requiresPlanApproval && run.trigger === "create");
+      const allowedTools = deps.cloudPolicy
+        ? deps.cloudPolicy.allowedTools.filter(
+            (name) =>
+              !isPlanGate || name === "tasks.submit_plan" || registry.get(name)?.risk === "safe",
+          )
+        : isPlanGate
+          ? [
+              ...registry
+                .list()
+                .filter((t) => t.risk === "safe")
+                .map((t) => t.name),
+              "tasks.submit_plan",
+            ]
+          : undefined;
       const planGateHint = isPlanGate
         ? "本次只需要产出方案并调用 tasks.submit_plan，不要执行任何有副作用的操作。"
         : undefined;
@@ -226,7 +239,8 @@ export function createOrchestratorExecutor(deps: RealExecutorDeps): RunExecutor 
         approvals.request(
           { kind: "tool", ...request, conversationId: task.conversationId ?? undefined },
           signal,
-          (approval) =>
+          (approval) => {
+            deps.cloudPolicy?.approvalCreated(approval, task);
             emit({
               type: "approval_required",
               approvalId: approval.id,
@@ -235,7 +249,8 @@ export function createOrchestratorExecutor(deps: RealExecutorDeps): RunExecutor 
               risk: approval.risk,
               payload: approval.payload,
               reason: approval.reason,
-            }),
+            });
+          },
         );
       const requestAnswer = createRequestAnswer(
         approvals,
@@ -367,7 +382,8 @@ export function createOrchestratorExecutor(deps: RealExecutorDeps): RunExecutor 
                   payload: { taskId: task.id, artifactId: plan.id, version: plan.version },
                 },
                 signal,
-                (approval) =>
+                (approval) => {
+                  deps.cloudPolicy?.approvalCreated(approval, task);
                   emit({
                     type: "approval_required",
                     approvalId: approval.id,
@@ -376,7 +392,8 @@ export function createOrchestratorExecutor(deps: RealExecutorDeps): RunExecutor 
                     risk: approval.risk,
                     payload: approval.payload,
                     reason: approval.reason,
-                  }),
+                  });
+                },
               )
               .then((approved) => {
                 try {
@@ -392,6 +409,7 @@ export function createOrchestratorExecutor(deps: RealExecutorDeps): RunExecutor 
               nextTaskStatus: "awaiting_plan_approval",
             };
           }
+          if (deps.cloudPolicy) throw new Error("The remote planning run did not submit a plan");
           console.error(
             `[task-executor] 方案关口：模型未调用 tasks.submit_plan，已降级为直接执行（taskId=${task.id} runId=${run.id}）`,
           );
@@ -404,13 +422,14 @@ export function createOrchestratorExecutor(deps: RealExecutorDeps): RunExecutor 
         // 永不过期的 pending 审批，污染"取第一条 pending 审批"这类既有调用方的假设。没有主动创建
         // 的任务仍可以正常走 POST /tasks/:id/review——那里有懒创建兜底，同样会落一条真实记录。
         if (task.requiresPlanApproval) {
-          approvals.create({
+          const review = approvals.create({
             kind: "review",
             title: `验收：${task.title}`,
             detail: result.text.slice(0, 2000),
             risk: "confirm",
             payload: { taskId: task.id, runId: run.id },
-          });
+          }).approval;
+          deps.cloudPolicy?.approvalCreated(review, task);
         }
         return { status: "succeeded", resultText: result.text, toolCalls: result.toolCalls };
       } catch (error) {

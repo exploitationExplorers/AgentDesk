@@ -1,0 +1,52 @@
+name: agentdesk-cloud
+services:
+  gateway:
+    image: agentdesk-gateway:${AGENTDESK_RELEASE:?Set an immutable release tag}
+    init: true
+    restart: unless-stopped
+    env_file: ["${DEPLOY_ROOT:?}/config/gateway.env"]
+    ports: ["127.0.0.1:17892:3000"]
+    volumes:
+      - ${DEPLOY_ROOT}/data/gateway:/data
+      - ${DEPLOY_ROOT}/secrets/gateway:/run/secrets/gateway:ro
+      - ${DEPLOY_ROOT}/secrets/shared:/run/secrets/shared:ro
+    read_only: true
+    tmpfs: ["/tmp:size=64m,mode=1777"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 512m
+    cpus: 0.5
+    pids_limit: 256
+    stop_grace_period: 45s
+    logging: { driver: json-file, options: { max-size: "10m", max-file: "3" } }
+    networks: [agentdesk]
+    depends_on:
+      runner: { condition: service_healthy }
+  runner:
+    image: agentdesk-runner:${AGENTDESK_RELEASE:?Set an immutable release tag}
+    init: true
+    restart: unless-stopped
+    env_file: ["${DEPLOY_ROOT:?}/config/runner.env"]
+    volumes:
+      - ${DEPLOY_ROOT}/data/runner:/data
+      - ${DEPLOY_ROOT}/workspaces:/workspaces
+      - ${DEPLOY_ROOT}/home/runner:/home/agentdesk
+      - ${DEPLOY_ROOT}/secrets/runner:/run/secrets/runner:ro
+      - ${DEPLOY_ROOT}/secrets/shared:/run/secrets/shared:ro
+    read_only: true
+    tmpfs: ["/tmp:size=512m,mode=1777"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 2g
+    cpus: 1.5
+    pids_limit: 512
+    stop_grace_period: 60s
+    logging: { driver: json-file, options: { max-size: "10m", max-file: "3" } }
+    networks: [agentdesk]
+networks:
+  agentdesk:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: ${AGENTDESK_SUBNET:-172.30.98.0/24}
+          gateway: ${AGENTDESK_BRIDGE:-172.30.98.1}

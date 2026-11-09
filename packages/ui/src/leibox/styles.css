@@ -1,4 +1,6 @@
 @import "./tactile.css";
+@import "./glass-folder.css";
+@import "./fluid-tooltip.css";
 
 :root {
   --lb-panel-start: rgba(255, 255, 255, 0.7);

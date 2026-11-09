@@ -32,6 +32,7 @@ import {
   useReducedMotion,
   GlassSurface,
   GlassSelection,
+  FluidRailTooltip,
   Button,
 } from "@agentdesk/ui";
 import { useGlobalEvents } from "../hooks/useGlobalEvents";
@@ -75,11 +76,12 @@ function NavItem({
 }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const active = to === "/" ? pathname === "/" : pathname.startsWith(to);
-  const content = (
+  return (
     <Link
       to={to}
       aria-label={collapsed ? label : undefined}
       aria-current={active ? "page" : undefined}
+      data-fluid-tip={collapsed ? label : undefined}
       className={cn(
         "relative flex h-9 items-center gap-3 rounded-xl px-2.5 text-[13px] font-medium transition-colors",
         active ? "text-brand" : "text-muted hover:bg-surface-2/70 hover:text-fg",
@@ -107,7 +109,6 @@ function NavItem({
       ) : null}
     </Link>
   );
-  return collapsed ? <Tooltip content={label}>{content}</Tooltip> : content;
 }
 
 export function AppShell() {
@@ -197,7 +198,7 @@ export function AppShell() {
         <GlassSurface asChild>
           <aside
             className={cn(
-              "lb-navigation fixed inset-y-2 left-2 z-50 shrink-0 flex-col px-2.5 py-3 lg:static lg:z-auto lg:flex lg:transition-[width]",
+              "lb-navigation fixed inset-y-2 left-2 z-50 shrink-0 flex-col overflow-visible px-2.5 py-3 lg:relative lg:z-20 lg:flex lg:transition-[width]",
               mobileNavOpen ? "flex w-[240px]" : "hidden",
               collapsed || routeSection === "home" ? "lg:w-[60px]" : "lg:w-[216px]",
             )}
@@ -265,8 +266,9 @@ export function AppShell() {
               </div>
             </div>
 
-            <nav className="flex flex-col gap-0.5" onClick={() => setMobileNavOpen(false)}>
+            <nav className="relative flex flex-col gap-0.5" onClick={() => setMobileNavOpen(false)}>
               <GlassSelection selector="[aria-current=page]" />
+              {navCollapsed ? <FluidRailTooltip /> : null}
               {NAV.map((n) => (
                 <NavItem
                   key={n.to}
@@ -277,14 +279,16 @@ export function AppShell() {
               ))}
             </nav>
 
-            <div className="lb-navigation-footer mt-auto flex flex-col gap-0.5">
+            <div className="lb-navigation-footer relative mt-auto flex flex-col gap-0.5">
               <GlassSelection selector="[aria-current=page]" />
+              {navCollapsed ? <FluidRailTooltip /> : null}
               {pendingConversation ? (
                 <Link
                   to="/"
                   search={{ c: pendingConversation.conversationId }}
                   title="查看等待回复的对话"
                   aria-label="查看等待回复的对话"
+                  data-fluid-tip={navCollapsed ? "等待回复" : undefined}
                   className={cn(
                     "mb-2 flex items-center gap-2 rounded-xl bg-surface-2 px-2.5 py-2 text-xs text-brand",
                     navCollapsed && "justify-center px-0",
@@ -300,39 +304,44 @@ export function AppShell() {
                     "mb-2 flex items-center gap-2 rounded-xl bg-warning/10 px-2.5 py-2 text-[12px] text-warning",
                     navCollapsed && "justify-center px-0",
                   )}
+                  data-fluid-tip={navCollapsed ? `${pendingActions} 待审批` : undefined}
                 >
                   <ShieldAlert className="h-4 w-4 shrink-0" />
                   {navCollapsed ? null : <span>{pendingActions} 个操作待审批</span>}
                 </div>
               ) : null}
               <NavItem to="/settings" label="设置" icon={Settings} collapsed={navCollapsed} />
-              <Tooltip
-                content={
-                  health.data
-                    ? `sidecar 运行中 · ${health.data.providers} 个模型 Provider`
-                    : "正在连接 sidecar…"
-                }
-              >
-                <span
-                  className={cn(
-                    "mt-1 flex h-8 items-center gap-2 px-2.5 text-[11.5px] text-subtle",
-                    navCollapsed && "justify-center px-0",
-                  )}
-                >
-                  <StatusDot
-                    status={health.data ? "success" : health.isError ? "error" : "running"}
-                  />
-                  {navCollapsed ? null : health.data ? `v${health.data.version}` : "连接中"}
-                </span>
-              </Tooltip>
+              {(() => {
+                const healthLabel = health.data
+                  ? `sidecar 运行中 · ${health.data.providers} 个模型 Provider`
+                  : "正在连接 sidecar…";
+                const healthNode = (
+                  <span
+                    className={cn(
+                      "mt-1 flex h-8 items-center gap-2 px-2.5 text-[11.5px] text-subtle",
+                      navCollapsed && "justify-center px-0",
+                    )}
+                    data-fluid-tip={navCollapsed ? healthLabel : undefined}
+                  >
+                    <StatusDot
+                      status={health.data ? "success" : health.isError ? "error" : "running"}
+                    />
+                    {navCollapsed ? null : health.data ? `v${health.data.version}` : "连接中"}
+                  </span>
+                );
+                return navCollapsed ? (
+                  healthNode
+                ) : (
+                  <Tooltip content={healthLabel}>{healthNode}</Tooltip>
+                );
+              })()}
             </div>
           </aside>
         </GlassSurface>
 
         <main className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
-          {/* Outlet 始终只挂载一份；退出动画保留旧 Outlet 会让它也读取新路由并重复渲染。 */}
+          {/* 保持 Outlet 的父节点稳定；路由 key 会在新匹配提交前重新挂载即将离开的页面。 */}
           <motion.div
-            key={routeSection}
             variants={reduced ? undefined : crossfadeVariants}
             initial="hidden"
             animate="visible"

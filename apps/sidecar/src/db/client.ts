@@ -2,6 +2,7 @@ import Database from "better-sqlite3";
 import { drizzle, type BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { join } from "node:path";
 import * as schema from "./schema";
+import { migrateRemoteDatabase } from "./remote-migrations";
 
 export type Db = BetterSQLite3Database<typeof schema>;
 
@@ -13,13 +14,19 @@ export interface DbHandle {
 
 export function openDatabase(dataDir: string | ":memory:"): DbHandle {
   const raw = new Database(dataDir === ":memory:" ? ":memory:" : join(dataDir, "agentdesk.db"));
-  raw.pragma("journal_mode = WAL");
-  raw.pragma("foreign_keys = ON");
-  raw.exec(schema.BOOTSTRAP_SQL);
-  const runColumns = raw.prepare("PRAGMA table_info(runs)").all() as Array<{ name: string }>;
-  if (!runColumns.some((column) => column.name === "execution_owner"))
-    raw.exec("ALTER TABLE runs ADD COLUMN execution_owner TEXT NOT NULL DEFAULT 'local'");
-  return { db: drizzle(raw, { schema }), raw, close: () => raw.close() };
+  try {
+    raw.pragma("journal_mode = WAL");
+    raw.pragma("foreign_keys = ON");
+    raw.exec(schema.BOOTSTRAP_SQL);
+    const runColumns = raw.prepare("PRAGMA table_info(runs)").all() as Array<{ name: string }>;
+    if (!runColumns.some((column) => column.name === "execution_owner"))
+      raw.exec("ALTER TABLE runs ADD COLUMN execution_owner TEXT NOT NULL DEFAULT 'local'");
+    migrateRemoteDatabase(raw);
+    return { db: drizzle(raw, { schema }), raw, close: () => raw.close() };
+  } catch (error) {
+    raw.close();
+    throw error;
+  }
 }
 
 /** 只读打开外部 sqlite 文件（用于导入 CC Switch 配置）。 */

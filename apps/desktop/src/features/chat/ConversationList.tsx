@@ -85,26 +85,24 @@ export function ConversationList({ activeId }: { activeId?: string }) {
     },
   });
   const clearAll = useMutation({
-    mutationFn: async (ids: string[]) => {
-      const failures: string[] = [];
-      for (const id of ids) {
-        try {
-          await conversationsApi.remove(id);
-        } catch {
-          failures.push(id);
-        }
-      }
-      return { cleared: ids.length - failures.length, failed: failures.length };
-    },
-    onSuccess: async (result, ids) => {
+    mutationFn: (ids: string[]) => conversationsApi.clear(ids),
+    onSuccess: async (result) => {
       setConfirmClear(false);
-      if (activeId && ids.includes(activeId)) void navigate({ to: "/", search: {} });
+      const deleted = new Set(result.deleted);
+      queryClient.setQueriesData<Conversation[]>({ queryKey: ["conversations"] }, (current) =>
+        current?.filter((item) => !deleted.has(item.id)),
+      );
+      if (activeId && deleted.has(activeId)) void navigate({ to: "/", search: {} });
       await refresh();
+      if (!result.deleted.length && result.skipped.length) {
+        toast(result.skipped[0]?.reason || "清空失败", { tone: "danger" });
+        return;
+      }
       toast(
-        result.failed
-          ? `已清空 ${result.cleared} 个会话，${result.failed} 个失败`
-          : `已清空 ${result.cleared} 个会话`,
-        { tone: result.failed ? "warning" : "success" },
+        result.skipped.length
+          ? `已清空 ${result.deleted.length} 个会话，${result.skipped.length} 个未删除：${result.skipped[0]?.reason ?? ""}`
+          : `已清空 ${result.deleted.length} 个会话`,
+        { tone: result.skipped.length ? "warning" : "success" },
       );
     },
     onError: (error: Error) => toast(error.message || "清空失败", { tone: "danger" }),

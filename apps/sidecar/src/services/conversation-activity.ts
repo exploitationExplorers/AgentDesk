@@ -12,3 +12,8 @@ export function acquireConversation(id: string, activity: "running" | "compactin
   active.set(id, activity);
   return () => active.delete(id);
 }
+
+/** 删除会话前强制释放互斥；进行中的 send/compact 应先 abort 再调用。 */
+export function releaseConversation(id: string): void {
+  active.delete(id);
+}
