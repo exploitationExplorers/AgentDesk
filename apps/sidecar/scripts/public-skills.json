@@ -1,1 +1,8 @@
-["bt-deploy", "project-triage", "reach-research", "tech-explain", "repo-walkthrough"]
+[
+  "bt-deploy",
+  "project-triage",
+  "reach-research",
+  "tech-explain",
+  "repo-walkthrough",
+  "qa-regression"
+]

@@ -18,6 +18,7 @@ export * from "./contracts/disk";
 export * from "./contracts/task";
 export * from "./contracts/code";
 export * from "./contracts/learning";
+export * from "./contracts/interview";
 export * from "./contracts/reach";
 export * from "./contracts/autoloop";
 export * from "./task-session";

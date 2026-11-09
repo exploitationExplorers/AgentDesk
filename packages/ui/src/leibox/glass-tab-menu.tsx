@@ -11,6 +11,7 @@ export function GlassSelection({ selector, className }: { selector: string; clas
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
     const states = Array.from({ length: 4 }, () => ({ p: 0, v: 0, target: 0 }));
     let frame = 0;
+    let measureFrame = 0;
     let last = 0;
     let initialized = false;
     const draw = () => {
@@ -69,6 +70,7 @@ export function GlassSelection({ selector, className }: { selector: string; clas
         box.width,
         box.height,
       ];
+      const changed = states.some((state, index) => Math.abs(state.target - next[index]!) > 0.05);
       states.forEach((state, index) => {
         state.target = next[index]!;
       });
@@ -76,17 +78,46 @@ export function GlassSelection({ selector, className }: { selector: string; clas
       if (!initialized || media.matches || document.hidden) {
         initialized = true;
         settle();
-      } else if (!frame) frame = requestAnimationFrame(tick);
+      } else if (changed && !frame) frame = requestAnimationFrame(tick);
     };
-    const resize = new ResizeObserver(measure);
+    const scheduleMeasure = () => {
+      if (!measureFrame) {
+        measureFrame = requestAnimationFrame(() => {
+          measureFrame = 0;
+          measure();
+        });
+      }
+    };
+    const resize = new ResizeObserver(scheduleMeasure);
+    const observed = new Set<Element>();
     const observeItems = () => {
-      resize.disconnect();
-      resize.observe(root);
-      root.querySelectorAll("button,a,[role=tab]").forEach((item) => resize.observe(item));
+      const items = new Set<Element>([root, ...root.querySelectorAll("button,a,[role=tab]")]);
+      for (const item of observed) {
+        if (!items.has(item)) {
+          resize.unobserve(item);
+          observed.delete(item);
+        }
+      }
+      for (const item of items) {
+        if (!observed.has(item)) {
+          resize.observe(item);
+          observed.add(item);
+        }
+      }
     };
     const observer = new MutationObserver((records) => {
-      if (records.some((record) => record.type === "childList")) observeItems();
-      measure();
+      // 提示气泡的标签与选中块本身不改变导航几何尺寸。
+      const relevant = records.filter((record) => {
+        const target = record.target;
+        return (
+          target instanceof Element &&
+          !indicator.contains(target) &&
+          !target.closest('[data-leibox="fluid-tooltip"]')
+        );
+      });
+      if (!relevant.length) return;
+      if (relevant.some((record) => record.type === "childList")) observeItems();
+      scheduleMeasure();
     });
     observer.observe(root, {
       subtree: true,
@@ -100,6 +131,7 @@ export function GlassSelection({ selector, className }: { selector: string; clas
     document.addEventListener("visibilitychange", measure);
     return () => {
       cancelAnimationFrame(frame);
+      cancelAnimationFrame(measureFrame);
       observer.disconnect();
       resize.disconnect();
       media.removeEventListener("change", measure);

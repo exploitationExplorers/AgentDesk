@@ -61,6 +61,8 @@ export function CommandPalette() {
     return () => window.removeEventListener("keydown", onKey);
   }, [setOpen]);
 
+  if (!open) return null;
+
   const go = (fn: () => void) => {
     setOpen(false);
     fn();

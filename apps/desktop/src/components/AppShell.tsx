@@ -198,7 +198,7 @@ export function AppShell() {
         <GlassSurface asChild>
           <aside
             className={cn(
-              "lb-navigation fixed inset-y-2 left-2 z-50 shrink-0 flex-col overflow-visible px-2.5 py-3 lg:relative lg:z-20 lg:flex lg:transition-[width]",
+              "lb-navigation fixed inset-y-2 left-2 z-50 shrink-0 flex-col overflow-visible px-2.5 py-3 lg:relative lg:z-20 lg:flex",
               mobileNavOpen ? "flex w-[240px]" : "hidden",
               collapsed || routeSection === "home" ? "lg:w-[60px]" : "lg:w-[216px]",
             )}

@@ -1,0 +1,11 @@
+# 适用于不发布宿主端口的部署；宿主 Nginx 直接访问此固定容器地址。
+services:
+  gateway:
+    ports: !reset []
+    networks:
+      agentdesk:
+        ipv4_address: ${AGENTDESK_GATEWAY_IP:-172.30.98.10}
+networks:
+  agentdesk:
+    driver_opts:
+      com.docker.network.bridge.name: ad-cloud

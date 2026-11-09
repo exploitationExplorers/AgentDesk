@@ -33,7 +33,10 @@ def restore(args):
         raise ValueError("run as root on Linux to restore dedicated container ownership")
     expected = Path(str(archive) + ".sha256").read_text().split()[0]
     with archive.open("rb") as stream:
-        if hashlib.file_digest(stream, "sha256").hexdigest() != expected:
+        digest = hashlib.sha256()
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+        if digest.hexdigest() != expected:
             raise ValueError("encrypted backup checksum does not match")
     os.umask(0o077)
     with tempfile.TemporaryDirectory(prefix="agentdesk-restore-", dir=root.parent) as temporary:

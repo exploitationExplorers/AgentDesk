@@ -15,7 +15,17 @@ docker info --format 'Docker platform: {{.OSType}}/{{.Architecture}}; CPUs: {{.N
 docker_version=$(docker version --format '{{.Server.Version}}')
 docker_major=${docker_version%%.*}
 case "$docker_major" in ''|*[!0-9]*) fail 'Cannot determine Docker server major version' ;; esac
-[ "$docker_major" -ge 28 ] || fail 'Docker >= 28 is required for the localhost port publishing fix'
+case "${1:-}" in
+  '')
+    [ "$docker_major" -ge 28 ] || fail 'Docker >= 28 is required for the localhost port publishing fix; use a verified bridge deployment on Docker 26/27'
+    ;;
+  --bridge)
+    [ "$#" -eq 2 ] || fail 'Usage: preflight.sh --bridge DEPLOY_DIRECTORY'
+    [ "$docker_major" -ge 26 ] || fail 'Bridge deployment requires Docker >= 26 and Compose >= 2.24.4'
+    python3 "$(dirname "$0")/verify-bridge.py" "$2" || fail 'Bridge deployment configuration is unsafe or invalid'
+    ;;
+  *) fail 'Usage: preflight.sh [--bridge DEPLOY_DIRECTORY]' ;;
+esac
 memory_kb=$(awk '/MemTotal:/ {print $2}' /proc/meminfo)
 [ "$memory_kb" -ge 3500000 ] || warn 'Less than approximately 4 GiB total memory; verify existing website load before deployment'
 inspection_path=${AGENTDESK_PREFLIGHT_PATH:-/srv}

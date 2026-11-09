@@ -97,6 +97,47 @@ describe("public content transport", () => {
     expect(mocks.fetch).toHaveBeenCalledTimes(1);
   });
 
+  it("allows an explicit longer guest redirect flow with per-response cookies", async () => {
+    const paths: string[] = [];
+    const cookies: Array<string | null> = [];
+    const jar = { get: vi.fn(() => ""), set: vi.fn() };
+    jar.set.mockImplementation(() => jar.get.mockReturnValue("guest=temporary"));
+    mocks.fetch.mockImplementation(async (url, options) => {
+      paths.push(new URL(url).pathname);
+      cookies.push(options.headers.get("cookie"));
+      return paths.length <= 5
+        ? new Response(null, {
+            status: 302,
+            headers: { location: `/step${paths.length}`, "set-cookie": "guest=temporary; Path=/" },
+          })
+        : new Response("document");
+    });
+    const response = await fetchPublicSource("https://example.com/start", {
+      maxRedirects: 10,
+      cookieJar: jar,
+    });
+    expect(response.text).toBe("document");
+    expect(paths).toHaveLength(6);
+    expect(cookies).toEqual([null, ...Array<string>(5).fill("guest=temporary")]);
+    expect(jar.set).toHaveBeenCalledWith(new URL("https://example.com/start"), [
+      "guest=temporary; Path=/",
+    ]);
+    expect(mocks.lookup).toHaveBeenCalledTimes(6);
+  });
+
+  it("keeps the default redirect budget and bounds an opt-in flow", async () => {
+    mocks.fetch.mockImplementation(
+      async () => new Response(null, { status: 302, headers: { location: "/loop" } }),
+    );
+    await expect(fetchPublicSource("https://example.com")).rejects.toThrow("重定向过多");
+    expect(mocks.fetch).toHaveBeenCalledTimes(4);
+    mocks.fetch.mockClear();
+    await expect(fetchPublicSource("https://example.com", { maxRedirects: 100 })).rejects.toThrow(
+      "重定向过多",
+    );
+    expect(mocks.fetch).toHaveBeenCalledTimes(11);
+  });
+
   it("bounds response bytes, not only JavaScript characters", async () => {
     mocks.fetch.mockResolvedValueOnce(new Response("中文"));
     await expect(fetchPublicSource("https://example.com", { maxBytes: 4 })).rejects.toThrow(

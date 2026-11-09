@@ -9,9 +9,14 @@ test ! -e "$output"
 command -v age >/dev/null
 command -v docker >/dev/null
 umask 077
-compose=(docker compose --project-directory "$root/deploy" -f "$root/deploy/compose.yaml")
+cd "$root/deploy"
+compose=(docker compose)
 # 同时停写两个 SQLite 数据库、工作区和 Codex home，连同 WAL/SHM 一起备份。
-mapfile -t running < <("${compose[@]}" ps --services --status running)
+running_services=$("${compose[@]}" ps --services --status running)
+running=()
+if [[ -n "$running_services" ]]; then
+  mapfile -t running <<< "$running_services"
+fi
 if ((${#running[@]})); then
   trap '"${compose[@]}" start "${running[@]}" >/dev/null' EXIT
   "${compose[@]}" stop "${running[@]}"

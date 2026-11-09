@@ -36,9 +36,14 @@ with tempfile.TemporaryDirectory(prefix="agentdesk-backup-test-") as temporary:
     fake.mkdir()
     log = directory / "docker.log"
     docker = fake / "docker"
-    docker.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$BACKUP_TEST_LOG"\ncase "$*" in *"ps --services --status running"*) printf "gateway\\n";; esac\n')
+    docker.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$BACKUP_TEST_LOG"\ncase "$*" in *"ps --services --status running"*) test "${BACKUP_TEST_DOCKER_FAIL:-}" != 1 || exit 42; printf "gateway\\n";; esac\n')
     docker.chmod(0o700)
     env = {**os.environ, "PATH": str(fake) + ":" + os.environ["PATH"], "BACKUP_TEST_LOG": str(log)}
+    failed_backup = directory / "failed.age"
+    failed = subprocess.run(["bash", str(Path(__file__).with_name("backup.sh")), str(root), recipient, str(failed_backup)],
+                            env={**env, "BACKUP_TEST_DOCKER_FAIL": "1"}, capture_output=True)
+    assert failed.returncode != 0
+    assert not failed_backup.exists(), "backup proceeded without confirming running services"
     backup = directory / "backup.age"
     subprocess.run(["bash", str(Path(__file__).with_name("backup.sh")), str(root), recipient, str(backup)], env=env, check=True)
     lines = log.read_text().splitlines()

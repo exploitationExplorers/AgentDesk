@@ -25,6 +25,7 @@ function writeSkill(base: string, directory: string, name = directory): void {
 for (const name of [
   "bt-deploy",
   "project-triage",
+  "qa-regression",
   "reach-research",
   "repo-walkthrough",
   "tech-explain",
@@ -142,6 +143,7 @@ it("公开构建只复制公开技能，不复制私有包、环境文件和解�
   expect(readdirSync(destination).sort()).toEqual([
     "bt-deploy",
     "project-triage",
+    "qa-regression",
     "reach-research",
     "repo-walkthrough",
     "tech-explain",

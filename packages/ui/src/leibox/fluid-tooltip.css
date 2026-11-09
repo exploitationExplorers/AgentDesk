@@ -1,14 +1,20 @@
 /* LeiBox fluid-tooltip: controlled rail hint for icon sidebars. */
 .ft-tip {
-  --ft-y: 0px;
-  --ft-w: 120px;
-  --ft-o: 0;
   position: absolute;
   left: calc(100% + 10px);
   top: 0;
   z-index: 40;
   height: 36px;
-  width: var(--ft-w);
+  width: 220px;
+  pointer-events: none;
+  opacity: 0;
+  will-change: transform, opacity;
+}
+.ft-tip-surface {
+  position: absolute;
+  inset: 0;
+  transform-origin: left center;
+  will-change: transform;
   overflow: hidden;
   border-radius: 999px;
   background: #1e1e23;
@@ -16,24 +22,24 @@
   box-shadow:
     0 8px 28px -10px rgba(20, 18, 32, 0.45),
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  pointer-events: none;
-  opacity: var(--ft-o);
-  transform: translate3d(0, var(--ft-y), 0);
-  will-change: transform, width, opacity;
 }
-.dark .ft-tip,
-:host([data-theme="dark"]) .ft-tip {
+.dark .ft-tip-surface,
+:host([data-theme="dark"]) .ft-tip-surface {
   background: #121218;
   box-shadow:
     0 10px 32px -12px rgba(0, 0, 0, 0.55),
     inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+.ft-tip-viewport {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
 }
 
 .ft-tip-track {
   position: absolute;
   left: 14px;
   top: 0;
-  transform: translate3d(0, calc(var(--ft-y) * -1), 0);
   will-change: transform;
 }
 

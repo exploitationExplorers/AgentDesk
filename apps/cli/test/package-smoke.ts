@@ -139,6 +139,7 @@ try {
     "bt-deploy",
     "project-triage",
     "reach-research",
+    "repo-walkthrough",
     "tech-explain",
   ]);
   const reach = await (

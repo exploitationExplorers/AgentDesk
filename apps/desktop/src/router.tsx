@@ -14,6 +14,7 @@ import { FeedPage } from "./features/feed/FeedPage";
 import { CareerMapPage } from "./features/learning/CareerMapPage";
 import { LearningPage } from "./features/learning/LearningPage";
 import { LibraryPage } from "./features/learning/LibraryPage";
+import { InterviewPage } from "./features/learning/InterviewPage";
 import { ReviewPage } from "./features/learning/ReviewPage";
 import { ProjectsPage } from "./features/projects/ProjectsPage";
 import { SettingsPage } from "./features/settings/SettingsPage";
@@ -80,6 +81,11 @@ const learningReviewRoute = createRoute({
   path: "/learning/review",
   component: ReviewPage,
 });
+const learningInterviewRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/learning/interview",
+  component: InterviewPage,
+});
 const workflowsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/workflows",
@@ -118,6 +124,7 @@ const routeTree = rootRoute.addChildren([
   learningCareerRoute,
   learningLibraryRoute,
   learningReviewRoute,
+  learningInterviewRoute,
   workflowsRoute,
   automationsRoute,
   workflowEditorRoute,

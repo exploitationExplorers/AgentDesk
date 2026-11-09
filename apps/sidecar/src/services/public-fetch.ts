@@ -84,6 +84,11 @@ export interface PublicFetchOptions {
   body?: string;
   timeoutMs?: number;
   maxBytes?: number;
+  maxRedirects?: number;
+  cookieJar?: {
+    get(url: URL): string;
+    set(url: URL, cookies: string[]): void;
+  };
   onRequest?: (url: URL) => void;
 }
 
@@ -97,7 +102,8 @@ export async function fetchPublicSource(input: string, options: PublicFetchOptio
     AbortSignal.timeout(options.timeoutMs ?? 25_000),
     ...(options.signal ? [options.signal] : []),
   ]);
-  for (let redirects = 0; redirects <= 3; redirects++) {
+  const maxRedirects = Math.min(10, Math.max(0, options.maxRedirects ?? 3));
+  for (let redirects = 0; redirects <= maxRedirects; redirects++) {
     const { addresses } = await resolvePublicSource(url.href, signal);
     const first = addresses[0]!;
     const dispatcher = new Agent({
@@ -111,6 +117,11 @@ export async function fetchPublicSource(input: string, options: PublicFetchOptio
     try {
       signal.throwIfAborted();
       options.onRequest?.(url);
+      if (options.cookieJar) {
+        const cookie = options.cookieJar.get(url);
+        if (cookie) headers.set("cookie", cookie);
+        else headers.delete("cookie");
+      }
       const response = await fetch(url, {
         dispatcher,
         redirect: "manual",
@@ -119,10 +130,11 @@ export async function fetchPublicSource(input: string, options: PublicFetchOptio
         body,
         headers,
       });
+      options.cookieJar?.set(url, response.headers.getSetCookie());
       if ([301, 302, 303, 307, 308].includes(response.status)) {
         const location = response.headers.get("location");
         await response.body?.cancel();
-        if (!location || redirects === 3) throw new Error("重定向过多或缺少目标地址");
+        if (!location || redirects === maxRedirects) throw new Error("重定向过多或缺少目标地址");
         const next = publicSourceUrl(new URL(location, url).href);
         if (url.protocol === "https:" && next.protocol !== "https:") {
           throw new AppError(ErrorCode.BadRequest, "拒绝降级到 HTTP 的重定向");

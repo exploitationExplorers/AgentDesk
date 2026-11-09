@@ -58,6 +58,18 @@ sudo docker compose ps
 
 随后在手机完成邮箱登录、模型配置／主动测试、项目任务与审批、断线回放、选定文件 commit、单独 push、电脑配对／撤销及取回。API fixtures 和单元测试不能代替真实 SMTP、模型与手机验收。Codex 只有在执行器状态显示可用并完成真实验证后才算交付。
 
+上线时把容器健康状态和域名烟测接入现有宝塔计划任务／监控告警，并配置每日加密备份与异地副本。`restart: unless-stopped` 会恢复退出的进程，不会自动重启仅被标为 `unhealthy` 的容器；收到告警后先查日志、磁盘和活动任务，再决定重启。首次部署应验证告警能送达，不能把配置了 healthcheck 当作已经配置了自动恢复。
+
+## 在 Docker 26 / 27 上使用独立桥接网络
+
+默认部署仍要求 Docker 28 或更新版本。必须复用旧 Docker 宿主时，可在初始化命令中添加 `--network-mode bridge`：生成的 `.env` 会同时加载 `compose.yaml` 与 `compose.bridge.yaml`，彻底移除宿主端口映射，并将 Nginx 上游改为容器固定地址 `172.30.98.10:3000`。要求 Compose 至少 2.24.4，以支持 `!reset`；不要通过改低版本检查来继续使用旧的 localhost 端口发布方式。
+
+初始化后运行 `sh preflight.sh --bridge /srv/agentdesk/deploy`。该命令校验实际合并后的 Compose 配置，拒绝任何发布端口、宿主网络、特权模式、外部网络或不安全的桥接驱动配置。容器启动后还须检查宿主转发规则、实际无端口发布、Nginx 连通性及外部不可直连，并在实际宿主验证 Node.js、SQLite、Codex 与登录链路。此方式不代表 CentOS 7 恢复官方支持；它仅解决旧 Docker 的端口发布限制。
+
+默认桥接网段必须与现有业务网络不重叠。资源紧张时使用额外 Compose 覆盖文件设置服务内存和 CPU 上限，将其追加到 `COMPOSE_FILE`，并保留原有两个文件。备份与恢复需要一起保留这些部署文件。
+
+`bridge-firewall.sh /srv/agentdesk/deploy` 为固定接口 `ad-cloud` 添加定向的 `DOCKER-USER` 规则，拒绝从其他接口进入 AgentDesk 网段的新转发连接，保留宿主 Nginx 的访问和容器出站连接的回包。应在启动容器前应用，并通过系统服务保证 Docker 或防火墙重启后重新应用。实际验证应包括宿主访问成功、其他网络直连失败以及规则计数增加。运行 Compose 命令时应先进入部署目录，以确保当前版本正确加载 `.env` 中的 `COMPOSE_FILE`。
+
 ## 手机初始化项目与执行器
 
 手机“添加项目”接受 GitHub 或 Gitee 的 HTTPS 仓库地址。在“私有仓库访问凭据”填写用户名和仅用于该仓库的 token，保存后输入框清空；服务端将 token 加密存储，并通过 Git 子进程环境传递认证头，仓库 URL 和进程参数不含 token。填写 Git 提交姓名、邮箱并主动导入后，项目才出现在列表中。读取测试只证明可读取，推送权限仍由后续单独审批的真实 push 验证。

@@ -32,6 +32,7 @@ import { FeedService } from "./services/feed";
 import { ReachService } from "./services/reach";
 import { LearningService } from "./services/learning";
 import { LearningLibraryService } from "./services/learning-library";
+import { InterviewService } from "./services/interview";
 import { MemoryService } from "./services/memory";
 import { ProjectService } from "./services/projects";
 import { ProjectInstructionService } from "./services/project-instructions";
@@ -70,6 +71,7 @@ export interface Container {
   reach: ReachService;
   learning: LearningService;
   library: LearningLibraryService;
+  interview: InterviewService;
   memory: MemoryService;
   disk: DiskService;
   deploy: DeployService;
@@ -190,6 +192,7 @@ export async function createContainer(
   const memory = new MemoryService(dbHandle.raw, providers);
   const learning = new LearningService(db, providers);
   const library = new LearningLibraryService(db, providers);
+  const interview = new InterviewService(db, providers, secrets);
   const disk = new DiskService(settings, providers, { extraProtected: [config.dataDir] });
   const browserManager = new BrowserSessionManager(
     join(config.dataDir, "browser-profiles"),
@@ -363,6 +366,7 @@ export async function createContainer(
     reach,
     learning,
     library,
+    interview,
     memory,
     disk,
     deploy,
@@ -401,6 +405,7 @@ export async function createContainer(
       await chat.dispose();
       reach.dispose();
       await insights.dispose();
+      await interview.dispose();
       await draining;
       await workspaceTransfers?.dispose();
       await browserManager.closeAll();

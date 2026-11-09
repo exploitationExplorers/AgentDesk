@@ -265,6 +265,7 @@ function createShaderFlood(target, initial, CSS, MARKUP, DEFAULTS, PALETTES, ICO
     visible = true,
     frame = 0,
     last = 0,
+    lastPaint = 0,
     clock = 0,
     renderFrames = 0,
     pinned = -1,
@@ -292,6 +293,7 @@ function createShaderFlood(target, initial, CSS, MARKUP, DEFAULTS, PALETTES, ICO
     if (frame) browser.cancelAnimationFrame(frame);
     frame = 0;
     last = 0;
+    lastPaint = 0;
   }
   function rendererLost() {
     if (dead) return;
@@ -315,7 +317,8 @@ function createShaderFlood(target, initial, CSS, MARKUP, DEFAULTS, PALETTES, ICO
     const display = stage.getBoundingClientRect().width,
       ratio = Math.max(
         0.3,
-        Math.min(1.5, (browser.devicePixelRatio || 1) * Math.min(1, embeddedWidth / display)),
+        // 纹理使用 CSS 像素即可；文字仍由 DOM 按设备分辨率渲染。
+        Math.min(1, (browser.devicePixelRatio || 1) * Math.min(1, embeddedWidth / display)),
       );
     renderer?.resize(stage.clientWidth, stage.clientHeight, ratio);
   }
@@ -326,9 +329,9 @@ function createShaderFlood(target, initial, CSS, MARKUP, DEFAULTS, PALETTES, ICO
     scene.dataset.frame = String(++renderFrames);
     scene.dataset.ready = "true";
     for (const card of cards) {
-      card.node.dataset.progress = card.progress.toFixed(4);
-      card.node.dataset.origin = card.origin.map((n) => n.toFixed(4)).join(",");
-      card.node.dataset.state =
+      const progress = card.progress.toFixed(4);
+      const origin = card.origin.map((n) => n.toFixed(4)).join(",");
+      const state =
         card.progress === card.target
           ? card.target
             ? "active"
@@ -336,11 +339,20 @@ function createShaderFlood(target, initial, CSS, MARKUP, DEFAULTS, PALETTES, ICO
           : card.target
             ? "entering"
             : "leaving";
+      if (card.node.dataset.progress !== progress) card.node.dataset.progress = progress;
+      if (card.node.dataset.origin !== origin) card.node.dataset.origin = origin;
+      if (card.node.dataset.state !== state) card.node.dataset.state = state;
     }
   }
   function tick(now) {
     frame = 0;
     if (dead || !visible || owner.hidden) return;
+    // 高刷新率屏幕限制昂贵的噪声绘制，进度仍按实际时间计算。
+    if (lastPaint && now - lastPaint < 1000 / 60 - 1) {
+      wake();
+      return;
+    }
+    lastPaint = now;
     const dt = last ? Math.min((now - last) / 1e3, 0.08) : 0;
     last = now;
     clock += dt * options.speed;
@@ -587,10 +599,11 @@ function createShaderFlood(target, initial, CSS, MARKUP, DEFAULTS, PALETTES, ICO
     root,
     update(next = {}) {
       if (dead) return;
+      const itemsChanged = "items" in next && next.items !== options.items;
       options = { ...options, ...next };
       normalize();
       scope.controller.update(next);
-      if ("items" in next) rebuild();
+      if (itemsChanged) rebuild();
       else cards.forEach((card, index) => (card.seed = options.seed + index * 7.31));
       scene.dataset.theme = options.theme === "dark" ? "dark" : "light";
       if ("background" in next) {

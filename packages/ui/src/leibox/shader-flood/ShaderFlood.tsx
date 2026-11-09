@@ -152,6 +152,7 @@ export function ShaderFlood({
 }) {
   const host = useRef<HTMLDivElement>(null);
   const controller = useRef<ShaderFloodController | null>(null);
+  const appliedOptions = useRef(options);
   const selectRef = useRef(onItemSelect);
   selectRef.current = onItemSelect;
 
@@ -159,6 +160,7 @@ export function ShaderFlood({
     const node = host.current;
     if (!node) return;
     const instance = mountShaderFlood(node, options);
+    appliedOptions.current = options;
     controller.current = instance;
 
     const style = node.ownerDocument.createElement("style");
@@ -185,7 +187,10 @@ export function ShaderFlood({
   }, []);
 
   useEffect(() => {
-    controller.current?.update(options ?? {});
+    if (appliedOptions.current !== options) {
+      controller.current?.update(options ?? {});
+      appliedOptions.current = options;
+    }
   }, [options]);
 
   return (

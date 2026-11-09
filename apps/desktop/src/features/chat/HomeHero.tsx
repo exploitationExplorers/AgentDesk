@@ -60,6 +60,12 @@ const SUGGESTIONS: Array<{
     colors: ["#1d0b25", "#a34dff", "#ead9ff"],
   },
 ];
+const FLOOD_ITEMS = SUGGESTIONS.map((s) => ({
+  title: s.title,
+  description: s.prompt,
+  icon: s.icon,
+  colors: s.colors,
+}));
 
 export function HomeHero({
   composer,
@@ -88,12 +94,7 @@ export function HomeHero({
     () => ({
       height: 448,
       theme,
-      items: SUGGESTIONS.map((s) => ({
-        title: s.title,
-        description: s.prompt,
-        icon: s.icon,
-        colors: s.colors,
-      })),
+      items: FLOOD_ITEMS,
     }),
     [theme],
   );

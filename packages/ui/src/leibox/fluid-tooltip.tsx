@@ -15,6 +15,7 @@ type TipState = {
 
 const PAD_X = 28; // left 14 + right ~14
 const TIP_H = 36;
+const TIP_W = 220;
 
 function spring(value: number, velocity: number, target: number, dt: number, k = 280, d = 28) {
   const nextV = velocity + ((target - value) * k - velocity * d) * dt;
@@ -30,12 +31,16 @@ function spring(value: number, velocity: number, target: number, dt: number, k =
 export function FluidRailTooltip({ className }: { className?: string }) {
   const tipRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
+  const surfaceRef = useRef<HTMLDivElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {
     const tip = tipRef.current;
     const track = trackRef.current;
+    const surface = surfaceRef.current;
+    const viewport = viewportRef.current;
     const root = tip?.parentElement;
-    if (!tip || !track || !root) return;
+    if (!tip || !track || !surface || !viewport || !root) return;
 
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
     const state: TipState = {
@@ -53,50 +58,49 @@ export function FluidRailTooltip({ className }: { className?: string }) {
     let last = 0;
     let hint = -1;
     let hideTimer = 0;
-
-    const triggers = () =>
-      Array.from(root.querySelectorAll<HTMLElement>("[data-fluid-tip]")).filter(
-        (node) => node.offsetParent !== null,
-      );
+    let dirty = true;
+    let items: HTMLElement[] = [];
+    let labels: Array<{ y: number; width: number; label: string }> = [];
 
     const paint = () => {
-      tip.style.setProperty("--ft-y", `${state.y.toFixed(2)}px`);
-      tip.style.setProperty("--ft-w", `${Math.max(48, state.width).toFixed(2)}px`);
-      tip.style.setProperty("--ft-o", state.opacity.toFixed(3));
+      const width = Math.max(48, Math.min(TIP_W, state.width));
+      // 固定布局尺寸，只移动合成层；避免继承变量让所有标签逐帧重算样式。
+      tip.style.transform = `translate3d(0,${state.y.toFixed(2)}px,0)`;
+      tip.style.opacity = state.opacity.toFixed(3);
+      surface.style.transform = `scaleX(${width / TIP_W})`;
+      viewport.style.clipPath = `inset(0 ${TIP_W - width}px 0 0)`;
+      track.style.transform = `translate3d(0,${-state.y.toFixed(2)}px,0)`;
       tip.setAttribute("aria-hidden", state.opacity < 0.05 ? "true" : "false");
     };
 
-    const rebuildLabels = (items: HTMLElement[]) => {
-      track.replaceChildren();
+    const measureLabels = () => {
+      if (!dirty) return;
+      dirty = false;
+      items = Array.from(root.querySelectorAll<HTMLElement>("[data-fluid-tip]")).filter(
+        (node) => node.offsetParent !== null,
+      );
       const rootBox = root.getBoundingClientRect();
-      items.forEach((item, index) => {
+      // 先批量读取位置，再批量写入，避免每个标签都强制刷新布局。
+      labels = items.map((item) => {
+        const box = item.getBoundingClientRect();
+        return {
+          y: box.top - rootBox.top + root.scrollTop + (box.height - TIP_H) / 2,
+          width: 0,
+          label: item.dataset.fluidTip || item.getAttribute("aria-label") || "",
+        };
+      });
+      const rows = labels.map(({ y, label }, index) => {
         const row = document.createElement("div");
         row.className = "ft-tip-row";
         row.dataset.index = String(index);
-        row.textContent = item.dataset.fluidTip || item.getAttribute("aria-label") || "";
-        const box = item.getBoundingClientRect();
-        const center = box.top - rootBox.top + root.scrollTop + box.height / 2;
-        row.style.transform = `translateY(${(center - TIP_H / 2).toFixed(2)}px)`;
-        track.append(row);
+        row.textContent = label;
+        row.style.transform = `translateY(${y.toFixed(2)}px)`;
+        return row;
       });
-    };
-
-    const measure = (index: number) => {
-      const items = triggers();
-      const item = items[index];
-      if (!item) return null;
-      rebuildLabels(items);
-      const rootBox = root.getBoundingClientRect();
-      const box = item.getBoundingClientRect();
-      const center = box.top - rootBox.top + root.scrollTop + box.height / 2;
-      const label = item.dataset.fluidTip || item.getAttribute("aria-label") || "";
-      const probe = track.querySelector<HTMLElement>(`[data-index="${index}"]`);
-      const textW = probe?.scrollWidth ?? Math.ceil(label.length * 13);
-      return {
-        y: center - TIP_H / 2,
-        width: Math.min(220, Math.max(72, textW + PAD_X)),
-        label,
-      };
+      track.replaceChildren(...rows);
+      rows.forEach((row, index) => {
+        labels[index]!.width = Math.min(TIP_W, Math.max(72, row.scrollWidth + PAD_X));
+      });
     };
 
     const wake = () => {
@@ -136,7 +140,9 @@ export function FluidRailTooltip({ className }: { className?: string }) {
 
     const show = (index: number, immediate = false) => {
       window.clearTimeout(hideTimer);
-      const next = measure(index);
+      if (!dirty && hint === index && state.to === 1 && !immediate) return;
+      measureLabels();
+      const next = labels[index];
       if (!next) return;
       hint = index;
       tip.setAttribute("aria-label", next.label);
@@ -178,7 +184,8 @@ export function FluidRailTooltip({ className }: { className?: string }) {
     const indexOf = (target: EventTarget | null) => {
       const node = (target as Element | null)?.closest?.("[data-fluid-tip]") as HTMLElement | null;
       if (!node || !root.contains(node)) return -1;
-      return triggers().indexOf(node);
+      measureLabels();
+      return items.indexOf(node);
     };
 
     const onOver = (event: Event) => {
@@ -204,16 +211,17 @@ export function FluidRailTooltip({ className }: { className?: string }) {
     root.addEventListener("focusin", onFocusIn);
     root.addEventListener("focusout", onFocusOut);
 
-    const ro = new ResizeObserver(() => {
+    const invalidate = () => {
+      dirty = true;
       if (hint >= 0) show(hint, true);
-    });
+    };
+    const ro = new ResizeObserver(invalidate);
     ro.observe(root);
 
     const mo = new MutationObserver((mutations) => {
-      if (hint >= 0 && mutations.some((mutation) => !tip.contains(mutation.target))) {
-        show(hint, true);
-      }
+      if (mutations.some((mutation) => !tip.contains(mutation.target))) invalidate();
     });
+    document.fonts.addEventListener("loadingdone", invalidate);
     mo.observe(root, {
       childList: true,
       subtree: true,
@@ -231,6 +239,7 @@ export function FluidRailTooltip({ className }: { className?: string }) {
       root.removeEventListener("focusout", onFocusOut);
       ro.disconnect();
       mo.disconnect();
+      document.fonts.removeEventListener("loadingdone", invalidate);
     };
   }, []);
 
@@ -241,7 +250,10 @@ export function FluidRailTooltip({ className }: { className?: string }) {
       data-leibox="fluid-tooltip"
       aria-hidden="true"
     >
-      <div ref={trackRef} className="ft-tip-track" />
+      <div ref={surfaceRef} className="ft-tip-surface" />
+      <div ref={viewportRef} className="ft-tip-viewport">
+        <div ref={trackRef} className="ft-tip-track" />
+      </div>
     </div>
   );
 }

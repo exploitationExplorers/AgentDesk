@@ -134,9 +134,14 @@ async function turn(threadId: string, mode = "text") {
     done = resolve;
   });
   const events: string[] = [];
+  const toolResults: unknown[] = [];
   const unsubscribe = rpc!.subscribe((event) => {
     if (event.params.threadId !== threadId) return;
     events.push(event.method);
+    if (event.method === "item/completed") {
+      const item = event.params.item as { type?: string };
+      if (item.type === "commandExecution" || item.type === "fileChange") toolResults.push(item);
+    }
     if (
       mode === "cancel" &&
       event.method === "item/started" &&
@@ -160,6 +165,15 @@ async function turn(threadId: string, mode = "text") {
     );
     assert(events.includes("item/completed"));
     assert(events.includes("turn/started"));
+    if (mode === "command" || mode === "patch") {
+      assert(toolResults.length > 0, "Expected a completed tool execution");
+      for (const result of toolResults) {
+        const item = result as { type: string; exitCode?: number; status?: string };
+        if (item.type === "commandExecution")
+          assert.equal(item.exitCode, 0, JSON.stringify(result));
+        else assert.equal(item.status, "completed", JSON.stringify(result));
+      }
+    }
   } finally {
     clearTimeout(timeout);
     unsubscribe();

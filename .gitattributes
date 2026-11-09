@@ -1,0 +1,2 @@
+# Linux deployment scripts must survive a Windows checkout.
+deploy/cloud/*.sh text eol=lf

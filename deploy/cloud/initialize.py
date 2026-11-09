@@ -13,6 +13,9 @@ from urllib.parse import urlparse
 
 def initialize(args):
     root = Path(args.root).resolve()
+    network_mode = getattr(args, "network_mode", "published")
+    if network_mode not in ("published", "bridge"):
+        raise ValueError("unsupported network mode")
     origin = urlparse(args.origin)
     if origin.scheme != "https" or not origin.hostname or origin.username or origin.password or origin.path not in ("", "/") or origin.query or origin.fragment:
         raise ValueError("origin must be an exact HTTPS origin")
@@ -59,7 +62,13 @@ def initialize(args):
     source = Path(__file__).resolve().parent
     for name in ("compose.yaml", "nginx.conf.example", "backup.sh", "restore.py", "smoke.mjs"):
         shutil.copyfile(source / name, root / "deploy" / name)
-    (root / "deploy/.env").write_text(f"DEPLOY_ROOT={root}\nAGENTDESK_RELEASE={args.release}\n", encoding="utf8")
+    compose_files = "compose.yaml"
+    if network_mode == "bridge":
+        shutil.copyfile(source / "compose.bridge.yaml", root / "deploy/compose.bridge.yaml")
+        compose_files += ":compose.bridge.yaml"
+        nginx = root / "deploy/nginx.conf.example"
+        nginx.write_text(nginx.read_text().replace("127.0.0.1:17892", "172.30.98.10:3000"), encoding="utf8")
+    (root / "deploy/.env").write_text(f"DEPLOY_ROOT={root}\nAGENTDESK_RELEASE={args.release}\nCOMPOSE_FILE={compose_files}\n", encoding="utf8")
     print(f"Initialized {root}. Review SMTP configuration, image tags and Nginx before starting.")
 
 
@@ -67,4 +76,5 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     for option in ("root", "origin", "owner", "smtp-host", "smtp-user", "release"):
         parser.add_argument("--" + option, required=True)
+    parser.add_argument("--network-mode", choices=("published", "bridge"), default="published")
     initialize(parser.parse_args())

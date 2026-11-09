@@ -153,6 +153,7 @@ export const ChatRequest = z.object({
   conversationId: z.string().optional(),
   message: z.string().min(1),
   agent: AgentName.optional(),
+  skill: z.string().trim().min(1).max(80).optional(),
   workspace: z.string().max(4096).optional(),
   modelSelection: ModelSelection.optional(),
 });

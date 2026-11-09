@@ -28,7 +28,6 @@ import type {
   StarredRepo,
 } from "@agentdesk/shared";
 import {
-  AnimatePresence,
   Badge,
   Button,
   Card,
@@ -46,10 +45,9 @@ import {
   Textarea,
   Tooltip,
   cn,
-  gridItemVariants,
-  motion,
 } from "@agentdesk/ui";
 import { api } from "../../lib/api";
+import { PaginatedGrid } from "../../components/PaginatedGrid";
 import { compactNumber, timeAgo } from "../../lib/format";
 import { toast } from "../../lib/toast";
 import { useUi } from "../../stores/ui";
@@ -882,8 +880,14 @@ function StarredSection() {
           }
         />
       ) : visible.length ? (
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {visible.map((repo) => (
+        <PaginatedGrid
+          key={q}
+          items={visible}
+          itemKey={(repo) => repo.id}
+          label="Star 仓库列表"
+          className="grid gap-3 md:grid-cols-2 xl:grid-cols-3"
+        >
+          {(repo) => (
             <Card key={repo.id} className="flex flex-col p-4">
               <div className="flex items-center gap-2">
                 <PlatformTag platform="github" />
@@ -925,8 +929,8 @@ function StarredSection() {
                 </Button>
               </div>
             </Card>
-          ))}
-        </div>
+          )}
+        </PaginatedGrid>
       ) : (
         <EmptyState
           icon={<Star className="h-6 w-6" />}
@@ -1107,26 +1111,21 @@ export function ProjectsPage() {
       ) : isLoading ? (
         <Spinner />
       ) : visible.length ? (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-3">
-          <AnimatePresence initial={false}>
-            {visible.map((p) => (
-              <motion.div
-                key={p.id}
-                layout="position"
-                variants={gridItemVariants}
-                initial="hidden"
-                animate="visible"
-                exit="exit"
-              >
-                <ProjectCard
-                  project={p}
-                  onOpen={() => setOpenId(p.id)}
-                  onAiCommit={() => setAiCommitId(p.id)}
-                />
-              </motion.div>
-            ))}
-          </AnimatePresence>
-        </div>
+        <PaginatedGrid
+          key={JSON.stringify([q, filter])}
+          items={visible}
+          itemKey={(project) => project.id}
+          label="项目列表"
+          className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-3"
+        >
+          {(p) => (
+            <ProjectCard
+              project={p}
+              onOpen={() => setOpenId(p.id)}
+              onAiCommit={() => setAiCommitId(p.id)}
+            />
+          )}
+        </PaginatedGrid>
       ) : (
         <EmptyState
           icon={<FolderGit2 className="h-6 w-6" />}
