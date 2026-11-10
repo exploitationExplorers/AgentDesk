@@ -137,10 +137,13 @@ export async function connectCommand(
     const selection = await question("选择授权项目编号，用逗号分隔", {
       validate: (value) => (/^\d+(,\s*\d+)*$/.test(value) ? undefined : "请输入项目编号，例如 1,2"),
     });
-    chosen = [...new Set(selection.split(",").map((v) => Number(v.trim()) - 1))].map(
+    const picked = [...new Set(selection.split(",").map((v) => Number(v.trim()) - 1))].map(
       (i) => projects[i],
     );
-    if (chosen.some((p) => !p)) throw new Error("项目编号不存在。");
+    if (picked.some((project) => !project)) throw new Error("项目编号不存在。");
+    chosen = picked.filter(
+      (project): project is { id: string; name: string; path: string } => project !== undefined,
+    );
   }
   const { privateKey, publicKey } = generateKeyPairSync("ed25519");
   const secret = privateKey.export({ format: "der", type: "pkcs8" }).toString("base64");
