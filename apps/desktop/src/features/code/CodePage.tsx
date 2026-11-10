@@ -819,7 +819,7 @@ export function CodePage() {
   };
   return (
     <div className="flex h-full flex-col">
-      <header className="flex shrink-0 flex-wrap items-center gap-4 border-b px-6 py-5 pr-16">
+      <header className="flex shrink-0 flex-wrap items-center gap-4 border-b px-6 py-5 pr-[4.5rem]">
         <AppMark alt="AgentDesk" className="h-10 w-10 shrink-0" />
         <div>
           <h1 className="text-lg font-semibold tracking-tight">编码</h1>

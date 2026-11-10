@@ -200,13 +200,6 @@ export function GeneralTab() {
       <Card className="grid gap-2 break-words p-5 text-[12.5px] text-muted">
         <h3 className="text-[14px] font-semibold text-fg">关于</h3>
         <p>版本：{health.data?.version}</p>
-        <p>数据目录：{health.data?.dataDir}</p>
-        <p>
-          密钥保护：
-          {health.data?.secretBackend === "keychain"
-            ? "系统钥匙串（Windows 凭据管理器）"
-            : "开发模式密钥文件"}
-        </p>
         {isTauri() ? (
           <div className="mt-2">
             <Button

@@ -3,7 +3,7 @@ import { THEME_PALETTES, type ThemePalette } from "./preferences.js";
 
 const COMMON = ["help", "data-dir", "plain", "no-color", "no-motion", "no-emoji", "theme"];
 const COMMAND_OPTIONS = {
-  connect: ["server", "json"],
+  connect: ["server", "json", "yes", "code", "project"],
   start: ["foreground", "port"],
   restart: ["foreground", "port"],
   stop: [],
@@ -34,6 +34,9 @@ export function parseCommand(argv: string[]) {
       version: { type: "boolean", short: "V" },
       "data-dir": { type: "string" },
       server: { type: "string" },
+      yes: { type: "boolean" },
+      code: { type: "string" },
+      project: { type: "string", multiple: true },
       plain: { type: "boolean" },
       "no-color": { type: "boolean" },
       "no-motion": { type: "boolean" },
@@ -89,6 +92,12 @@ export function parseCommand(argv: string[]) {
         throw new Error("connect 需要 pair、start、status、revoke、install 或 uninstall。");
       if (values.server && positionals[0] !== "pair")
         throw new Error("--server 仅用于 connect pair。");
+      if ((values.code || values.project || values.yes) && positionals[0] !== "pair")
+        throw new Error("--code / --project / --yes 仅用于 connect pair。");
+      if (positionals[0] === "pair" && values.code && !values.yes)
+        throw new Error("使用 --code 时必须同时提供 --yes，以确认自动化配对。");
+      if (positionals[0] === "pair" && values.yes && (!values.server || !values.project?.length))
+        throw new Error("自动化配对需要 --server、至少一个 --project，以及 --yes。");
     } else if (["approve", "reject"].includes(command)) {
       if (positionals.length !== 1) throw new Error(`${command} 需要一个审批 ID。`);
     } else if (["inspect", "cancel", "resume"].includes(command)) {

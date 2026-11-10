@@ -139,26 +139,26 @@ export function ConversationList({ activeId }: { activeId?: string }) {
 
   return (
     <aside
-      className="lb-glass chat-history flex w-[248px] shrink-0 flex-col border-r"
+      className="lb-glass chat-history flex w-[264px] shrink-0 flex-col border-r"
       aria-label="会话列表"
     >
-      <div className="grid gap-3 p-4">
-        <div className="flex h-7 items-center justify-between">
-          <h2 className="text-[13px] font-semibold tracking-wide">对话</h2>
+      <div className="flex flex-col px-4 pb-3 pt-5">
+        <div className="flex min-h-9 items-center justify-between">
+          <h2 className="text-[14px] font-semibold tracking-tight">对话</h2>
           <span className="rounded-md bg-surface-2 px-1.5 py-0.5 text-[10px] tabular-nums text-muted">
             {conversations.data?.length ?? 0}
           </span>
         </div>
         <Button
           variant="secondary"
-          className="h-10 justify-start rounded-xl border-brand/15 bg-surface text-brand shadow-sm hover:bg-brand/6"
+          className="mt-4 h-10 justify-start rounded-xl border-brand/15 bg-surface text-brand shadow-sm hover:bg-brand/6"
           onClick={() => void navigate({ to: "/", search: {} })}
         >
           <MessageSquarePlus className="h-4 w-4" strokeWidth={1.75} />
           新对话
         </Button>
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-2.5 h-3.5 w-3.5 text-subtle" />
+        <div className="relative mt-4">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-subtle" />
           <Input
             aria-label="搜索会话"
             placeholder="搜索标题或正文"
@@ -168,7 +168,7 @@ export function ConversationList({ activeId }: { activeId?: string }) {
             className="h-9 rounded-xl border-transparent bg-surface/60 pl-9 text-xs focus:border-brand/30"
           />
         </div>
-        <div className="flex items-center gap-1">
+        <div className="mt-3 flex items-center gap-1.5">
           <Select
             aria-label="筛选会话分组"
             value={groupId}
@@ -206,13 +206,13 @@ export function ConversationList({ activeId }: { activeId?: string }) {
             </button>
           ) : null}
         </div>
-        <div className="flex items-center gap-1">
+        <div className="mt-2 flex items-center gap-1.5">
           <button
             type="button"
             aria-pressed={archived}
             onClick={() => setArchived((value) => !value)}
             className={cn(
-              "flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1 text-xs",
+              "flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-xs",
               archived ? "bg-surface-2 text-fg" : "text-muted hover:text-fg",
             )}
           >
@@ -235,7 +235,7 @@ export function ConversationList({ activeId }: { activeId?: string }) {
           ) : null}
         </div>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-1">
+      <div className="min-h-0 flex-1 overflow-y-auto border-t border-border/40 px-2.5 py-3">
         {error ? (
           <p role="alert" className="px-2 py-2 text-xs text-danger">
             {error.message}
@@ -250,8 +250,8 @@ export function ConversationList({ activeId }: { activeId?: string }) {
           </p>
         ) : null}
         {sections.map((section) => (
-          <section key={section.id} aria-label={section.name} className="mb-3">
-            <h2 className="px-3 py-1.5 text-[11px] font-medium tracking-wide text-subtle">
+          <section key={section.id} aria-label={section.name} className="mb-4">
+            <h2 className="px-2.5 pb-1.5 pt-1 text-[11px] font-medium tracking-wide text-subtle">
               {section.name === "未分组" && !groupId && !query ? "最近" : section.name}
             </h2>
             <AnimatePresence initial={false}>
@@ -264,7 +264,7 @@ export function ConversationList({ activeId }: { activeId?: string }) {
                   animate="visible"
                   exit="exit"
                   className={cn(
-                    "group relative isolate mb-1 flex items-center gap-1 overflow-hidden rounded-xl border border-transparent transition-colors",
+                    "group relative isolate mb-1.5 flex items-center gap-1 overflow-hidden rounded-xl border border-transparent transition-colors",
                     conversation.id === activeId
                       ? "border-brand/10 bg-brand/7 text-fg"
                       : "text-muted hover:bg-surface-2/70",
@@ -273,7 +273,7 @@ export function ConversationList({ activeId }: { activeId?: string }) {
                   <button
                     type="button"
                     onClick={() => void navigate({ to: "/", search: { c: conversation.id } })}
-                    className="min-w-0 flex-1 px-3 py-2.5 text-left"
+                    className="min-w-0 flex-1 px-3 py-3 text-left"
                     aria-current={conversation.id === activeId ? "page" : undefined}
                   >
                     <span className="flex items-center gap-1.5 text-[13px] font-medium">

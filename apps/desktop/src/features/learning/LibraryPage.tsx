@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BookOpen, ChevronDown, FileText, Link2, Quote, Trash2, TriangleAlert } from "lucide-react";
+import { BookOpen, ChevronDown, FileText, Link2, Trash2, TriangleAlert } from "lucide-react";
 import { useState } from "react";
 import {
   AnimatePresence,
@@ -13,12 +13,12 @@ import {
   Segmented,
   Spinner,
   Textarea,
-  cn,
   gridItemVariants,
   listItemVariants,
   motion,
 } from "@agentdesk/ui";
 import { api } from "../../lib/api";
+import { ArticleReader } from "./ArticleReader";
 import { LearningNav } from "./LearningNav";
 
 export function LibraryPage() {
@@ -63,7 +63,7 @@ export function LibraryPage() {
       <div className="mx-auto max-w-6xl space-y-5 px-8 py-8">
         <PageHeader
           title="资料库"
-          description="把链接或正文导进来，它会拆成可引用的知识点并排进复习队列"
+          description="导入后按原文章节阅读。正文里的多语言示例会收成一张代码卡片。"
           icon={<BookOpen className="h-5 w-5" />}
           actions={<LearningNav />}
         />
@@ -92,7 +92,7 @@ export function LibraryPage() {
               {mode === "url" ? (
                 <Field
                   label="链接"
-                  hint="只抓当前这一页，不会顺着站内链接扩展。遇到需要登录或反爬的站点，改用「粘贴正文」。"
+                  hint="文档站会带上它自己的章节目录。代码示例按语言分成卡片，不会混进段落里。"
                 >
                   <Input
                     value={url}
@@ -188,16 +188,13 @@ export function LibraryPage() {
                         {s.parseQuality === "partial" ? (
                           <Badge tone="warning">正文可能不完整</Badge>
                         ) : null}
-                        <Badge tone={s.unitCount > 0 ? "brand" : "neutral"}>
-                          {s.unitCount} 个知识点
-                        </Badge>
                         <span className="whitespace-nowrap text-[11.5px] tabular-nums text-subtle">
-                          {s.blockCount} 块 · {(s.charCount / 1000).toFixed(1)}k 字
+                          {(s.charCount / 1000).toFixed(1)}k 字
                         </span>
                         <Button
                           size="icon"
                           variant="ghost"
-                          aria-label="展开知识点"
+                          aria-label="阅读正文"
                           onClick={() => setOpenId(openId === s.id ? null : s.id)}
                         >
                           <motion.span animate={{ rotate: openId === s.id ? 180 : 0 }}>
@@ -216,7 +213,9 @@ export function LibraryPage() {
                       </div>
                     </div>
                     <AnimatePresence initial={false}>
-                      {openId === s.id ? <UnitList key="units" sourceId={s.id} /> : null}
+                      {openId === s.id && s.kind === "url" ? (
+                        <ArticleReader key="reader" url={s.originRef} />
+                      ) : null}
                     </AnimatePresence>
                   </Card>
                 </motion.div>
@@ -232,58 +231,5 @@ export function LibraryPage() {
         )}
       </div>
     </div>
-  );
-}
-
-/** 某份资料提炼出的知识点，每条都显示它所依据的原文片段。 */
-function UnitList({ sourceId }: { sourceId: string }) {
-  const units = useQuery({
-    queryKey: ["source-units", sourceId],
-    queryFn: () => api.sourceUnits(sourceId),
-  });
-
-  return (
-    <motion.div
-      variants={listItemVariants}
-      initial="hidden"
-      animate="visible"
-      exit="exit"
-      className="overflow-hidden border-t bg-surface-2/40"
-    >
-      <div className="px-4 py-3">
-        {units.isLoading ? (
-          <div className="flex justify-center py-4">
-            <Spinner />
-          </div>
-        ) : units.data?.length ? (
-          <ol className="grid gap-2">
-            {units.data.map((u, i) => (
-              <li key={u.id} className="rounded-xl border bg-surface px-3.5 py-3">
-                <div className="flex items-baseline gap-2">
-                  <span className="font-mono text-[11px] text-subtle">
-                    {String(i + 1).padStart(2, "0")}
-                  </span>
-                  <p className="text-[13.5px] font-medium">{u.title}</p>
-                </div>
-                <p className="mt-1 pl-6 text-[12.5px] leading-relaxed text-muted">{u.summary}</p>
-                <details className="group mt-2 pl-6">
-                  <summary className="inline-flex cursor-pointer items-center gap-1.5 text-[11.5px] text-subtle hover:text-fg">
-                    <Quote className="h-3 w-3" />
-                    看原文出处
-                  </summary>
-                  <p className="mt-2 whitespace-pre-wrap rounded-lg border-l-2 border-brand/50 bg-surface-2 px-3 py-2 text-[12px] leading-relaxed text-muted">
-                    {u.sourceText || "（原文块已不存在）"}
-                  </p>
-                </details>
-              </li>
-            ))}
-          </ol>
-        ) : (
-          <p className={cn("py-3 text-center text-[12.5px] text-subtle")}>
-            这份资料还没有提炼出知识点。常见原因是导入时没有可用的模型——配置好模型后重新导入即可。
-          </p>
-        )}
-      </div>
-    </motion.div>
   );
 }

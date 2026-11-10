@@ -5,6 +5,7 @@ import { AppError, ErrorCode } from "@agentdesk/shared";
 import type { GatewayConfig } from "../config";
 import type { GatewayAuth } from "./service";
 import type { GatewayStore } from "../db/store";
+import { sessionExpired } from "./session-policy";
 
 export function clientAddress(c: Context, config: GatewayConfig, peer: string): string {
   const address = peer.startsWith("::ffff:") ? peer.slice(7) : peer;
@@ -54,15 +55,11 @@ export async function requireSession(
     headers,
     query: { disableCookieCache: true, disableRefresh: true },
   });
-  if (!result || result.user.email !== config.ownerEmail || !result.user.emailVerified)
+  if (!result || !result.user.emailVerified) throw new AppError(ErrorCode.Unauthorized, "请登录");
+  if (!config.authMultiUser && result.user.email !== config.ownerEmail)
     throw new AppError(ErrorCode.Unauthorized, "请登录");
   const { session } = result;
-  if (
-    !Number.isFinite(session.updatedAt.getTime()) ||
-    !Number.isFinite(session.createdAt.getTime()) ||
-    Date.now() - session.updatedAt.getTime() >= 12 * 60 * 60_000 ||
-    Date.now() - session.createdAt.getTime() >= 7 * 24 * 60 * 60_000
-  ) {
+  if (sessionExpired(session.createdAt, session.updatedAt)) {
     store.db.prepare('DELETE FROM "session" WHERE id=?').run(session.id);
     throw new AppError(ErrorCode.Unauthorized, "登录已过期");
   }

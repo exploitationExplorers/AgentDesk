@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { RemoteActor, RemoteScope } from "@agentdesk/shared";
 import { commandDigest, RunnerClient } from "../src/remote/client";
 import { RemoteRoutingStore } from "../src/remote/store";
+import { SESSION_IDLE_MS } from "../src/auth/session-policy";
 
 let db: Database.Database;
 let store: RemoteRoutingStore;
@@ -65,7 +66,7 @@ describe("Gateway 远程任务路由记录", () => {
       before,
     );
     db.prepare('UPDATE session SET "updatedAt"=? WHERE id=?').run(
-      new Date(Date.now() - 12 * 60 * 60_000 - 1).toISOString(),
+      new Date(Date.now() - SESSION_IDLE_MS - 1).toISOString(),
       actor.sessionId,
     );
     expect(store.sessionAlive(actor)).toBe(false);

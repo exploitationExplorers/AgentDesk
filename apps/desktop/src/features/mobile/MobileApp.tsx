@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   Activity,
   ArrowDownToLine,
@@ -18,6 +18,11 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
+import { OtpVerification } from "./leibox/otp-verification/OtpVerification";
+import { BootScreen } from "./BootScreen";
+import { LoginAtmosphere } from "./LoginAtmosphere";
+import { ProjectFloodCards } from "./ProjectFloodCards";
+import { RecentTasksStack } from "./RecentTasksStack";
 import type {
   AgentModelBinding,
   RemoteApprovalDecision,
@@ -78,6 +83,23 @@ const record = (value: unknown): JsonRecord =>
 const str = (value: unknown, fallback = ""): string =>
   typeof value === "string" ? value : fallback;
 const api = new CloudApi();
+const EMAIL_STORAGE_KEY = "agentdesk.cloud.email";
+const readStoredEmail = () => {
+  try {
+    return localStorage.getItem(EMAIL_STORAGE_KEY) ?? "";
+  } catch {
+    return "";
+  }
+};
+const rememberEmail = (value: string) => {
+  const normalized = value.trim().toLowerCase();
+  try {
+    if (normalized) localStorage.setItem(EMAIL_STORAGE_KEY, normalized);
+    else localStorage.removeItem(EMAIL_STORAGE_KEY);
+  } catch {
+    /* private mode / quota */
+  }
+};
 
 export function MobileApp() {
   const online = useOnline();
@@ -355,15 +377,7 @@ export function MobileApp() {
     } satisfies Record<Page, string>
   )[page];
 
-  if (!sessionReady)
-    return (
-      <div className="m-boot">
-        <span className="m-brand-mark">
-          <Code2 size={23} />
-        </span>
-        <span>正在检查登录状态</span>
-      </div>
-    );
+  if (!sessionReady) return <BootScreen />;
   if (!session)
     return (
       <Login
@@ -728,35 +742,70 @@ function Login({
   clearNotice: () => void;
   onSession: (value: CloudSession) => void;
 }) {
-  const [email, setEmail] = useState("");
-  const [otp, setOtp] = useState("");
+  const [email, setEmail] = useState(readStoredEmail);
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const emailRef = useRef(email);
+  emailRef.current = email;
+  const clearNoticeRef = useRef(clearNotice);
+  clearNoticeRef.current = clearNotice;
+  const onSessionRef = useRef(onSession);
+  onSessionRef.current = onSession;
+
   useEffect(() => {
     void api.loginCsrf().catch((error: unknown) => setMessage(errorMessage(error)));
   }, [api]);
+
+  const otpOptions = useMemo(
+    () => ({
+      autoPlay: false as const,
+      onVerify: async (code: string) => {
+        clearNoticeRef.current();
+        setMessage("");
+        try {
+          await api.request("/api/v1/auth/otp/verify", {
+            email: emailRef.current.trim().toLowerCase(),
+            otp: code,
+          });
+          return true;
+        } catch (error) {
+          setMessage(errorMessage(error));
+          return false;
+        }
+      },
+      onSuccess: async () => {
+        try {
+          rememberEmail(emailRef.current);
+          const current = await api.session();
+          onSessionRef.current(current);
+        } catch (error) {
+          setMessage(errorMessage(error));
+        }
+      },
+    }),
+    [api],
+  );
+
   const submit = async (event: FormEvent) => {
     event.preventDefault();
+    if (sent) return;
     clearNotice();
     setMessage("");
     setBusy(true);
     try {
-      if (!sent) {
-        await api.request("/api/v1/auth/otp/request", { email: email.trim().toLowerCase() });
-        setSent(true);
-        setMessage("如果该邮箱有登录权限，验证码将发送至收件箱。请在 5 分钟内完成验证。");
-      } else {
-        await api.request("/api/v1/auth/otp/verify", { email: email.trim().toLowerCase(), otp });
-        const current = await api.session();
-        onSession(current);
-      }
+      const normalized = email.trim().toLowerCase();
+      await api.request("/api/v1/auth/otp/request", { email: normalized });
+      rememberEmail(normalized);
+      setSent(true);
+      setMessage("如果邮箱有效，验证码将发送至收件箱。请在 5 分钟内完成验证。");
     } catch (error) {
       setMessage(errorMessage(error));
     } finally {
       setBusy(false);
     }
   };
+
   return (
     <div className="m-login">
       <div className="m-login-panel">
@@ -776,85 +825,59 @@ function Login({
           你的工作现场。
         </h1>
         <p className="m-login-copy">安全查看项目进度、审批操作并继续开发任务。</p>
-        <form onSubmit={(event) => void submit(event)} className="m-login-form">
-          <label className="m-field">
-            <span>邮箱地址</span>
-            <input
-              type="email"
-              autoComplete="email"
-              required
-              maxLength={254}
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              placeholder="name@example.com"
-              disabled={sent}
-            />
-          </label>
-          {sent && (
+        {!sent ? (
+          <form onSubmit={(event) => void submit(event)} className="m-login-form">
             <label className="m-field">
-              <span>6 位验证码</span>
+              <span>邮箱地址</span>
               <input
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                pattern="[0-9]{6}"
-                maxLength={6}
+                type="email"
+                autoComplete="email"
                 required
-                value={otp}
-                onChange={(event) => setOtp(event.target.value.replace(/\D/g, "").slice(0, 6))}
-                placeholder="000000"
+                maxLength={254}
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="name@example.com"
               />
             </label>
-          )}
-          {message && (
-            <Notice error={!message.startsWith("如果")}>
-              {message}
-              {sent && (
-                <button
-                  className="m-inline-action"
-                  type="button"
-                  onClick={() => {
-                    setSent(false);
-                    setOtp("");
-                    setMessage("");
-                  }}
-                >
-                  更换邮箱
-                </button>
-              )}
-            </Notice>
-          )}
-          {notice && <Notice error>{notice}</Notice>}
-          <Button type="submit" busy={busy} className="m-login-submit">
-            {sent ? "验证并登录" : "发送登录验证码"}
-            <ArrowRight size={17} />
-          </Button>
-        </form>
+            {message && <Notice error={!message.startsWith("如果")}>{message}</Notice>}
+            {notice && <Notice error>{notice}</Notice>}
+            <Button type="submit" busy={busy} className="m-login-submit">
+              发送登录验证码
+              <ArrowRight size={17} />
+            </Button>
+          </form>
+        ) : (
+          <div className="m-login-otp">
+            <div className="m-login-otp-meta">
+              <span className="m-overline">VERIFY</span>
+              <strong>{email.trim().toLowerCase()}</strong>
+              <button
+                className="m-inline-action"
+                type="button"
+                onClick={() => {
+                  setSent(false);
+                  setMessage("");
+                }}
+              >
+                更换邮箱
+              </button>
+            </div>
+            <OtpVerification className="m-otp-host" options={otpOptions} />
+            {message && <Notice error={!message.startsWith("如果")}>{message}</Notice>}
+            {notice && <Notice error>{notice}</Notice>}
+          </div>
+        )}
         <div className="m-login-foot">
           <ShieldCheck size={16} />
-          <span>仅限已配置的账户登录</span>
+          <span>支持邮箱验证码登录</span>
           <span className="m-foot-dot" />
           <span>验证码 5 分钟有效</span>
         </div>
       </div>
       <div className="m-login-side">
-        <div className="m-side-index">01 / PRIVATE WORKSPACE</div>
-        <div className="m-side-art">
-          <div className="m-art-grid" />
-          <div className="m-art-ring ring-one" />
-          <div className="m-art-ring ring-two" />
-          <div className="m-art-core">
-            <Code2 size={56} strokeWidth={1.15} />
-            <span>
-              AGENT
-              <br />
-              DESK
-            </span>
-          </div>
-          <span className="m-art-node node-a" />
-          <span className="m-art-node node-b" />
-          <span className="m-art-node node-c" />
-        </div>
-        <div className="m-side-copy">
+        <LoginAtmosphere />
+        <div className="m-login-side-copy">
+          <div className="m-side-index">01 / PRIVATE WORKSPACE</div>
           <strong>Work moves with you.</strong>
           <span>REMOTE · REVIEW · RESUME</span>
         </div>
@@ -888,9 +911,10 @@ function WorkspaceView({
   const active = tasks.filter((task) =>
     ["queued", "planning", "running"].includes(task.status),
   ).length;
+  const fallbackBranch = selectedHost?.kind === "cloud" ? "云端工作区" : "已授权目录";
   return (
     <>
-      <section className="m-work-summary">
+      <section className="m-work-summary m-work-summary-glass">
         <div className="m-summary-top">
           <span className="m-summary-icon">
             <Activity size={17} />
@@ -919,25 +943,11 @@ function WorkspaceView({
       {projectsLoading || hostLoading ? (
         <LoadingRows count={2} />
       ) : projects.length ? (
-        <div className="m-project-list">
-          {projects.map((project) => (
-            <button key={project.id} className="m-project-row" onClick={() => onProject(project)}>
-              <span className={`m-project-mark mark-${project.name.charCodeAt(0) % 4}`}>
-                <Code2 size={18} />
-              </span>
-              <span className="m-project-info">
-                <strong>{project.name}</strong>
-                <small>
-                  <GitBranch size={13} />
-                  {project.branch || (selectedHost?.kind === "cloud" ? "云端工作区" : "已授权目录")}
-                </small>
-              </span>
-              <span className="m-project-arrow">
-                <ArrowRight size={17} />
-              </span>
-            </button>
-          ))}
-        </div>
+        <ProjectFloodCards
+          projects={projects}
+          fallbackBranch={fallbackBranch}
+          onSelect={onProject}
+        />
       ) : (
         <Empty title={selectedHost ? "这个宿主还没有可用项目" : "添加执行宿主以开始"}>
           已连接的仓库和办公室项目会显示在这里。
@@ -958,11 +968,7 @@ function WorkspaceView({
           </button>
         </div>
         {tasks.length ? (
-          <div className="m-task-list">
-            {tasks.slice(0, 4).map((task) => (
-              <TaskRow task={task} key={task.id} onClick={() => onTask(task.id)} />
-            ))}
-          </div>
+          <RecentTasksStack tasks={tasks.slice(0, 5)} onSelect={onTask} />
         ) : (
           <div className="m-inline-empty">
             <span>还没有远程任务</span>

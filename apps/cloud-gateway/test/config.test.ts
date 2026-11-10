@@ -32,6 +32,9 @@ afterEach(() => rmSync(directory, { recursive: true, force: true }));
 
 it("配置缺失、明文公开 URL、非法代理和错误密钥均拒绝启动", () => {
   expect(loadGatewayConfig(env).ownerEmail).toBe("owner@example.test");
+  expect(loadGatewayConfig(env).authMultiUser).toBe(true);
+  expect(loadGatewayConfig({ ...env, AUTH_MULTI_USER: "false" }).authMultiUser).toBe(false);
+  expect(() => loadGatewayConfig({ ...env, AUTH_MULTI_USER: "yes" })).toThrow(/AUTH_MULTI_USER/);
   for (const key of Object.keys(env)) {
     const missing = { ...env };
     delete missing[key];

@@ -111,7 +111,7 @@ export function createGatewayApp(deps: {
       { key: "send-total", max: 100, windowMs: 600_000 },
     ]);
     await serialize(async () => {
-      if (email !== config.ownerEmail) return;
+      if (!config.authMultiUser && email !== config.ownerEmail) return;
       const context = await auth.$context;
       // 库的 rotate 默认依赖 identifier 唯一性；显式废弃旧 challenge 后再发行。
       await context.internalAdapter.deleteVerificationByIdentifier(`sign-in-otp-${email}`);
@@ -125,7 +125,14 @@ export function createGatewayApp(deps: {
         throw new AppError(ErrorCode.ServiceUnavailable, "邮件暂时无法发送，请稍后重试");
       }
     });
-    return c.json({ message: "如果该邮箱允许登录，你将收到验证码。" }, 202);
+    return c.json(
+      {
+        message: config.authMultiUser
+          ? "如果邮箱有效，你将收到验证码。"
+          : "如果该邮箱允许登录，你将收到验证码。",
+      },
+      202,
+    );
   });
   app.post("/api/v1/auth/otp/verify", async (c) => {
     const { email, otp } = VerifyInput.parse(await c.req.json());
@@ -134,7 +141,7 @@ export function createGatewayApp(deps: {
       { key: `verify-email:${email}`, max: 20, windowMs: 300_000 },
     ]);
     return serialize(async () => {
-      if (email !== config.ownerEmail)
+      if (!config.authMultiUser && email !== config.ownerEmail)
         throw new AppError(ErrorCode.Unauthorized, "验证码无效或已过期");
       const previous = await auth.api.getSession({
         headers: authHeaders(c, config),
@@ -170,7 +177,11 @@ export function createGatewayApp(deps: {
     const { session, user } = await requireSession(auth, store, authHeaders(c, config), config);
     const recentAuthAt = store.sessionAuthenticatedAt(user.id, session.id);
     return c.json({
-      user: { id: user.id, email: user.email, role: "owner" },
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.email === config.ownerEmail ? "owner" : "member",
+      },
       session: { id: session.id, expiresAt: session.expiresAt, recentAuthAt },
       csrfToken: csrfToken(session.id, config.sessionSecret),
     });

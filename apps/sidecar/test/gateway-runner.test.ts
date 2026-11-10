@@ -76,6 +76,7 @@ beforeEach(async () => {
   config = {
     publicOrigin: "https://agent.example.test",
     ownerEmail: "owner@example.test",
+    authMultiUser: false,
     dataDir: join(root, "gateway"),
     host: "127.0.0.1",
     port: 3000,

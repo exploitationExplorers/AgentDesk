@@ -119,6 +119,28 @@ export interface RecipePreset {
   steps: RecipeStep[];
 }
 
+export interface DocsChapter {
+  title: string;
+  url: string | null;
+  children: DocsChapter[];
+}
+
+export interface ArticleHeading {
+  id: string;
+  level: number;
+  text: string;
+}
+
+export interface ArticleCodeTab {
+  label: string;
+  lang: string;
+  code: string;
+}
+
+export type ArticleBlock =
+  | { kind: "prose"; text: string; headings: ArticleHeading[] }
+  | { kind: "code"; tabs: ArticleCodeTab[] };
+
 export const api = {
   autoloopStatus: () => http.get<AutoloopStatus>("/autoloop/status"),
   automations: () => http.get<AutomationBinding[]>("/automations"),
@@ -327,6 +349,9 @@ export const api = {
   setActivityStatus: (id: string, status: "pending" | "done" | "skipped") =>
     http.post<LearningActivity>(`/learning/activities/${id}/status`, { status }),
 
+  learningOutline: (url: string) => http.get<DocsChapter[]>("/learning/outline", { url }),
+  learningPage: (url: string) =>
+    http.get<{ url: string; blocks: ArticleBlock[] }>("/learning/page", { url }),
   learningSources: () => http.get<LearningSource[]>("/learning/sources"),
   importSource: (input: ImportSourceInput) => http.post<LearningSource>("/learning/sources", input),
   sourceUnits: (id: string) => http.get<KnowledgeUnit[]>(`/learning/sources/${id}/units`),

@@ -8,6 +8,8 @@ export interface GatewayConfig {
   publicOrigin: string;
   ownerEmail: string;
   ownerUserId?: string;
+  /** When true, any valid email can request OTP and first verify creates the user. */
+  authMultiUser: boolean;
   dataDir: string;
   host: string;
   port: number;
@@ -102,10 +104,14 @@ export function loadGatewayConfig(env: NodeJS.ProcessEnv = process.env): Gateway
     )
   )
     throw new Error("PROVIDER_ALLOWED_HOSTS must contain exact DNS names");
+  const authMultiUser = (env.AUTH_MULTI_USER ?? "true").trim().toLowerCase();
+  if (authMultiUser !== "true" && authMultiUser !== "false")
+    throw new Error("AUTH_MULTI_USER must be true or false");
   return {
     publicOrigin: origin.origin,
     ownerEmail: OwnerEmail.parse(required(env, "OWNER_EMAIL")),
     ...(env.CLOUD_OWNER_USER_ID ? { ownerUserId: RemoteId.parse(env.CLOUD_OWNER_USER_ID) } : {}),
+    authMultiUser: authMultiUser === "true",
     dataDir: resolve(required(env, "GATEWAY_DATA_DIR")),
     host: env.GATEWAY_HOST ?? "127.0.0.1",
     port: z.coerce

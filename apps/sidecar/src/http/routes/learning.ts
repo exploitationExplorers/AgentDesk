@@ -2,6 +2,8 @@ import { ImportSourceInput, LearningPlanInput, LearningProfileInput } from "@age
 import { Hono } from "hono";
 import { z } from "zod";
 import type { Container } from "../../container";
+import { parseArticle, readDocsOutline } from "../../services/docs-article";
+import { readPublicArticle } from "../../services/insight-source";
 
 export function learningRoutes({ learning, library }: Container) {
   const app = new Hono();
@@ -35,6 +37,16 @@ export function learningRoutes({ learning, library }: Container) {
       .object({ status: z.enum(["pending", "done", "skipped"]) })
       .parse(await c.req.json());
     return c.json(learning.setActivityStatus(c.req.param("id"), status));
+  });
+
+  app.get("/learning/outline", async (c) => {
+    const url = z.string().url().parse(c.req.query("url"));
+    return c.json(await readDocsOutline(url, c.req.raw.signal));
+  });
+  app.get("/learning/page", async (c) => {
+    const url = z.string().url().parse(c.req.query("url"));
+    const markdown = await readPublicArticle(url, c.req.raw.signal);
+    return c.json({ url, blocks: parseArticle(markdown) });
   });
 
   app.get("/learning/sources", (c) => c.json(library.listSources()));

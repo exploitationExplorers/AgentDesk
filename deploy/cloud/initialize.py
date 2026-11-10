@@ -50,6 +50,7 @@ def initialize(args):
     owner_id = str(uuid.uuid4())
     gateway = {
         "PUBLIC_ORIGIN": args.origin.rstrip("/"), "OWNER_EMAIL": args.owner, "CLOUD_OWNER_USER_ID": owner_id,
+        "AUTH_MULTI_USER": "true",
         "GATEWAY_DATA_DIR": "/data", "CLOUD_RUNNER_URL": "http://runner:17893", "TRUSTED_PROXY_CIDRS": "172.30.98.1/32",
         "SESSION_SECRET_FILE": "/run/secrets/gateway/session", "OTP_PEPPER_FILE": "/run/secrets/gateway/otp",
         "REMOTE_SHARED_TOKEN_FILE": "/run/secrets/shared/remote", "SMTP_PASSWORD_FILE": "/run/secrets/gateway/smtp",

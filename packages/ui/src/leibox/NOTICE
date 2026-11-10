@@ -46,4 +46,22 @@ Design reference: https://leibox.pantoria.cn/docs/animations/fluid-tooltip
 Original engine SHA-256: 7d5d0f0e884922be9b14d444a44e5c9680c9f66eafb554335f686609dddbe229
 Adaptation: black capsule morph (Y travel, width expand, clipped label track, opacity) is ported to a controlled React rail hint. Demo sandbox (fixed six workspace entries, GSAP bundle, painting background, Inter subset, keyboard shortcut chips) is omitted; triggers bind via data-fluid-tip on app nav icons.
 
+OTP Input Verification
+Source: https://leibox.pantoria.cn/ai/packages/otp-verification/react.json
+Design reference: https://x.com/bestsaasdesigns/status/2111020282551132539/video/1
+Adaptation: full LeiBox React package is shipped under apps/desktop mobile cloud UI. Missing otp-motion tokens are reconstructed locally; verify phase accepts onVerify/onSuccess for real email OTP. Demo autoplay remains available via autoPlay.
+
+Blue Fluted Glass Background
+Source: https://leibox.pantoria.cn/ai/packages/blue-fluted-glass/react.json
+Design reference: https://x.com/sashabirukoff/status/2113002960892649916/video/1
+Adaptation: used as cloud login side atmosphere; LeiBox wordmark hidden via injected shadow styles.
+
+Stacked Metadata
+Source: https://leibox.pantoria.cn/ai/packages/stacked-metadata/react.json
+Adaptation: recent/task lists on cloud mobile workspace bind app Task rows through options.items and onExpandChange.
+
+AI Image Generation
+Source: https://leibox.pantoria.cn/ai/packages/ai-generating/react.json
+Adaptation: cloud session boot placeholder uses the generating motion as a loading mark.
+
 These components are incorporated into the AgentDesk application. Attribution does not imply endorsement or a separate blanket license for LeiBox's catalog.

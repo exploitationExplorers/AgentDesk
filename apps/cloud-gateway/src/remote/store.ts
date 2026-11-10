@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import { AppError, ErrorCode, type RemoteActor, type RemoteScope } from "@agentdesk/shared";
+import { SESSION_ABSOLUTE_MS, SESSION_IDLE_MS } from "../auth/session-policy";
 
 export interface RemoteSubmission {
   scope: RemoteScope;
@@ -193,8 +194,8 @@ export class RemoteRoutingStore {
       Number.isFinite(updated) &&
       Number.isFinite(expires) &&
       now < expires &&
-      now - created < 7 * 24 * 60 * 60_000 &&
-      now - updated < 12 * 60 * 60_000
+      now - created < SESSION_ABSOLUTE_MS &&
+      now - updated < SESSION_IDLE_MS
     );
   }
 }

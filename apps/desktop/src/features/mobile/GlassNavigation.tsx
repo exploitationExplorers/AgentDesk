@@ -39,7 +39,7 @@ export function GlassNavigation({
         .motion-body,.glass-tab-demo{width:100%;height:74px;min-height:74px;overflow:visible;background:transparent}
         .gt-stage{position:relative;left:auto;top:auto;width:100%;height:74px;transform:none;transform-origin:top left}
         .gt-cluster{left:0;bottom:0;width:100%;height:68px}
-        .gt-panel{left:0!important;bottom:0;width:100%!important;height:64px!important;border:1px solid rgba(255,255,255,.88);border-radius:18px!important;background:rgba(251,252,249,.91);box-shadow:0 8px 28px rgba(25,53,45,.16);backdrop-filter:blur(18px) saturate(1.1);-webkit-backdrop-filter:blur(18px) saturate(1.1)}
+        .gt-panel{left:0!important;bottom:0;width:100%!important;height:64px!important;border:1px solid rgba(255,255,255,.9);border-radius:20px!important;background:rgba(251,252,249,.93);box-shadow:0 10px 32px rgba(25,53,45,.18);backdrop-filter:blur(20px) saturate(1.15);-webkit-backdrop-filter:blur(20px) saturate(1.15)}
         .gt-tabs{left:0;bottom:0;width:calc(100% - 58px);height:64px;padding:4px;grid-template-columns:repeat(4,minmax(0,1fr));transform:none!important}
         .gt-selection,.gt-lens{left:4px;top:5px;width:calc((100% - 8px)/4);height:54px;border-radius:14px;transform:translateX(calc(var(--navigation-selection,0)*100%))!important}
         .gt-tab{width:100%;height:54px;border-radius:14px;display:flex;flex-direction:column;gap:1px;color:#315c4f}

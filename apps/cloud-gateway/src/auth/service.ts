@@ -6,6 +6,7 @@ import { emailOTP } from "better-auth/plugins/email-otp";
 import type Database from "better-sqlite3";
 import type { GatewayConfig } from "../config";
 import { hashedSessionAdapter } from "./hashed-session-adapter";
+import { SESSION_ABSOLUTE_SECONDS } from "./session-policy";
 
 export type SendOtp = (email: string, otp: string) => Promise<void>;
 
@@ -22,7 +23,7 @@ export async function createGatewayAuth(
     database: db,
     trustedOrigins: [config.publicOrigin],
     session: {
-      expiresIn: 7 * 24 * 60 * 60,
+      expiresIn: SESSION_ABSOLUTE_SECONDS,
       disableSessionRefresh: true,
       cookieCache: { enabled: false },
     },
@@ -49,13 +50,14 @@ export async function createGatewayAuth(
         otpLength: 6,
         expiresIn: 300,
         allowedAttempts: 5,
-        disableSignUp: true,
+        disableSignUp: !config.authMultiUser,
         resendStrategy: "rotate",
         storeOTP: {
           hash: async (otp) => createHmac("sha256", config.otpPepper).update(otp).digest("hex"),
         },
         sendVerificationOTP: async ({ email, otp, type }) => {
-          if (email !== config.ownerEmail || type !== "sign-in")
+          if (type !== "sign-in") throw new Error("Unsupported OTP action");
+          if (!config.authMultiUser && email !== config.ownerEmail)
             throw new Error("Unsupported OTP action");
           await sendOtp(email, otp);
         },
@@ -69,11 +71,23 @@ export async function createGatewayAuth(
       id: string;
       email: string;
     }>;
-    if (existing.length > 1 || (existing[0] && existing[0].email !== config.ownerEmail))
-      throw new Error("Owner configuration changed; use the server recovery command");
-    if (existing[0] && config.ownerUserId && existing[0].id !== config.ownerUserId)
+    const byEmail = existing.find((user) => user.email === config.ownerEmail);
+    const byId = config.ownerUserId
+      ? existing.find((user) => user.id === config.ownerUserId)
+      : undefined;
+    if (byEmail && byId && byEmail.id !== byId.id)
+      throw new Error("Owner email and configured owner ID point to different users");
+    if (byId && byId.email !== config.ownerEmail)
       throw new Error("Configured owner ID differs from the existing database");
-    if (!existing.length) {
+    if (!config.authMultiUser) {
+      if (existing.length > 1 || (existing[0] && existing[0].email !== config.ownerEmail))
+        throw new Error("Owner configuration changed; use the server recovery command");
+      if (existing[0] && config.ownerUserId && existing[0].id !== config.ownerUserId)
+        throw new Error("Configured owner ID differs from the existing database");
+    }
+    if (!byEmail) {
+      if (config.ownerUserId && existing.some((user) => user.id === config.ownerUserId))
+        throw new Error("Configured owner ID exists with a different email; use recovery");
       const now = new Date().toISOString();
       db.prepare(
         'INSERT INTO "user" (id,name,email,"emailVerified","createdAt","updatedAt") VALUES (?,?,?,?,?,?)',

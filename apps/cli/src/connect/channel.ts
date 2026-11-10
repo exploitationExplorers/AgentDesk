@@ -41,6 +41,15 @@ export function startConnector(
     lastHeartbeat = 0;
   const readers = new Map<string, ReadableStreamDefaultReader<Uint8Array>>();
   const busy = new Set<string>();
+  // Node undici rejects close() without a valid code and throws if the socket is already closing.
+  const closeSocket = (socket: WebSocket, code = 1000, reason?: string) => {
+    try {
+      if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)
+        socket.close(code, reason);
+    } catch {
+      /* ignore */
+    }
+  };
   const send = (message: DeviceWire) => {
     const text = JSON.stringify(message);
     if (
@@ -158,7 +167,7 @@ export function startConnector(
       const socket = transport.open(token);
       ws = socket;
       epoch = 0;
-      const opening = setTimeout(() => socket.close(), 15_000);
+      const opening = setTimeout(() => closeSocket(socket, 1000), 15_000);
       opening.unref();
       socket.addEventListener("message", (event) => {
         void (async () => {
@@ -185,12 +194,12 @@ export function startConnector(
             status.lastConnectedAt = new Date().toISOString();
             send({ type: "heartbeat" });
             heartbeat = setInterval(() => {
-              if (Date.now() - lastHeartbeat >= 45_000) socket.close();
+              if (Date.now() - lastHeartbeat >= 45_000) closeSocket(socket, 1000);
               else
                 try {
                   send({ type: "heartbeat" });
                 } catch {
-                  socket.close();
+                  closeSocket(socket, 1000);
                 }
             }, 15_000);
             heartbeat.unref();
@@ -236,7 +245,7 @@ export function startConnector(
             return;
           }
           throw new Error("Unexpected device message");
-        })().catch(() => socket.close(1008, "Invalid protocol"));
+        })().catch(() => closeSocket(socket, 1008, "Invalid protocol"));
       });
       socket.addEventListener("close", () => {
         clearTimeout(opening);
@@ -246,7 +255,7 @@ export function startConnector(
           schedule();
         }
       });
-      socket.addEventListener("error", () => socket.close());
+      socket.addEventListener("error", () => closeSocket(socket, 1011));
     } catch {
       schedule();
     }
@@ -258,7 +267,7 @@ export function startConnector(
       stopped = true;
       clearTimeout(retry);
       cleanup();
-      ws?.close();
+      if (ws) closeSocket(ws, 1000);
       status.state = "stopped";
     },
   };

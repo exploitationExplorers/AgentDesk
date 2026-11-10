@@ -9,6 +9,7 @@ import { recoverOwner } from "../src/auth/recovery";
 import { RunnerClient } from "../src/remote/client";
 import { RemoteGatewayService } from "../src/remote/service";
 import { RemoteRoutingStore } from "../src/remote/store";
+import { SESSION_ABSOLUTE_MS, SESSION_IDLE_MS } from "../src/auth/session-policy";
 
 let db: Database.Database;
 let app: ReturnType<typeof createGatewayApp>;
@@ -23,6 +24,7 @@ beforeEach(async () => {
   config = {
     publicOrigin: "https://agent.example.test",
     ownerEmail: "owner@example.test",
+    authMultiUser: false,
     dataDir: "/unused",
     host: "127.0.0.1",
     port: 3000,
@@ -311,13 +313,13 @@ describe("Gateway 身份与会话", () => {
     db.prepare("DELETE FROM gateway_limits").run();
     const idle = await login();
     db.prepare('UPDATE "session" SET "updatedAt"=?').run(
-      new Date(Date.now() - 12 * 60 * 60_000 - 1000).toISOString(),
+      new Date(Date.now() - SESSION_IDLE_MS - 1000).toISOString(),
     );
     expect((await request("session", undefined, { cookie: idle.cookie })).status).toBe(401);
     db.prepare("DELETE FROM gateway_limits").run();
     const expired = await login();
     db.prepare('UPDATE "session" SET "createdAt"=?').run(
-      new Date(Date.now() - 7 * 24 * 60 * 60_000 - 1000).toISOString(),
+      new Date(Date.now() - SESSION_ABSOLUTE_MS - 1000).toISOString(),
     );
     expect((await request("session", undefined, { cookie: expired.cookie })).status).toBe(401);
   });
@@ -364,5 +366,53 @@ describe("Gateway 身份与会话", () => {
     await expect(
       createGatewayAuth({ ...config, ownerEmail: "new@example.test" }, db, async () => undefined),
     ).resolves.toBeTruthy();
+  });
+  it("多用户模式下任意邮箱可注册登录，owner 仍保留 role", async () => {
+    config = { ...config, authMultiUser: true };
+    const store = new GatewayStore(db, config.otpPepper);
+    const auth = await createGatewayAuth(config, db, async (_email, otp) => {
+      sent.push(otp);
+    });
+    const routing = new RemoteRoutingStore(db);
+    const runner = new RunnerClient(config, async () => Response.json({}));
+    const remote = new RemoteGatewayService(runner, routing);
+    app = createGatewayApp({
+      config,
+      auth,
+      store,
+      runner,
+      remote,
+      routing,
+      peerAddress: () => peer,
+    });
+    const csrf = await app.request(`${config.publicOrigin}/api/v1/auth/csrf`, {
+      headers: { host: "agent.example.test" },
+    });
+    loginHeaders = {
+      cookie: csrf.headers.getSetCookie()[0]!.split(";")[0]!,
+      "x-csrf-token": (await csrf.json()).csrfToken,
+    };
+    expect((await request("auth/otp/request", { email: "member@example.test" })).status).toBe(202);
+    expect(sent).toHaveLength(1);
+    const memberLogin = await request("auth/otp/verify", {
+      email: "member@example.test",
+      otp: sent[0],
+    });
+    expect(memberLogin.status).toBe(200);
+    const memberCookie = memberLogin.headers
+      .getSetCookie()
+      .find((value) => value.startsWith("__Host-agentdesk_session="))!
+      .split(";")[0]!;
+    const memberSession = await request("session", undefined, { cookie: memberCookie });
+    expect(await memberSession.json()).toMatchObject({
+      user: { email: "member@example.test", role: "member" },
+    });
+    db.prepare("DELETE FROM gateway_limits").run();
+    const owner = await login();
+    const ownerSession = await request("session", undefined, { cookie: owner.cookie });
+    expect(await ownerSession.json()).toMatchObject({
+      user: { email: config.ownerEmail, role: "owner" },
+    });
+    expect(db.prepare('SELECT count(*) AS n FROM "user"').get()).toEqual({ n: 2 });
   });
 });

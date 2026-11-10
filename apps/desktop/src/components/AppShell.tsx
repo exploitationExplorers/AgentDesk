@@ -32,7 +32,6 @@ import {
   useReducedMotion,
   GlassSurface,
   GlassSelection,
-  FluidRailTooltip,
   Button,
 } from "@agentdesk/ui";
 import { useGlobalEvents } from "../hooks/useGlobalEvents";
@@ -76,16 +75,15 @@ function NavItem({
 }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const active = to === "/" ? pathname === "/" : pathname.startsWith(to);
-  return (
+  const link = (
     <Link
       to={to}
       aria-label={collapsed ? label : undefined}
       aria-current={active ? "page" : undefined}
-      data-fluid-tip={collapsed ? label : undefined}
       className={cn(
-        "relative flex h-9 items-center gap-3 rounded-xl px-2.5 text-[13px] font-medium transition-colors",
+        "relative flex h-10 shrink-0 items-center gap-3 rounded-xl px-2.5 text-[13px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-brand focus-visible:-outline-offset-2",
         active ? "text-brand" : "text-muted hover:bg-surface-2/70 hover:text-fg",
-        collapsed && "justify-center px-0",
+        collapsed && "h-10 w-10 justify-center self-center px-0",
       )}
     >
       <Icon className="h-4 w-4 shrink-0" strokeWidth={1.75} />
@@ -109,6 +107,7 @@ function NavItem({
       ) : null}
     </Link>
   );
+  return collapsed ? <Tooltip content={label}>{link}</Tooltip> : link;
 }
 
 export function AppShell() {
@@ -159,8 +158,9 @@ export function AppShell() {
     <Tooltip content={dark ? "切换到浅色" : "切换到深色"}>
       <Button
         size="icon"
+        variant="ghost"
         type="button"
-        className="h-9 w-9 rounded-xl text-muted"
+        className="h-10 w-10 shrink-0 rounded-xl text-muted"
         onClick={(event) => toggleThemeWithTransition(event.nativeEvent)}
         aria-label="切换主题"
       >
@@ -171,8 +171,8 @@ export function AppShell() {
 
   return (
     <TooltipProvider>
-      <div className="lb-app relative flex h-full min-w-0 flex-col lg:flex-row lg:gap-2 lg:p-2">
-        <div className="absolute right-3 top-3 z-40 hidden lg:block">{themeToggle}</div>
+      <div className="lb-app relative flex h-full min-w-0 flex-col lg:flex-row lg:gap-3 lg:p-3">
+        <div className="absolute right-6 top-6 z-40 hidden lg:block">{themeToggle}</div>
         <div className="lb-glass flex h-12 shrink-0 items-center gap-2 border-b px-3 lg:hidden">
           <button
             type="button"
@@ -198,25 +198,25 @@ export function AppShell() {
         <GlassSurface asChild>
           <aside
             className={cn(
-              "lb-navigation fixed inset-y-2 left-2 z-50 shrink-0 flex-col overflow-visible px-2.5 py-3 lg:relative lg:z-20 lg:flex",
+              "lb-navigation fixed inset-y-3 left-3 z-50 min-h-0 shrink-0 flex-col overflow-visible px-2 py-3 lg:relative lg:inset-auto lg:z-20 lg:flex",
               mobileNavOpen ? "flex w-[240px]" : "hidden",
-              collapsed || routeSection === "home" ? "lg:w-[60px]" : "lg:w-[216px]",
+              collapsed || routeSection === "home" ? "lg:w-[64px]" : "lg:w-[256px]",
             )}
           >
             <div
               className={cn(
-                "mb-3 flex items-center gap-2 px-1.5",
-                navCollapsed && "justify-center px-0",
+                "mb-3 flex min-h-10 shrink-0 items-center gap-2 px-1.5",
+                navCollapsed && "flex-col justify-center gap-3 px-0",
               )}
             >
               <Tooltip content="更换头像">
                 <button
                   type="button"
-                  className="grid h-7 w-7 place-items-center overflow-hidden rounded-lg"
+                  className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-xl"
                   aria-label="更换头像"
                   onClick={() => avatarInput.current?.click()}
                 >
-                  <AppMark src={avatar} className="h-7 w-7" />
+                  <AppMark src={avatar} className="h-8 w-8" />
                 </button>
               </Tooltip>
               <input
@@ -236,12 +236,17 @@ export function AppShell() {
                   <p className="truncate text-[11px] text-subtle">个人 Agent 工作台</p>
                 </div>
               )}
-              <div className={cn("flex shrink-0 items-center", navCollapsed && "flex-col gap-1")}>
+              <div
+                className={cn(
+                  "flex shrink-0 items-center gap-0.5",
+                  navCollapsed && "flex-col gap-1.5",
+                )}
+              >
                 {routeSection !== "home" ? (
                   <Tooltip content={navCollapsed ? "展开侧栏" : "收起侧栏"}>
                     <button
                       type="button"
-                      className="grid h-8 w-8 place-items-center rounded-lg text-muted hover:bg-surface-2 hover:text-fg"
+                      className="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-muted hover:bg-surface-2 hover:text-fg"
                       onClick={toggleSidebar}
                       aria-label={navCollapsed ? "展开侧栏" : "收起侧栏"}
                     >
@@ -258,7 +263,7 @@ export function AppShell() {
                     type="button"
                     onClick={() => setPaletteOpen(true)}
                     aria-label="搜索或跳转"
-                    className="grid h-8 w-8 place-items-center rounded-lg text-muted hover:bg-surface-2 hover:text-fg"
+                    className="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-muted hover:bg-surface-2 hover:text-fg"
                   >
                     <Search className="h-4 w-4" />
                   </button>
@@ -266,9 +271,12 @@ export function AppShell() {
               </div>
             </div>
 
-            <nav className="relative flex flex-col gap-0.5" onClick={() => setMobileNavOpen(false)}>
+            <nav
+              aria-label="主导航"
+              className="relative flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overscroll-contain py-1 [scrollbar-width:none]"
+              onClick={() => setMobileNavOpen(false)}
+            >
               <GlassSelection selector="[aria-current=page]" />
-              {navCollapsed ? <FluidRailTooltip /> : null}
               {NAV.map((n) => (
                 <NavItem
                   key={n.to}
@@ -279,18 +287,16 @@ export function AppShell() {
               ))}
             </nav>
 
-            <div className="lb-navigation-footer relative mt-auto flex flex-col gap-0.5">
+            <div className="lb-navigation-footer relative mt-3 flex shrink-0 flex-col gap-1 border-t border-border/40 pt-3">
               <GlassSelection selector="[aria-current=page]" />
-              {navCollapsed ? <FluidRailTooltip /> : null}
               {pendingConversation ? (
                 <Link
                   to="/"
                   search={{ c: pendingConversation.conversationId }}
                   title="查看等待回复的对话"
                   aria-label="查看等待回复的对话"
-                  data-fluid-tip={navCollapsed ? "等待回复" : undefined}
                   className={cn(
-                    "mb-2 flex items-center gap-2 rounded-xl bg-surface-2 px-2.5 py-2 text-xs text-brand",
+                    "mb-1 flex items-center gap-2 rounded-xl bg-surface-2 px-2.5 py-2 text-xs text-brand",
                     navCollapsed && "justify-center px-0",
                   )}
                   onClick={() => setMobileNavOpen(false)}
@@ -301,10 +307,10 @@ export function AppShell() {
               ) : pendingActions ? (
                 <div
                   className={cn(
-                    "mb-2 flex items-center gap-2 rounded-xl bg-warning/10 px-2.5 py-2 text-[12px] text-warning",
+                    "mb-1 flex items-center gap-2 rounded-xl bg-warning/10 px-2.5 py-2 text-[12px] text-warning",
                     navCollapsed && "justify-center px-0",
                   )}
-                  data-fluid-tip={navCollapsed ? `${pendingActions} 待审批` : undefined}
+                  title={`${pendingActions} 个操作待审批`}
                 >
                   <ShieldAlert className="h-4 w-4 shrink-0" />
                   {navCollapsed ? null : <span>{pendingActions} 个操作待审批</span>}
@@ -321,7 +327,6 @@ export function AppShell() {
                       "mt-1 flex h-8 items-center gap-2 px-2.5 text-[11.5px] text-subtle",
                       navCollapsed && "justify-center px-0",
                     )}
-                    data-fluid-tip={navCollapsed ? healthLabel : undefined}
                   >
                     <StatusDot
                       status={health.data ? "success" : health.isError ? "error" : "running"}
@@ -329,11 +334,7 @@ export function AppShell() {
                     {navCollapsed ? null : health.data ? `v${health.data.version}` : "连接中"}
                   </span>
                 );
-                return navCollapsed ? (
-                  healthNode
-                ) : (
-                  <Tooltip content={healthLabel}>{healthNode}</Tooltip>
-                );
+                return <Tooltip content={healthLabel}>{healthNode}</Tooltip>;
               })()}
             </div>
           </aside>

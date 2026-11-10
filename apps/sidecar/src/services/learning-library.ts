@@ -68,19 +68,35 @@ function chunk(text: string): string[] {
   return blocks.slice(0, 120);
 }
 
-const UnitDraft = z.object({
-  units: z
-    .array(
-      z.object({
-        blockIndex: z.number().int().min(0),
-        title: z.string(),
-        summary: z.string(),
-        question: z.string(),
-        answer: z.string(),
-      }),
-    )
-    .max(40),
+const Unit = z.object({
+  blockIndex: z.coerce.number().int().min(0),
+  title: z.string().min(1),
+  summary: z.string().min(1),
+  question: z.string().min(1),
+  answer: z.string().min(1),
 });
+
+/** 模型有时直接返回数组，有时包在 { units } 里。两种都接受。 */
+const UnitDraft = z.preprocess(
+  (value) => (Array.isArray(value) ? { units: value } : value),
+  z.object({ units: z.array(Unit).max(40) }),
+);
+
+function titleFromArticle(raw: string, url?: string): string {
+  const heading = raw
+    .match(/^#{1,3}\s+(.+)$/m)?.[1]
+    ?.replace(/[`*]/g, "")
+    .trim();
+  if (heading) return heading;
+  if (url) {
+    try {
+      return new URL(url).pathname.split("/").filter(Boolean).pop() || url;
+    } catch {
+      return url;
+    }
+  }
+  return raw.slice(0, 40);
+}
 
 export class LearningLibraryService {
   constructor(
@@ -186,12 +202,7 @@ export class LearningLibraryService {
     const blocks = chunk(raw);
     if (blocks.length === 0) throw new Error("没有解析出可用正文");
 
-    const title =
-      input.title?.trim() ||
-      (input.url
-        ? new URL(input.url).pathname.split("/").filter(Boolean).pop() || input.url
-        : "") ||
-      blocks[0]!.slice(0, 40);
+    const title = input.title?.trim() || titleFromArticle(raw, input.url);
 
     const now = new Date().toISOString();
     const sourceId = newId();
@@ -264,11 +275,14 @@ export class LearningLibraryService {
 - summary：用两三句话把这个知识点讲清楚，要能独立看懂，不要写"如上所述"。
 - question：一个能检验是否真的掌握的问题，不要问"是什么意思"这种可以照抄原文的问题。
 - answer：这个问题的参考答案，三句以内。
-只提炼资料里真实存在的内容，资料没讲的不要补充。知识点数量按资料长度决定，不要为了凑数拆得过细。`,
+只提炼资料里真实存在的内容，资料没讲的不要补充。知识点数量按资料长度决定，不要为了凑数拆得过细。
+输出 JSON 对象：{"units":[{"blockIndex":0,"title":"","summary":"","question":"","answer":""}]}。`,
         prompt: corpus,
       });
-    } catch {
-      return; // 提炼失败不影响资料本身已经存档
+    } catch (error) {
+      // 资料已经存档；把失败原因打出来，避免页面只显示「没有模型」。
+      console.error("[learning] 知识点提炼失败", error instanceof Error ? error.message : error);
+      return;
     }
 
     const byIndex = new Map(used.map((b) => [b.orderIndex, b.id]));

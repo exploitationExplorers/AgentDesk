@@ -41,7 +41,7 @@ async function mockGateway(page: Page, authenticated = false) {
     if (path === "/api/v1/auth/csrf") return json({ csrfToken: "login-csrf" });
     if (path === "/api/v1/auth/otp/request" && method === "POST") {
       otpRequested = true;
-      return json({ message: "如果该邮箱有登录权限，验证码将发送至收件箱。" }, 202);
+      return json({ message: "如果邮箱有效，你将收到验证码。" }, 202);
     }
     if (path === "/api/v1/auth/otp/verify" && method === "POST") {
       signedIn = otpRequested;

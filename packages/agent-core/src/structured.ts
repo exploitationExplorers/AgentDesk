@@ -76,12 +76,14 @@ export async function completeStructured<T extends z.ZodType>(
 ): Promise<z.infer<T>> {
   const system = `${options.systemPrompt}\n\n只输出 JSON，不要输出任何解释。`;
   let prompt = options.prompt;
+  let lastReason = "模型没有返回可解析的 JSON";
   for (let attempt = 0; attempt < 2; attempt++) {
     const text = await completeText({ ...options, systemPrompt: system, prompt });
     try {
       return options.schema.parse(extractJson(text));
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
+      lastReason = reason;
       const hint = `\n\n上次输出无法解析：${reason}\n请严格输出合法 JSON。`;
       prompt =
         typeof options.prompt === "string"
@@ -89,5 +91,5 @@ export async function completeStructured<T extends z.ZodType>(
           : [...options.prompt, { type: "text", text: hint }];
     }
   }
-  throw new Error("模型未能输出合法的结构化结果");
+  throw new Error(`模型未能输出合法的结构化结果（${lastReason}）`);
 }

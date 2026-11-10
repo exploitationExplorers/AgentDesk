@@ -331,7 +331,7 @@ export function ChatPage() {
           ) : (
             <>
               {conversationId && (
-                <div className="chat-header flex min-h-[64px] items-center justify-between gap-3 border-b py-3 pl-4 pr-16 sm:pl-6">
+                <div className="chat-header flex min-h-[64px] items-center justify-between gap-3 border-b py-3 pl-4 pr-[4.5rem] sm:pl-6">
                   <button
                     type="button"
                     aria-label="打开会话列表"

@@ -1,6 +1,9 @@
 import { execFileSync } from "node:child_process";
 import { Agent, EnvHttpProxyAgent, setGlobalDispatcher } from "undici";
 
+/** 当前已应用到 undici 全局 dispatcher 的代理；供需要自建 Agent 的模块复用。 */
+let activeProxy: string | null = null;
+
 /** 读取 Windows「设置 > 代理」中的手动代理（Clash 等工具通常写在这里） */
 function windowsSystemProxy(): string | null {
   if (process.platform !== "win32") return null;
@@ -31,8 +34,13 @@ export function resolveProxy(configured: string | undefined): string | null {
   );
 }
 
+export function currentProxy(): string | null {
+  return activeProxy;
+}
+
 /** 让全局 fetch（热榜、Git 平台 API、LLM）走代理，本机地址始终直连。 */
 export function applyProxy(proxy: string | null): void {
+  activeProxy = proxy;
   if (!proxy) {
     setGlobalDispatcher(new Agent());
     return;

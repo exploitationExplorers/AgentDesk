@@ -1,7 +1,8 @@
 import { lookup } from "node:dns/promises";
 import { BlockList, isIP } from "node:net";
-import { Agent, Headers, fetch } from "undici";
+import { Agent, Headers, ProxyAgent, fetch } from "undici";
 import { AppError, ErrorCode } from "@agentdesk/shared";
+import { currentProxy } from "../proxy";
 
 const blocked = new BlockList();
 for (const [network, bits] of [
@@ -97,23 +98,33 @@ export async function fetchPublicSource(input: string, options: PublicFetchOptio
   let url = publicSourceUrl(input);
   let method = options.method ?? "GET";
   let body = options.body;
-  const headers = new Headers({ "User-Agent": "Mozilla/5.0 AgentDesk/1.0", ...options.headers });
+  // 使用常见桌面 Chrome UA：不少站点（含文档 CDN）会拦截自定义爬虫标识。
+  const headers = new Headers({
+    "User-Agent":
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+    ...options.headers,
+  });
   const signal = AbortSignal.any([
     AbortSignal.timeout(options.timeoutMs ?? 25_000),
     ...(options.signal ? [options.signal] : []),
   ]);
   const maxRedirects = Math.min(10, Math.max(0, options.maxRedirects ?? 3));
   for (let redirects = 0; redirects <= maxRedirects; redirects++) {
+    // 先本地解析并拒绝内网地址；真正出站时若配置了代理则走代理（GitHub raw 等在国内常需代理）。
     const { addresses } = await resolvePublicSource(url.href, signal);
     const first = addresses[0]!;
-    const dispatcher = new Agent({
-      connect: {
-        lookup: (_hostname, opts, callback) => {
-          if (opts.all) callback(null, addresses);
-          else callback(null, first.address, first.family);
-        },
-      },
-    });
+    const proxy = currentProxy();
+    const dispatcher = proxy
+      ? new ProxyAgent(proxy)
+      : new Agent({
+          connect: {
+            lookup: (_hostname, opts, callback) => {
+              if (opts.all) callback(null, addresses);
+              else callback(null, first.address, first.family);
+            },
+          },
+        });
     try {
       signal.throwIfAborted();
       options.onRequest?.(url);
