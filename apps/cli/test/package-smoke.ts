@@ -138,6 +138,7 @@ try {
   assert.deepEqual(skills.map((skill) => skill.name).sort(), [
     "bt-deploy",
     "project-triage",
+    "qa-regression",
     "reach-research",
     "repo-walkthrough",
     "tech-explain",
