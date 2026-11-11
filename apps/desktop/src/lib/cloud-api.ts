@@ -158,7 +158,7 @@ export class CloudApi {
     hostId: string,
     taskId: string,
     onRecord: (record: RunEventRecord) => void,
-    onState: (state: "connected" | "reconnecting") => void,
+    onState: (state: "connected" | "reconnecting" | "history_expired") => void,
   ): () => void {
     const controller = new AbortController();
     this.requests.add(controller);
@@ -198,6 +198,11 @@ export class CloudApi {
                 .map((line) => line.slice(5).trimStart())
                 .join("\n");
               if (!data) continue;
+              if (block.split("\n").some((line) => line.trim() === "event: history_expired")) {
+                controller.abort();
+                onState("history_expired");
+                return;
+              }
               const record = JSON.parse(data) as Partial<RunEventRecord>;
               if (
                 typeof record.seq !== "number" ||

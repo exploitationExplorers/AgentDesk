@@ -14,6 +14,7 @@ export interface CloudConfig extends SidecarConfig {
   taskTimeoutMs: number;
   ownerUserId: string;
   allowedProviderHosts: string[];
+  allowServerProviderCredentials?: boolean;
 }
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -68,6 +69,8 @@ export function loadCloudConfig(env: NodeJS.ProcessEnv = process.env): CloudConf
       .max(3_600_000)
       .parse(env.CLOUD_TASK_TIMEOUT_MS ?? 3_600_000),
     ownerUserId: RemoteId.parse(env.CLOUD_OWNER_USER_ID.trim()),
+    allowServerProviderCredentials:
+      z.enum(["true", "false"]).parse(env.ALLOW_SERVER_PROVIDER_CREDENTIALS ?? "false") === "true",
     allowedProviderHosts: (
       env.PROVIDER_ALLOWED_HOSTS ?? "api.openai.com,api.anthropic.com,api.deepseek.com"
     )

@@ -17,20 +17,23 @@ export function useTaskEvents(
     TaskEventSnapshot & {
       key: string;
       error: string | null;
+      historyExpired: boolean;
     }
-  >({ key: "", ...emptySnapshot, error: null });
+  >({ key: "", ...emptySnapshot, error: null, historyExpired: false });
   const key = JSON.stringify([source, taskId, currentRunId, continuous]);
   useEffect(() => {
     if (!taskId) return;
     const buffer = createTaskEventBuffer({
       taskId,
-      onPublish: (snapshot) => setState({ key, ...snapshot, error: null }),
+      onPublish: (snapshot) => setState({ key, ...snapshot, error: null, historyExpired: false }),
     });
     const unsubscribe = subscribe<RunEventRecord>(
       codeApi(source).streamPath(taskId),
       buffer.append,
       {
         query: { after: "0" },
+        onHistoryExpired: (message) =>
+          setState({ key, ...buffer.getSnapshot(), error: message, historyExpired: true }),
         // 历史根运行结束不能中断本轮回放；自动化任务与服务端保持持续订阅。
         isFinal: (record) =>
           !continuous &&
@@ -44,5 +47,5 @@ export function useTaskEvents(
       unsubscribe();
     };
   }, [source, taskId, key, currentRunId, continuous]);
-  return state.key === key ? state : { ...emptySnapshot, error: null };
+  return state.key === key ? state : { ...emptySnapshot, error: null, historyExpired: false };
 }

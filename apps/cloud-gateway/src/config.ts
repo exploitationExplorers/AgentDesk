@@ -20,6 +20,7 @@ export interface GatewayConfig {
   cloudHostName: string;
   cloudWorkspaceRoot: string;
   providerHostAllowlist: string[];
+  allowServerProviderCredentials?: boolean;
   trustedProxies: BlockList;
   smtp: {
     host: string;
@@ -127,6 +128,8 @@ export function loadGatewayConfig(env: NodeJS.ProcessEnv = process.env): Gateway
     cloudHostName: env.CLOUD_HOST_NAME?.trim() || "Cloud server",
     cloudWorkspaceRoot: resolve(env.CLOUD_WORKSPACE_ROOT ?? "/workspaces"),
     providerHostAllowlist: [...new Set(providerHostAllowlist)],
+    allowServerProviderCredentials:
+      z.enum(["true", "false"]).parse(env.ALLOW_SERVER_PROVIDER_CREDENTIALS ?? "false") === "true",
     trustedProxies: parseTrustedProxies(required(env, "TRUSTED_PROXY_CIDRS")),
     smtp: {
       host: required(env, "SMTP_HOST"),

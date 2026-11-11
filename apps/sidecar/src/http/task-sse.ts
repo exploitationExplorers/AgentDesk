@@ -26,86 +26,97 @@ export function taskChannelToSse(
   isTerminal: (record: RunEventRecord) => boolean,
 ) {
   return streamSSE(c, async (stream) => {
-    let closed = false;
-    const queue: QueueItem[] = [];
-    let wake: (() => void) | null = null;
-    const push = (item: QueueItem) => {
-      queue.push(item);
-      wake?.();
-    };
+    const release = tasks.pinEventHistory(filter);
+    try {
+      const expired = tasks.expiredHistory(filter, initialAfter);
+      if (expired) {
+        await stream.writeSSE({ event: "history_expired", data: JSON.stringify(expired) });
+        return;
+      }
+      let closed = false;
+      const queue: QueueItem[] = [];
+      let wake: (() => void) | null = null;
+      const push = (item: QueueItem) => {
+        queue.push(item);
+        wake?.();
+      };
 
-    // 1) 先订阅，此时还未向 SSE 流写任何东西，避免漏掉订阅与补历史之间产生的事件
-    const unsubscribe = hub.subscribe(channel, (event) => push(event as RunEventRecord));
-    stream.onAbort(() => {
-      closed = true;
-      wake?.();
-    });
+      // 1) 先订阅，此时还未向 SSE 流写任何东西，避免漏掉订阅与补历史之间产生的事件
+      const unsubscribe = hub.subscribe(channel, (event) => push(event as RunEventRecord));
+      try {
+        stream.onAbort(() => {
+          closed = true;
+          wake?.();
+        });
 
-    let lastSentSeq = initialAfter;
-    let lastWritten: RunEventRecord | null = null;
-    const writeRecord = async (record: RunEventRecord) => {
-      await stream.writeSSE({ id: String(record.seq), data: JSON.stringify(record) });
-      lastSentSeq = record.seq;
-      lastWritten = record;
-    };
+        let lastSentSeq = initialAfter;
+        let lastWritten: RunEventRecord | null = null;
+        const writeRecord = async (record: RunEventRecord) => {
+          await stream.writeSSE({ id: String(record.seq), data: JSON.stringify(record) });
+          lastSentSeq = record.seq;
+          lastWritten = record;
+        };
 
-    // 2) 查库补齐历史事件。任务级订阅下历史里可能混有更早、早已终止的根 Run（例如 resume
-    // 之前的那一轮），这类旧记录不能用来判定"该不该收尾"——只有补齐完之后最新的那一条才代表
-    // 当前订阅是否已经没有更多事情可做。
-    for (;;) {
-      const page = tasks.eventsAfter({ ...filter, after: lastSentSeq, limit: 500 });
-      for (const record of page) {
-        if (closed) {
-          unsubscribe();
+        // 2) 查库补齐历史事件。任务级订阅下历史里可能混有更早、早已终止的根 Run（例如 resume
+        // 之前的那一轮），这类旧记录不能用来判定"该不该收尾"——只有补齐完之后最新的那一条才代表
+        // 当前订阅是否已经没有更多事情可做。
+        for (;;) {
+          const page = tasks.eventsAfter({ ...filter, after: lastSentSeq, limit: 500 });
+          for (const record of page) {
+            if (closed) {
+              return;
+            }
+            await writeRecord(record);
+          }
+          if (page.length < 500) break;
+        }
+
+        // 3) 排空订阅期间攒下的队列，按 seq 去重
+        const buffered = queue.splice(0, queue.length);
+        for (const item of buffered) {
+          if (isPing(item)) continue;
+          if (item.seq <= lastSentSeq) continue;
+          await writeRecord(item);
+        }
+
+        // 4) 如果订阅的 Run/Task 在连接建立前就已经跑完（例如 resume 同步等待创建请求返回之后才
+        // 打开流，这期间 Run 可能已经真正执行完毕），此时历史补齐 + 排空缓冲里最新的一条就已经是
+        // 终止事件，必须立即收尾；否则会一直挂到下一次心跳才收到一条孤立的 ping，连接无限挂起
+        // （不会再有任何新事件触发下面"持续监听"循环里的终止判断）。
+        if (lastWritten && isTerminal(lastWritten)) {
           return;
         }
-        await writeRecord(record);
-      }
-      if (page.length < 500) break;
-    }
 
-    // 3) 排空订阅期间攒下的队列，按 seq 去重
-    const buffered = queue.splice(0, queue.length);
-    for (const item of buffered) {
-      if (isPing(item)) continue;
-      if (item.seq <= lastSentSeq) continue;
-      await writeRecord(item);
-    }
-
-    // 4) 如果订阅的 Run/Task 在连接建立前就已经跑完（例如 resume 同步等待创建请求返回之后才
-    // 打开流，这期间 Run 可能已经真正执行完毕），此时历史补齐 + 排空缓冲里最新的一条就已经是
-    // 终止事件，必须立即收尾；否则会一直挂到下一次心跳才收到一条孤立的 ping，连接无限挂起
-    // （不会再有任何新事件触发下面"持续监听"循环里的终止判断）。
-    if (lastWritten && isTerminal(lastWritten)) {
-      unsubscribe();
-      return;
-    }
-
-    // 5) 心跳：推入同一队列以和真实事件串行写入流
-    const heartbeat = setInterval(() => push({ type: "ping" }), 15_000);
-    try {
-      // 6) 持续监听后续事件
-      while (!closed) {
-        if (queue.length === 0) {
-          await new Promise<void>((resolve) => {
-            wake = resolve;
-          });
-          wake = null;
-          continue;
+        // 5) 心跳：推入同一队列以和真实事件串行写入流
+        const heartbeat = setInterval(() => push({ type: "ping" }), 15_000);
+        try {
+          // 6) 持续监听后续事件
+          while (!closed) {
+            if (queue.length === 0) {
+              await new Promise<void>((resolve) => {
+                wake = resolve;
+              });
+              wake = null;
+              continue;
+            }
+            const item = queue.shift()!;
+            if (isPing(item)) {
+              await stream.writeSSE({ data: JSON.stringify(item) });
+              continue;
+            }
+            if (item.seq <= lastSentSeq) continue;
+            await writeRecord(item);
+            // 7) 终止条件：run_ended 命中订阅的 run，或任务级订阅命中根 Run 的 run_ended
+            if (isTerminal(item)) break;
+          }
+        } finally {
+          clearInterval(heartbeat);
         }
-        const item = queue.shift()!;
-        if (isPing(item)) {
-          await stream.writeSSE({ data: JSON.stringify(item) });
-          continue;
-        }
-        if (item.seq <= lastSentSeq) continue;
-        await writeRecord(item);
-        // 7) 终止条件：run_ended 命中订阅的 run，或任务级订阅命中根 Run 的 run_ended
-        if (isTerminal(item)) break;
+      } finally {
+        unsubscribe();
       }
     } finally {
-      clearInterval(heartbeat);
-      unsubscribe();
+      release();
     }
   });
 }

@@ -129,7 +129,18 @@ export const runs = sqliteTable(
   ],
 );
 
-/** Run 的事件日志，供后续断线补取使用（本阶段尚未接入写入方）。 */
+/** 回收水位独立持久化，旧游标不能将已回收历史误认为完整。 */
+export const eventRetention = sqliteTable(
+  "event_retention",
+  {
+    runId: text("run_id").primaryKey(),
+    taskId: text("task_id").notNull(),
+    prunedThrough: integer("pruned_through").notNull(),
+  },
+  (t) => [index("event_retention_task_idx").on(t.taskId)],
+);
+
+/** Run 的持久事件日志，支持断线后按序号补取。 */
 export const runEvents = sqliteTable(
   "run_events",
   {

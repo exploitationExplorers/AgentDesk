@@ -18,7 +18,7 @@ import { registerDeviceRoutes } from "./devices/routes";
 import { GatewayTransfers } from "./remote/transfers";
 import { GatewayEvents } from "./remote/events";
 import {
-  ProviderInput,
+  CloudProviderInput,
   AgentModelBinding,
   RemoteApprovalDecision,
   RemoteId,
@@ -539,7 +539,23 @@ export function createGatewayApp(deps: {
     if (providerMatch) {
       const [, hostId, id, tail = ""] = providerMatch;
       deps.remote.requireCloud(hostId!);
-      if (!id && c.req.method === "GET") return c.json(await runner.json("/host/providers"));
+      if (!id && c.req.method === "GET") {
+        const result = await runner.json<{
+          providers: unknown[];
+          bindings: unknown[];
+          credentialPolicy?: { allowServerCredentials?: boolean };
+        }>("/host/providers");
+        return c.json({
+          ...result,
+          credentialPolicy: {
+            allowServerCredentials:
+              config.allowServerProviderCredentials === true &&
+              result.credentialPolicy?.allowServerCredentials === true,
+            personalKeys: "local-only",
+            storage: "server",
+          },
+        });
+      }
       if (tail === "test" && id && c.req.method === "POST") {
         const providerId = RemoteId.parse(id);
         const p = await runner.json<{ providers: Array<{ id: string }> }>("/host/providers");
@@ -556,7 +572,18 @@ export function createGatewayApp(deps: {
         if (Date.now() - Date.parse(actor.recentAuthAt) > 15 * 60_000)
           throw new AppError(ErrorCode.Unauthorized, "修改模型配置需要重新登录");
         RemoteId.parse(id);
-        const input = ProviderInput.parse(await c.req.json());
+        const raw = await c.req.json();
+        if (
+          raw &&
+          typeof raw === "object" &&
+          "apiKey" in raw &&
+          !config.allowServerProviderCredentials
+        )
+          throw new AppError(
+            ErrorCode.Forbidden,
+            "个人 API Key 请在本地配置。服务器凭证写入默认关闭。",
+          );
+        const input = CloudProviderInput.parse(raw);
         const endpoint = new URL(input.baseUrl);
         if (
           endpoint.protocol !== "https:" ||

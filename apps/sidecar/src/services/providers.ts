@@ -25,7 +25,7 @@ import type { Db } from "../db/client";
 import { readExternalSqlite } from "../db/client";
 import { Collection } from "../db/collection";
 import { applyProxy, resolveProxy } from "../proxy";
-import type { SecretStore } from "../secrets";
+import type { CredentialVault } from "./storage/ports";
 import { errorMessage, newId, nowIso } from "../util";
 import type { SettingsService } from "./settings";
 
@@ -40,7 +40,7 @@ export class ProviderService implements ModelResolver {
 
   constructor(
     db: Db,
-    private readonly secrets: SecretStore,
+    private readonly secrets: CredentialVault,
     private readonly settings?: SettingsService,
   ) {
     this.providers = new Collection<StoredProvider>(db, "providers");

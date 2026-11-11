@@ -18,6 +18,7 @@
     "build:cli": "pnpm --filter ./apps/cli build",
     "cli": "node apps/cli/dist/index.mjs",
     "cli:preview": "pnpm --filter ./apps/cli exec tsx scripts/preview.ts",
+    "publish:cli": "tsx scripts/publish-cli.ts",
     "test:cli": "pnpm --filter ./apps/cli test",
     "typecheck": "turbo run typecheck && tsc -p scripts/tsconfig.json",
     "lint": "eslint .",

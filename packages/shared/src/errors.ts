@@ -11,6 +11,8 @@ export const ErrorCode = {
   IdempotencyConflict: "IDEMPOTENCY_CONFLICT",
   SnapshotBaseMissing: "SNAPSHOT_BASE_MISSING",
   TransferQuotaExceeded: "TRANSFER_QUOTA_EXCEEDED",
+  StorageFull: "STORAGE_FULL",
+  EventHistoryExpired: "EVENT_HISTORY_EXPIRED",
   RateLimited: "RATE_LIMITED",
   NotFound: "NOT_FOUND",
   Conflict: "CONFLICT",
@@ -56,6 +58,10 @@ export function httpStatusOf(code: ErrorCode): number {
       return 429;
     case ErrorCode.TransferQuotaExceeded:
       return 413;
+    case ErrorCode.StorageFull:
+      return 507;
+    case ErrorCode.EventHistoryExpired:
+      return 410;
     case ErrorCode.NotFound:
       return 404;
     case ErrorCode.Conflict:

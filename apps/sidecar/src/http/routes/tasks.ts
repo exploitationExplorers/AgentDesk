@@ -45,6 +45,7 @@ export function taskRoutes({ tasks, approvals, hub, dbHandle, projectInstruction
   app.post("/tasks", async (c) => {
     const body = CreateTaskBody.parse(await c.req.json());
     const workspace = await projectInstructions.validateWorkspace(body.workspace);
+    await tasks.assertStorageAvailable(workspace);
     const { task, run, replayed } = submissions.submit({ ...body, workspace });
     if (run.status === "queued") tasks.enqueue(run.id);
     return c.json(task, replayed ? 200 : 201);
@@ -70,6 +71,7 @@ export function taskRoutes({ tasks, approvals, hub, dbHandle, projectInstruction
       throw new AppError(ErrorCode.Conflict, "任务已关闭，不能新建运行");
     const body = CreateRunBody.parse(await c.req.json());
     const workspace = await projectInstructions.validateWorkspace(body.workspace);
+    await tasks.assertStorageAvailable(workspace);
     const run = tasks.createRun({
       taskId: id,
       kind: "root",

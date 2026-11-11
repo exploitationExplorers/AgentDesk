@@ -43,6 +43,8 @@ import { ProviderService } from "./services/providers";
 import { PromptOptimizationService } from "./services/prompt-optimization";
 import { Scheduler } from "./services/scheduler";
 import { SettingsService } from "./services/settings";
+import { StorageService } from "./services/storage/service";
+import { SqliteRetentionStore } from "./services/storage/sqlite-retention-store";
 import { createOrchestratorExecutor } from "./services/task-executor";
 import { TaskService } from "./services/tasks";
 import { readRemoteTask } from "./services/remote/task-contexts";
@@ -64,6 +66,7 @@ export interface Container {
   hub: EventHub;
   secrets: SecretStore;
   settings: SettingsService;
+  storage: StorageService;
   approvals: ApprovalService;
   autoloop: AutoloopService;
   permissionRules: PermissionRuleService;
@@ -220,7 +223,15 @@ export async function createContainer(
     config.dataDir,
     browserManager,
   );
-  const browser = new BrowserService(browserManager, hub, config.dataDir);
+  const storageRef: { current?: StorageService } = {};
+  const browser = new BrowserService(browserManager, hub, config.dataDir, async () => {
+    try {
+      await storageRef.current?.assertWritable();
+      return true;
+    } catch {
+      return false;
+    }
+  });
 
   const skills = new SkillRegistry();
   await skills.loadFrom(config.skillDirs, {
@@ -329,11 +340,23 @@ export async function createContainer(
     return baseExecutor(run, task, signal);
   };
   const tasks = new TaskService(db, hub, {
+    beforeRun: (run) =>
+      storageRef.current?.assertWritable(run.input.workspace) ?? Promise.resolve(),
     executor,
     artifactRoot,
     maxConcurrentRuns: cloudRunner ? 1 : undefined,
     authorizeRemoteRun: cloudRunner ? (run) => cloudRunner.authorizeRun(run) : undefined,
   });
+  const storageService = new StorageService(
+    db,
+    config.dataDir,
+    tasks,
+    new SqliteRetentionStore(dbHandle.raw),
+    () => browser.list().length > 0,
+  );
+  storageRef.current = storageService;
+  tasks.setStorageAdmission((workspace) => storageService.assertWritable(workspace));
+  storageService.start();
   lazyTasks.current = tasks;
   const autoloop = new AutoloopService({
     store: new AutoloopStore(db),
@@ -371,6 +394,7 @@ export async function createContainer(
     hub,
     secrets,
     settings,
+    storage: storageService,
     approvals,
     autoloop,
     permissionRules,
@@ -416,6 +440,7 @@ export async function createContainer(
       shutdown.abort();
       cloudRepositorySetup?.stop();
       scheduler.stop();
+      await storageService.dispose();
       const draining = tasks.shutdown();
       await cloudRepositorySetup?.dispose();
       await codex?.dispose();

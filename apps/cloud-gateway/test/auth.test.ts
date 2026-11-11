@@ -95,6 +95,63 @@ async function login() {
   return { cookie, setCookie, response };
 }
 
+it("凭证输入仅在 Gateway 和 Runner 同时启用时开放", async () => {
+  const { cookie } = await login();
+  let runnerEnabled = true;
+  runnerResponder = () =>
+    Response.json({
+      providers: [],
+      bindings: [],
+      credentialPolicy: { allowServerCredentials: runnerEnabled },
+    });
+  const read = async () =>
+    (await (await request("hosts/cloud/providers", undefined, { cookie })).json()).credentialPolicy;
+  expect(await read()).toMatchObject({ allowServerCredentials: false });
+  config.allowServerProviderCredentials = true;
+  expect(await read()).toMatchObject({ allowServerCredentials: true });
+  runnerEnabled = false;
+  expect(await read()).toMatchObject({ allowServerCredentials: false });
+});
+
+it("Gateway 默认拒绝上传个人 Key，启用后还要求服务器凭证用途，拒绝请求不转发", async () => {
+  const { cookie } = await login();
+  const session = await (await request("session", undefined, { cookie })).json();
+  const forwarded: unknown[] = [];
+  runnerResponder = (_url, init) => {
+    forwarded.push(JSON.parse(String(init?.body)));
+    return Response.json({ provider: { id: "cloud-model" } });
+  };
+  const input = {
+    name: "service",
+    api: "openai-completions",
+    baseUrl: "https://api.openai.com/v1",
+    models: ["model"],
+    defaultModel: "model",
+    source: "manual",
+    enabled: true,
+    apiKey: "synthetic-personal-key",
+  };
+  const write = (body: unknown) =>
+    app.request(`${config.publicOrigin}/api/v1/hosts/cloud/providers/new`, {
+      method: "PUT",
+      headers: {
+        host: "agent.example.test",
+        origin: config.publicOrigin,
+        cookie,
+        "content-type": "application/json",
+        "x-csrf-token": session.csrfToken,
+      },
+      body: JSON.stringify(body),
+    });
+  expect((await write(input)).status).toBe(403);
+  expect(forwarded).toEqual([]);
+  config.allowServerProviderCredentials = true;
+  expect((await write(input)).status).toBe(400);
+  expect(forwarded).toEqual([]);
+  expect((await write({ ...input, credentialPurpose: "server-service" })).status).toBe(200);
+  expect(forwarded).toHaveLength(1);
+});
+
 describe("Gateway 身份与会话", () => {
   it("项目任务列表保留 projectId 筛选，未知宿主不能读取云端项目", async () => {
     const { cookie } = await login();

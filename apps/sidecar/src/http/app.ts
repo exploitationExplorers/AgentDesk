@@ -19,6 +19,7 @@ import { projectRoutes } from "./routes/projects";
 import { providerRoutes } from "./routes/providers";
 import { promptOptimizationRoutes } from "./routes/prompt-optimizations";
 import { systemRoutes } from "./routes/system";
+import { storageRoutes } from "./routes/storage";
 import { taskRoutes } from "./routes/tasks";
 import { wechatRoutes } from "./routes/wechat";
 import { workflowRoutes } from "./routes/workflows";
@@ -67,6 +68,7 @@ export function createApp(container: Container, options: { webRoot?: string } = 
   });
 
   app.route("/api", systemRoutes(container));
+  app.route("/api", storageRoutes(container.storage));
   app.route("/api", providerRoutes(container));
   app.route("/api", promptOptimizationRoutes(container));
   app.route("/api", projectRoutes(container));

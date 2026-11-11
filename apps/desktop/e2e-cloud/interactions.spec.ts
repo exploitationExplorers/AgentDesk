@@ -65,7 +65,7 @@ function deferred() {
   return { promise, resolve };
 }
 
-async function mockGateway(page: Page) {
+async function mockGateway(page: Page, allowServerCredentials = false) {
   const state = {
     writes: [] as Write[],
     reads: [] as string[],
@@ -79,6 +79,7 @@ async function mockGateway(page: Page) {
     providers: [provider],
     previewGate: null as ReturnType<typeof deferred> | null,
     eventsGate: null as ReturnType<typeof deferred> | null,
+    historyExpired: false,
   };
   await page.route("**/api/v1/**", async (route) => {
     const request = route.request();
@@ -140,6 +141,11 @@ async function mockGateway(page: Page) {
       });
     }
     if (tail === "/tasks/task-1/events") {
+      if (state.historyExpired)
+        return route.fulfill({
+          contentType: "text/event-stream",
+          body: 'event: history_expired\ndata: {"type":"history_expired","prunedThrough":20,"message":"expired"}\n\n',
+        });
       if (!state.eventsGate)
         return route.fulfill({ contentType: "text/event-stream", body: ": ready\n\n" });
       await state.eventsGate.promise;
@@ -164,7 +170,11 @@ async function mockGateway(page: Page) {
         ],
       });
     if (tail === "/providers")
-      return json(route, { providers: state.providers, bindings: state.bindings });
+      return json(route, {
+        providers: state.providers,
+        bindings: state.bindings,
+        credentialPolicy: { allowServerCredentials, personalKeys: "local-only", storage: "server" },
+      });
     if (tail === "/providers/new" && method === "PUT") {
       state.providers = [
         ...state.providers,
@@ -366,7 +376,7 @@ test("run_ended refreshes the snapshot and duplicate events render once", async 
   const state = await mockGateway(page);
   state.eventsGate = deferred();
   await openApp(page);
-  await page.getByRole("button", { name: /Repair session state/ }).click();
+  await page.locator(".m-task-card").filter({ hasText: task.title }).click();
   await expect(page.getByText(task.goal, { exact: true })).toBeVisible();
   const previousReads = state.taskReads;
   state.eventsGate.resolve();
@@ -413,7 +423,7 @@ test("Provider save and Bot binding are explicit and write actions disable offli
   await page.getByLabel("\u540d\u79f0", { exact: true }).fill("New model service");
   await page.getByLabel("API \u5730\u5740").fill("https://api.example.test/v1");
   await page.getByLabel(/\u6a21\u578b ID/).fill("model-one\nmodel-two");
-  await page.getByLabel(/API \u5bc6\u94a5/).fill("private-test-key");
+  await expect(page.locator('input[type="password"]')).toHaveCount(0);
   await page.getByRole("button", { name: "\u4fdd\u5b58\u914d\u7f6e" }).click();
   await expect(page.getByText("New model service", { exact: true })).toBeVisible();
   expect(state.writes.at(-1)).toMatchObject({
@@ -424,11 +434,11 @@ test("Provider save and Bot binding are explicit and write actions disable offli
       baseUrl: "https://api.example.test/v1",
       models: ["model-one", "model-two"],
       defaultModel: "model-one",
-      apiKey: "private-test-key",
       enabled: true,
       source: "manual",
     },
   });
+  expect(state.writes.at(-1)?.body).not.toHaveProperty("apiKey");
   expect(state.writes.some(({ path }) => path.endsWith("/test"))).toBe(false);
   await expect(page.locator('input[type="password"]')).toHaveCount(0);
   const storage = await page.evaluate(() =>
@@ -439,7 +449,7 @@ test("Provider save and Bot binding are explicit and write actions disable offli
 });
 
 test("401 clears private task, diff and unsaved provider fields", async ({ page }) => {
-  const state = await mockGateway(page);
+  const state = await mockGateway(page, true);
   await openApp(page);
   await openGit(page);
   await page.getByRole("checkbox", { name: /src\/auth.ts/ }).check();
@@ -451,7 +461,8 @@ test("401 clears private task, diff and unsaved provider fields", async ({ page 
   await page.getByLabel("\u540d\u79f0", { exact: true }).fill("Private unsaved provider");
   await page.getByLabel("API \u5730\u5740").fill("https://api.example.test/v1");
   await page.getByLabel(/\u6a21\u578b ID/).fill("private-model");
-  await page.getByLabel(/API \u5bc6\u94a5/).fill("private-unsaved-key");
+  await page.getByRole("checkbox", { name: /配置独立服务器服务凭证/ }).check();
+  await page.getByLabel(/服务器服务密钥/).fill("private-unsaved-key");
   state.expired = true;
   await page.getByRole("button", { name: "\u4fdd\u5b58\u914d\u7f6e" }).click();
   await expect(page.getByLabel("\u90ae\u7bb1\u5730\u5740")).toBeVisible();
@@ -472,11 +483,54 @@ test("401 clears private task, diff and unsaved provider fields", async ({ page 
   ).toBe(0);
 });
 
+test("server service credentials require an explicit opt-in and clear after save", async ({
+  page,
+}) => {
+  const state = await mockGateway(page, true);
+  await openApp(page);
+  await openProviders(page);
+  await page.getByRole("button", { name: ui.addProvider, exact: true }).click();
+  await expect(page.locator('input[type="password"]')).toHaveCount(0);
+  await page.getByRole("checkbox", { name: /配置独立服务器服务凭证/ }).check();
+  await page.getByLabel("名称", { exact: true }).fill("Server service model");
+  await page.getByLabel("API 地址").fill("https://api.example.test/v1");
+  await page.getByLabel(/模型 ID/).fill("server-model");
+  await page.getByLabel(/服务器服务密钥/).fill("synthetic-test-server-service-key");
+  await page.getByRole("button", { name: "保存配置" }).click();
+  await expect(page.getByText("Server service model", { exact: true })).toBeVisible();
+  expect(state.writes.at(-1)?.body).toMatchObject({
+    apiKey: "synthetic-test-server-service-key",
+    credentialPurpose: "server-service",
+  });
+  await expect(page.locator('input[type="password"]')).toHaveCount(0);
+  expect(
+    await page.evaluate(() => JSON.stringify({ ...localStorage, ...sessionStorage })),
+  ).not.toContain("synthetic-test-server-service-key");
+});
+
+test("expired history refreshes the task snapshot and stops reconnecting", async ({ page }) => {
+  const state = await mockGateway(page);
+  state.historyExpired = true;
+  state.completed = true;
+  await openApp(page);
+  await page.locator(".m-task-card").filter({ hasText: task.title }).click();
+  await expect(page.getByText(/部分运行记录已按留存策略回收/)).toBeVisible();
+  await expect(page.getByText("Final verified task result", { exact: true })).toBeVisible();
+  const eventReads = () =>
+    state.reads.filter((path) => path.includes("/tasks/task-1/events")).length;
+  expect(eventReads()).toBe(1);
+  await page.waitForTimeout(3500);
+  expect(eventReads()).toBe(1);
+});
+
 test("task submission retries retain the same request id", async ({ page }) => {
   const state = await mockGateway(page);
   state.failCreateOnce = true;
   await openApp(page);
-  await page.getByRole("button", { name: "\u65b0\u5efa\u4efb\u52a1", exact: true }).click();
+  await page
+    .getByRole("banner")
+    .getByRole("button", { name: "\u65b0\u5efa\u4efb\u52a1", exact: true })
+    .click();
   await page.getByLabel("\u4f60\u60f3\u5b8c\u6210\u4ec0\u4e48\uff1f").fill("Repair this project");
   await page
     .locator("form")

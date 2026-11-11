@@ -242,6 +242,7 @@ export class ChatService {
     const workspace = await this.projectInstructions.validateWorkspace(
       this.conversationWorkspace(req.conversationId, req.workspace),
     );
+    await this.tasks.assertStorageAvailable(workspace);
     let conversation = req.conversationId ? this.conversations.get(req.conversationId) : undefined;
     if (req.conversationId && !conversation) throw new AppError(ErrorCode.NotFound, "会话不存在");
     if (!conversation) {

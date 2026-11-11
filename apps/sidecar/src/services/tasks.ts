@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { resolve } from "node:path";
 import {
   AppError,
@@ -22,7 +22,9 @@ import { conversationActivity } from "./conversation-activity";
 import type { Db } from "../db/client";
 import { Collection } from "../db/collection";
 import type { EventHub } from "../events";
-import { artifacts, runEvents, runs } from "../db/schema";
+import { artifacts, runs } from "../db/schema";
+import type { DocumentRepository, EventFilter, EventStore } from "./storage/ports";
+import { SqliteEventStore } from "./storage/sqlite-event-store";
 import { errorMessage, newId, nowIso, toJsonSafe } from "../util";
 
 /** 任务状态机的合法迁移表，迁移前必须在此声明。 */
@@ -111,6 +113,9 @@ export interface RunOutcome {
 export type RunExecutor = (run: Run, task: Task, signal: AbortSignal) => Promise<RunOutcome>;
 
 export interface TaskServiceOptions {
+  taskRepository?: DocumentRepository<Task>;
+  eventStore?: EventStore;
+  beforeRun?: (run: Run) => Promise<void>;
   artifactRoot?: string;
   maxConcurrentRuns?: number;
   executor?: RunExecutor;
@@ -129,7 +134,11 @@ const placeholderExecutor: RunExecutor = async (run) => ({
 /** Task/Run/Artifact 的裸持久化服务：CRUD + 状态机校验 + 幂等 Run + 产物版本管理 + 并发队列调度。 */
 export class TaskService {
   private readonly artifactRoot?: string;
-  private readonly tasks: Collection<Task>;
+  private readonly tasks: DocumentRepository<Task>;
+  private readonly eventStore: EventStore;
+  private readonly beforeRun?: (run: Run) => Promise<void>;
+  private admission?: (workspace?: string) => Promise<void>;
+  private readonly eventReaders = new Map<string, number>();
   private readonly maxConcurrentRuns: number;
   private readonly executor: RunExecutor;
   private readonly authorizeRemoteRun?: (run: Run) => void;
@@ -152,7 +161,9 @@ export class TaskService {
     private readonly hub: EventHub,
     options: TaskServiceOptions = {},
   ) {
-    this.tasks = new Collection<Task>(db, "tasks");
+    this.tasks = options.taskRepository ?? new Collection<Task>(db, "tasks");
+    this.eventStore = options.eventStore ?? new SqliteEventStore(db);
+    this.beforeRun = options.beforeRun;
     this.artifactRoot = options.artifactRoot;
     this.maxConcurrentRuns = options.maxConcurrentRuns ?? DEFAULT_MAX_CONCURRENT_RUNS;
     this.executor = options.executor ?? placeholderExecutor;
@@ -439,6 +450,8 @@ export class TaskService {
       this.safeTransition(task.id, "running");
     }
     try {
+      if (this.beforeRun) await this.beforeRun(started);
+      controller.signal.throwIfAborted();
       const result = await this.executor(started, task!, controller.signal);
       this.finalizeRun(started, result);
     } catch (error) {
@@ -611,24 +624,13 @@ export class TaskService {
     }
     const createdAt = nowIso();
     const parentRunId = input.parentRunId ?? null;
-    const result = this.db
-      .insert(runEvents)
-      .values({
-        taskId: input.taskId,
-        runId: input.runId,
-        parentRunId,
-        event: toJsonSafe(input.event),
-        createdAt,
-      })
-      .run();
-    const record: RunEventRecord = {
-      seq: Number(result.lastInsertRowid),
+    const record = this.eventStore.append({
       taskId: input.taskId,
       runId: input.runId,
       parentRunId,
-      event: input.event,
+      event: toJsonSafe(input.event) as TaskStreamEvent,
       createdAt,
-    };
+    });
     this.hub.publish(`run:${input.runId}`, record);
     this.hub.publish(`task:${input.taskId}`, record);
     return record;
@@ -640,24 +642,46 @@ export class TaskService {
     after: number;
     limit: number;
   }): RunEventRecord[] {
-    const condition = input.runId
-      ? and(eq(runEvents.runId, input.runId), gt(runEvents.id, input.after))
-      : and(eq(runEvents.taskId, input.taskId!), gt(runEvents.id, input.after));
-    return this.db
-      .select()
-      .from(runEvents)
-      .where(condition)
-      .orderBy(asc(runEvents.id))
-      .limit(input.limit)
-      .all()
-      .map((row) => ({
-        seq: row.id,
-        taskId: row.taskId,
-        runId: row.runId,
-        parentRunId: row.parentRunId,
-        event: row.event as TaskStreamEvent,
-        createdAt: row.createdAt,
-      }));
+    const expired = this.expiredHistory(input, input.after);
+    if (expired) throw new AppError(ErrorCode.EventHistoryExpired, expired.message, expired);
+    return this.eventStore.read(input);
+  }
+
+  expiredHistory(filter: EventFilter, after: number) {
+    const prunedThrough = this.eventStore.prunedThrough(filter);
+    return after < prunedThrough
+      ? {
+          type: "history_expired" as const,
+          prunedThrough,
+          message: "此任务的部分运行记录已按留存策略回收，请查看任务结果与产物。",
+        }
+      : null;
+  }
+
+  pinEventHistory(filter: EventFilter): () => void {
+    const taskId = filter.taskId ?? (filter.runId ? this.getRun(filter.runId)?.taskId : undefined);
+    if (!taskId) throw new AppError(ErrorCode.NotFound, "任务不存在");
+    this.eventReaders.set(taskId, (this.eventReaders.get(taskId) ?? 0) + 1);
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      const count = (this.eventReaders.get(taskId) ?? 1) - 1;
+      if (count) this.eventReaders.set(taskId, count);
+      else this.eventReaders.delete(taskId);
+    };
+  }
+
+  isHistoryInUse(taskId: string): boolean {
+    return this.eventReaders.has(taskId);
+  }
+
+  setStorageAdmission(check: (workspace?: string) => Promise<void>): void {
+    this.admission = check;
+  }
+
+  async assertStorageAvailable(workspace?: string): Promise<void> {
+    await this.admission?.(workspace);
   }
 
   recordArtifact(input: RecordArtifactInput): Artifact {

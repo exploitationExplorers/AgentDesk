@@ -257,7 +257,14 @@ export function MobileApp() {
         }
       },
       (state) => {
-        if (!controller.signal.aborted) setStreamState(state);
+        if (!controller.signal.aborted) {
+          if (state === "history_expired") {
+            setTaskEvents([]);
+            setNotice("部分运行记录已按留存策略回收，请查看任务结果与产物。");
+            refreshTaskDetail();
+            setStreamState("connected");
+          } else setStreamState(state);
+        }
       },
     );
     return () => {
@@ -530,6 +537,12 @@ export function MobileApp() {
           host={selectedHost}
           providers={providers}
           bindings={bindings}
+          allowServerCredentials={
+            providersQuery.data?.credentialPolicy != null &&
+            typeof providersQuery.data.credentialPolicy === "object" &&
+            "allowServerCredentials" in providersQuery.data.credentialPolicy &&
+            providersQuery.data.credentialPolicy.allowServerCredentials === true
+          }
           loading={providersQuery.loading}
           busy={busy}
           onSave={(id, body) =>
@@ -2081,6 +2094,7 @@ function ProviderView({
   host,
   providers,
   bindings,
+  allowServerCredentials,
   loading,
   busy,
   onSave,
@@ -2091,6 +2105,7 @@ function ProviderView({
   host: CloudHost | null;
   providers: CloudProvider[];
   bindings: AgentModelBinding[];
+  allowServerCredentials: boolean;
   loading: boolean;
   busy: boolean;
   onSave: (id: string, body: unknown) => Promise<boolean>;
@@ -2107,6 +2122,7 @@ function ProviderView({
   const [baseUrl, setBaseUrl] = useState("");
   const [models, setModels] = useState("");
   const [apiKey, setApiKey] = useState("");
+  const [serverCredential, setServerCredential] = useState(false);
   const [enabled, setEnabled] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const open = (provider?: CloudProvider) => {
@@ -2116,6 +2132,7 @@ function ProviderView({
     setBaseUrl(provider?.baseUrl ?? "");
     setModels(provider?.models.join("\n") ?? "");
     setApiKey("");
+    setServerCredential(false);
     setEnabled(provider?.enabled ?? true);
     setShowForm(true);
   };
@@ -2133,7 +2150,9 @@ function ProviderView({
       models: list,
       defaultModel: list[0],
       source: "manual",
-      ...(apiKey ? { apiKey } : {}),
+      ...(apiKey && allowServerCredentials && serverCredential
+        ? { apiKey, credentialPurpose: "server-service" }
+        : {}),
       enabled,
     });
     setApiKey("");
@@ -2145,7 +2164,9 @@ function ProviderView({
       <div className="m-form-title">
         <span className="m-overline">PROVIDERS · {host?.name}</span>
         <h2>模型配置</h2>
-        <p>API 密钥仅在提交时写入服务器，页面只显示是否已配置。</p>
+        <p>
+          个人 API Key 请在桌面本地配置。此处展示云宿主的独立模型配置；已有云密钥仍保存在服务器。
+        </p>
       </div>
       {showForm ? (
         <form className="m-form" onSubmit={(event) => void save(event)}>
@@ -2191,16 +2212,35 @@ function ProviderView({
               placeholder="model-name"
             />
           </label>
-          <label className="m-field">
-            <span>API 密钥 {selected?.hasKey && <small>已配置，留空可保留现有密钥</small>}</span>
-            <input
-              type="password"
-              autoComplete="new-password"
-              value={apiKey}
-              onChange={(event) => setApiKey(event.target.value)}
-              placeholder={selected?.hasKey ? "已加密存储" : "输入 API 密钥"}
-            />
-          </label>
+          {allowServerCredentials ? (
+            <label className="m-toggle">
+              <input
+                type="checkbox"
+                checked={serverCredential}
+                onChange={(event) => {
+                  setServerCredential(event.target.checked);
+                  setApiKey("");
+                }}
+              />
+              <span>配置独立服务器服务凭证，允许加密保存在云宿主</span>
+            </label>
+          ) : (
+            <p className="m-hint">
+              服务器凭证写入已关闭。电脑离线的云任务需要部署者另外配置云端凭证。
+            </p>
+          )}
+          {allowServerCredentials && serverCredential ? (
+            <label className="m-field">
+              <span>服务器服务密钥 {selected?.hasKey && <small>留空保留现有云密钥</small>}</span>
+              <input
+                type="password"
+                autoComplete="new-password"
+                value={apiKey}
+                onChange={(event) => setApiKey(event.target.value)}
+                placeholder={selected?.hasKey ? "已加密存储" : "输入 API 密钥"}
+              />
+            </label>
+          ) : null}
           <label className="m-toggle">
             <input
               type="checkbox"

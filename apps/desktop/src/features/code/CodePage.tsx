@@ -305,7 +305,7 @@ function TaskDetail({
     queryFn: codeApi(source).approvals,
     refetchInterval: 1500,
   });
-  const { records, activity, runTree, error } = useTaskEvents(source, task);
+  const { records, activity, runTree, error, historyExpired } = useTaskEvents(source, task);
   const [selectedChange, setSelectedChange] = useState<string | null>(null);
   const [selectedStep, setSelectedStep] = useState<string | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
@@ -463,7 +463,7 @@ function TaskDetail({
       {(error || action.error || runs.error) && (
         <div role="alert" className="border-b bg-danger/5 px-6 py-2 text-xs text-danger">
           {error ?? action.error?.message ?? runs.error?.message}{" "}
-          {error && "· 正在重试同步，已显示的记录会保留。"}
+          {error && !historyExpired && "· 正在重试同步，已显示的记录会保留。"}
         </div>
       )}
       {workspaceView === "collaboration" ? (

@@ -129,6 +129,7 @@ export function subscribe<E>(
   onEvent: (event: E) => void,
   options: {
     onError?: () => void;
+    onHistoryExpired?: (message: string) => void;
     isFinal?: (event: E) => boolean;
     query?: Record<string, string | undefined>;
   } = {},
@@ -138,6 +139,11 @@ export function subscribe<E>(
   void apiUrl(path, options.query).then((u) => {
     if (closed) return;
     source = new EventSource(u);
+    source.addEventListener("history_expired", () => {
+      closed = true;
+      source?.close();
+      options.onHistoryExpired?.("部分运行记录已按留存策略回收，请查看任务结果与产物。");
+    });
     source.onmessage = (e) => {
       const data = JSON.parse(e.data) as E & { type?: string };
       if (data.type === "ping") return;

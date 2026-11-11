@@ -51,12 +51,14 @@ def initialize(args):
     gateway = {
         "PUBLIC_ORIGIN": args.origin.rstrip("/"), "OWNER_EMAIL": args.owner, "CLOUD_OWNER_USER_ID": owner_id,
         "AUTH_MULTI_USER": "true",
+        "ALLOW_SERVER_PROVIDER_CREDENTIALS": "false",
         "GATEWAY_DATA_DIR": "/data", "CLOUD_RUNNER_URL": "http://runner:17893", "TRUSTED_PROXY_CIDRS": "172.30.98.1/32",
         "SESSION_SECRET_FILE": "/run/secrets/gateway/session", "OTP_PEPPER_FILE": "/run/secrets/gateway/otp",
         "REMOTE_SHARED_TOKEN_FILE": "/run/secrets/shared/remote", "SMTP_PASSWORD_FILE": "/run/secrets/gateway/smtp",
         "SMTP_HOST": args.smtp_host, "SMTP_PORT": "465", "SMTP_SECURE": "true", "SMTP_USER": args.smtp_user, "SMTP_FROM": args.owner,
     }
     runner = {"AGENTDESK_DATA_DIR": "/data", "WORKSPACE_ROOT": "/workspaces", "CLOUD_OWNER_USER_ID": owner_id,
+              "ALLOW_SERVER_PROVIDER_CREDENTIALS": "false",
               "AGENTDESK_MASTER_KEY_FILE": "/run/secrets/runner/master", "REMOTE_SHARED_TOKEN_FILE": "/run/secrets/shared/remote"}
     for name, values in (("gateway", gateway), ("runner", runner)):
         (root / "config" / (name + ".env")).write_text("".join(f"{k}={v}\n" for k, v in values.items()), encoding="utf8")

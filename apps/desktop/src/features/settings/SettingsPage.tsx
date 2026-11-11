@@ -4,6 +4,7 @@ import {
   Brain,
   Bot,
   GitBranch,
+  HardDrive,
   FlaskConical,
   KeyRound,
   Search,
@@ -26,6 +27,7 @@ import { api } from "../../lib/api";
 import { settingsRoute } from "../../router";
 import { BindingsTab } from "./BindingsTab";
 import { GeneralTab } from "./GeneralTab";
+import { StorageTab } from "./StorageTab";
 import { GitAccountsTab } from "./GitAccountsTab";
 import { MemoryTab } from "./MemoryTab";
 import { EvolutionTab } from "./EvolutionTab";
@@ -68,6 +70,13 @@ const SECTIONS = [
     icon: SlidersHorizontal,
     description: "调整外观、工作目录和应用偏好。",
     component: GeneralTab,
+  },
+  {
+    value: "storage",
+    label: "存储与隐私",
+    icon: HardDrive,
+    description: "查看当前设备用量，设置留存、清理和磁盘预留。",
+    component: StorageTab,
   },
   {
     value: "skills",

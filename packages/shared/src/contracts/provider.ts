@@ -44,6 +44,18 @@ export const ProviderInput = Provider.pick({
 }).extend({ apiKey: z.string().optional() });
 export type ProviderInput = z.infer<typeof ProviderInput>;
 
+/** 云凭证独立于个人 BYOK；只有部署者启用且用户明确选择服务器服务凭证时可写入。 */
+export const CloudProviderInput = ProviderInput.extend({
+  credentialPurpose: z.literal("server-service").optional(),
+}).superRefine((value, context) => {
+  if (value.apiKey !== undefined && value.credentialPurpose !== "server-service")
+    context.addIssue({
+      code: "custom",
+      path: ["credentialPurpose"],
+      message: "个人 API Key 请在本地配置；云端写入必须明确选择服务器服务凭证。",
+    });
+});
+
 /** 导入向导的候选项：密钥仅以掩码形式返回给 UI，确认时由 sidecar 重新读取原文件。 */
 export const ProviderCandidate = z.object({
   candidateId: z.string(),

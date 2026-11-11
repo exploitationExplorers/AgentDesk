@@ -60,6 +60,8 @@ export async function consumeSse<T = AgentStreamEvent>(
   const decoder = new TextDecoder();
   let buffer = "";
   const dispatch = async (record: string) => {
+    if (record.split(/\r?\n/).some((line) => line.trim() === "event: history_expired"))
+      throw new Error("部分运行记录已按留存策略回收，请查看任务结果与产物。");
     const data = record
       .split(/\r?\n/)
       .filter((line) => line.startsWith("data:"))

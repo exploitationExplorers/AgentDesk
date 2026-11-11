@@ -1,6 +1,6 @@
 {
   "name": "chuxin-agentdesk",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Local-first Agent workbench CLI with terminal chat, browser UI, durable tasks, tool approvals, and optional remote connector",
   "type": "module",
   "license": "UNLICENSED",

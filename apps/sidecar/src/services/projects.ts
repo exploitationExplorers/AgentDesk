@@ -36,7 +36,7 @@ import {
 import type { Db } from "../db/client";
 import { Collection } from "../db/collection";
 import { GLOBAL_CHANNEL, type EventHub, type GlobalEvent } from "../events";
-import type { SecretStore } from "../secrets";
+import type { CredentialVault, DocumentRepository } from "./storage/ports";
 import { errorMessage, newId, nowIso, shortHash } from "../util";
 import { aiCommitWorkerArgs, aiCommitWorkerPath } from "../worker-path";
 import type { SettingsService } from "./settings";
@@ -50,20 +50,24 @@ const DEFAULT_HOSTS: Record<string, string> = { github: "github.com", gitee: "gi
 const STAR_PLATFORMS = new Set(["github", "gitee", "gitlab"]);
 
 export class ProjectService {
-  private readonly projects: Collection<Project>;
-  private readonly accounts: Collection<GitAccountDoc>;
+  private readonly projects: DocumentRepository<Project>;
+  private readonly accounts: DocumentRepository<GitAccountDoc>;
   private starsRefreshing: Promise<{ updated: number; gained: number }> | null = null;
 
   constructor(
     db: Db,
-    private readonly secrets: SecretStore,
+    private readonly secrets: CredentialVault,
     private readonly settings: SettingsService,
     private readonly models: ModelResolver,
     private readonly dataDir: string,
     private readonly hub?: EventHub,
+    repositories?: {
+      projects: DocumentRepository<Project>;
+      accounts: DocumentRepository<GitAccountDoc>;
+    },
   ) {
-    this.projects = new Collection<Project>(db, "projects");
-    this.accounts = new Collection<GitAccountDoc>(db, "gitAccounts");
+    this.projects = repositories?.projects ?? new Collection<Project>(db, "projects");
+    this.accounts = repositories?.accounts ?? new Collection<GitAccountDoc>(db, "gitAccounts");
   }
 
   list(): Project[] {

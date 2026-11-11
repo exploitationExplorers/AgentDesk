@@ -31,6 +31,28 @@ test("SSE 非法数据会报错，不被当作执行成功", async () => {
   );
 });
 
+test("SSE 历史过期提示终止消费并释放连接", async () => {
+  let cancelled = false;
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(
+        new TextEncoder().encode(
+          'event: history_expired\r\ndata: {"type":"history_expired","prunedThrough":42}\r\n\r\n',
+        ),
+      );
+    },
+    cancel() {
+      cancelled = true;
+    },
+  });
+  await assert.rejects(
+    consumeSse(stream, () => assert.fail("过期通知不能作为普通任务事件")),
+    /留存策略回收/,
+  );
+  assert.equal(cancelled, true);
+  assert.equal(stream.locked, false);
+});
+
 test("实例校验需要认证且拒绝同端口上的不同实例", async () => {
   let receivedToken;
   const server = createServer((req, res) => {

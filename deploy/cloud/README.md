@@ -92,6 +92,14 @@ agentdesk connect install
 
 办公室运行 Codex 需要安装已验证的 0.167.0 版本，在启动 CLI 服务前配置 `AGENTDESK_CODEX_BIN` 为其绝对路径。Git 操作需要 Git for Windows；本地 Windows Codex 文件审批烟测使用其 Git Bash。真实协议验证脚本为 `scripts/check-codex-protocol.ts`，使用独立临时 home 和本地 Responses 测试服务，覆盖 start、流事件、命令／文件审批、拒绝、取消和跨进程 resume；不消耗真实模型额度。
 
+## 模型凭证与存储策略
+
+个人 API Key 在桌面端本地配置并由本地执行器使用，不随业务数据上传。升级后，Gateway 和 Runner 默认拒绝远程写入模型 API Key；已有云端密钥继续保留，不会自动迁移到电脑或删除。关闭写入不代表禁用了已有云密钥。
+
+云端无人值守任务若需独立服务凭证，在 `config/gateway.env` 和 `config/runner.env` 两端都显式设置 `ALLOW_SERVER_PROVIDER_CREDENTIALS=true`，重新创建两服务。手机端还需勾选“配置独立服务器服务凭证”，接口请求必须包含 `credentialPurpose: "server-service"`。凭证加密保存在云宿主，手机不持久化密钥；不要填入要求仅留在个人电脑上的 Key。两端任一开关关闭都会拒绝写入。
+
+桌面“设置 → 存储与隐私”管理的是当前本地 Sidecar 的容量与留存，不是服务器容量。自动清理默认关闭；开启后每小时分批回收已关闭任务的旧事件、轨迹和无引用旧截图。不会删除工作区、产物、浏览器登录态或密钥；SQLite 删除记录释放可复用页，主文件通常不会立即缩小。云宿主本轮接入启动前磁盘预留检查，但尚未提供远程存储策略管理入口，仍须独立监控服务器持久卷、Docker、备份和工作区容量。
+
 ## 备份和恢复
 
 安装 `age`。收件公钥可放服务器，解密私钥保存在另一安全位置。备份脚本会短暂停止两服务，以一致保存 SQLite 的 DB／WAL／SHM、项目、主密钥、凭据、设备配对和 Codex home；完成或失败后重新启动原容器。先确认没有需要保留的活动任务。

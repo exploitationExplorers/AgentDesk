@@ -70,6 +70,7 @@ export class RemoteRoutingStore {
             throw new AppError(ErrorCode.Conflict, "原请求属于另一次登录，请查看原任务状态");
           return previous;
         }
+        const createdAt = input.createdAt ?? Date.now();
         this.db
           .prepare(
             `INSERT INTO gateway_remote_requests
@@ -88,13 +89,13 @@ export class RemoteRoutingStore {
             Number(input.active),
             input.action ?? "task.create",
             Number(input.accepted ?? false),
-            input.createdAt ?? Date.now(),
+            createdAt,
           );
         return {
           ...input,
           action: input.action ?? "task.create",
           accepted: input.accepted ?? false,
-          createdAt: input.createdAt ?? Date.now(),
+          createdAt,
         };
       })
       .immediate();

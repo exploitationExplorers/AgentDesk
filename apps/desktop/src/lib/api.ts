@@ -67,6 +67,10 @@ import type {
   SkillSuggestionResult,
   StarredRepo,
   Task,
+  StoragePolicy,
+  StorageUsage,
+  StorageCleanupPreview,
+  StorageCleanupResult,
 } from "@agentdesk/shared";
 import {
   MemoryList,
@@ -159,6 +163,13 @@ export type ArticleBlock =
   | { kind: "code"; tabs: ArticleCodeTab[] };
 
 export const api = {
+  storagePolicy: () => http.get<StoragePolicy>("/storage/policy"),
+  updateStoragePolicy: (policy: StoragePolicy) =>
+    http.put<StoragePolicy>("/storage/policy", policy),
+  storageUsage: () => http.get<StorageUsage>("/storage/usage"),
+  previewStorageCleanup: () => http.post<StorageCleanupPreview>("/storage/cleanup/preview"),
+  cleanupStorage: (previewId: string) =>
+    http.post<StorageCleanupResult>("/storage/cleanup", { previewId }),
   autoloopStatus: () => http.get<AutoloopStatus>("/autoloop/status"),
   automations: () => http.get<AutomationBinding[]>("/automations"),
   createAutomation: (input: AutomationBindingInput) =>

@@ -31,6 +31,7 @@ export class BrowserService {
     readonly manager: BrowserSessionManager,
     private readonly hub: EventHub,
     private readonly dataDir: string,
+    private readonly allowScreenshot: () => Promise<boolean> = async () => true,
   ) {
     this.shotRoot = join(dataDir, "browser-shots");
   }
@@ -70,6 +71,8 @@ export class BrowserService {
     result: Awaited<ReturnType<typeof browserAct>>;
     session: BrowserSessionState;
   }> {
+    if (action.kind === "screenshot" && !(await this.allowScreenshot()))
+      throw new AppError(ErrorCode.StorageFull, "剩余空间不足，已暂停新截图。");
     const prev = this.states.get(sessionId);
     const headless = action.headless ?? prev?.headless ?? true;
     const page = await this.manager.page(sessionId, { headless });
@@ -189,6 +192,7 @@ export class BrowserService {
   private async publishFrame(sessionId: string): Promise<void> {
     const state = this.states.get(sessionId);
     if (!state?.open) return;
+    if (!(await this.allowScreenshot())) return;
     try {
       const page = await this.manager.page(sessionId, { headless: state.headless });
       const shotPath = await writeScreenshotFile(

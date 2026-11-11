@@ -188,6 +188,21 @@ pnpm --filter ./apps/cli test:dist
 pnpm --filter ./apps/cli test:package
 ```
 
+## 发布到 npm
+
+仓库根目录一键升版并发布（默认 patch）：
+
+```powershell
+pnpm publish:cli
+pnpm publish:cli -- --bump minor
+pnpm publish:cli -- --bump none
+pnpm publish:cli -- --dry-run
+pnpm publish:cli -- --otp 123456
+pnpm publish:cli -- --with-dist-smoke
+```
+
+脚本会更新 `apps/cli/package.json` 版本（可用 `--bump none` 跳过）、跑 typecheck/test/build/package smoke，再执行 `pnpm publish`。交互式 `test:dist` 默认跳过。发布后请自行提交版本号变更。
+
 ## 反馈
 
 - 仓库：https://github.com/exploitationExplorers/AgentDesk

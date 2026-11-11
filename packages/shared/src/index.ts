@@ -13,6 +13,7 @@ export * from "./contracts/workbench";
 export * from "./contracts/project-insights";
 export * from "./contracts/approval";
 export * from "./contracts/settings";
+export * from "./contracts/storage";
 export * from "./contracts/browser";
 export * from "./contracts/memory";
 export * from "./contracts/evaluation";

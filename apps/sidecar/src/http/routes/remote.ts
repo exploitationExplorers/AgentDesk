@@ -11,7 +11,7 @@ import {
   RemoteCommand,
   RemoteScope,
   RemoteTaskInput,
-  ProviderInput,
+  CloudProviderInput,
   RemoteActor,
   RemoteId,
   type Approval,
@@ -137,7 +137,17 @@ export function remoteRoutes(container: Services) {
   );
 
   const providerInput = (raw: unknown) => {
-    const input = ProviderInput.parse(raw);
+    if (
+      raw &&
+      typeof raw === "object" &&
+      "apiKey" in raw &&
+      !container.cloudConfig.allowServerProviderCredentials
+    )
+      throw new AppError(
+        ErrorCode.Forbidden,
+        "个人 API Key 请在本地配置。服务器凭证写入默认关闭。",
+      );
+    const input = CloudProviderInput.parse(raw);
     const endpoint = new URL(input.baseUrl);
     if (
       endpoint.protocol !== "https:" ||
@@ -231,6 +241,11 @@ export function remoteRoutes(container: Services) {
     c.json({
       providers: container.providers.list(),
       bindings: container.providers.listBindings(),
+      credentialPolicy: {
+        allowServerCredentials: container.cloudConfig.allowServerProviderCredentials === true,
+        personalKeys: "local-only",
+        storage: "server",
+      },
     }),
   );
   const setup = () => {
@@ -397,60 +412,70 @@ export function remoteRoutes(container: Services) {
     runner.assertReadAccess(scope, body.taskId, command.connectionEpoch);
     const after = body.after ?? 0;
     return streamSSE(c, async (stream) => {
-      let last = after;
-      let closed = false;
-      let wake: (() => void) | undefined;
-      const unsubscribe = container.hub.subscribe(`task:${body.taskId}`, () => wake?.());
-      const heartbeat = setInterval(() => wake?.(), 5_000);
-      const close = () => {
-        closed = true;
-        wake?.();
-      };
-      stream.onAbort(close);
-      container.shutdownSignal.addEventListener("abort", close, { once: true });
-      if (container.shutdownSignal.aborted) close();
+      const release = container.tasks.pinEventHistory({ taskId: body.taskId });
       try {
-        while (!closed) {
-          runner.assertReadAccess(scope, body.taskId, command.connectionEpoch);
-          const page = container.tasks.eventsAfter({
-            taskId: body.taskId,
-            after: last,
-            limit: 100,
-          });
-          for (const event of page) {
-            if (closed) return;
-            runner.assertReadAccess(scope, body.taskId, command.connectionEpoch);
-            await stream.writeSSE({
-              id: String(event.seq),
-              event: "task",
-              data: JSON.stringify(event),
-            });
-            last = event.seq;
-          }
-          if (page.length === 100) continue;
-          const task = container.tasks.get(body.taskId);
-          const currentRun = task?.currentRunId
-            ? container.tasks.getRun(task.currentRunId)
-            : undefined;
-          if (
-            !task ||
-            ["completed", "failed", "cancelled", "closed"].includes(task.status) ||
-            (currentRun && ["succeeded", "failed", "cancelled"].includes(currentRun.status))
-          )
-            break;
-          await new Promise<void>((resolve) => {
-            wake = resolve;
-          });
-          wake = undefined;
-          if (!closed) await stream.writeSSE({ event: "keepalive", data: "" });
+        const expired = container.tasks.expiredHistory({ taskId: body.taskId }, after);
+        if (expired) {
+          await stream.writeSSE({ event: "history_expired", data: JSON.stringify(expired) });
+          return;
         }
-      } catch (error) {
-        if (!closed && error instanceof AppError)
-          await stream.writeSSE({ event: "error", data: JSON.stringify(error.toBody()) });
+        let last = after;
+        let closed = false;
+        let wake: (() => void) | undefined;
+        const unsubscribe = container.hub.subscribe(`task:${body.taskId}`, () => wake?.());
+        const heartbeat = setInterval(() => wake?.(), 5_000);
+        const close = () => {
+          closed = true;
+          wake?.();
+        };
+        stream.onAbort(close);
+        container.shutdownSignal.addEventListener("abort", close, { once: true });
+        if (container.shutdownSignal.aborted) close();
+        try {
+          while (!closed) {
+            runner.assertReadAccess(scope, body.taskId, command.connectionEpoch);
+            const page = container.tasks.eventsAfter({
+              taskId: body.taskId,
+              after: last,
+              limit: 100,
+            });
+            for (const event of page) {
+              if (closed) return;
+              runner.assertReadAccess(scope, body.taskId, command.connectionEpoch);
+              await stream.writeSSE({
+                id: String(event.seq),
+                event: "task",
+                data: JSON.stringify(event),
+              });
+              last = event.seq;
+            }
+            if (page.length === 100) continue;
+            const task = container.tasks.get(body.taskId);
+            const currentRun = task?.currentRunId
+              ? container.tasks.getRun(task.currentRunId)
+              : undefined;
+            if (
+              !task ||
+              ["completed", "failed", "cancelled", "closed"].includes(task.status) ||
+              (currentRun && ["succeeded", "failed", "cancelled"].includes(currentRun.status))
+            )
+              break;
+            await new Promise<void>((resolve) => {
+              wake = resolve;
+            });
+            wake = undefined;
+            if (!closed) await stream.writeSSE({ event: "keepalive", data: "" });
+          }
+        } catch (error) {
+          if (!closed && error instanceof AppError)
+            await stream.writeSSE({ event: "error", data: JSON.stringify(error.toBody()) });
+        } finally {
+          container.shutdownSignal.removeEventListener("abort", close);
+          clearInterval(heartbeat);
+          unsubscribe();
+        }
       } finally {
-        container.shutdownSignal.removeEventListener("abort", close);
-        clearInterval(heartbeat);
-        unsubscribe();
+        release();
       }
     });
   });

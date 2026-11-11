@@ -19,6 +19,9 @@ export function openDatabase(dataDir: string | ":memory:"): DbHandle {
     raw.pragma("journal_mode = WAL");
     raw.pragma("foreign_keys = ON");
     raw.exec(schema.BOOTSTRAP_SQL);
+    raw.exec(`CREATE TABLE IF NOT EXISTS event_retention (
+      run_id TEXT PRIMARY KEY, task_id TEXT NOT NULL, pruned_through INTEGER NOT NULL
+    ); CREATE INDEX IF NOT EXISTS event_retention_task_idx ON event_retention(task_id);`);
     const runColumns = raw.prepare("PRAGMA table_info(runs)").all() as Array<{ name: string }>;
     if (!runColumns.some((column) => column.name === "execution_owner"))
       raw.exec("ALTER TABLE runs ADD COLUMN execution_owner TEXT NOT NULL DEFAULT 'local'");
