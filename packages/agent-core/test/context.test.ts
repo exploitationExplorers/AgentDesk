@@ -1,6 +1,7 @@
 import {
   fauxAssistantMessage,
   fauxText,
+  fauxToolCall,
   registerFauxProvider,
   type FauxProviderRegistration,
   type Message,
@@ -17,13 +18,96 @@ import {
   estimateMessageTokens,
   estimateTokens,
   fitToolResults,
+  defineTool,
+  inputBudget,
   runAgent,
+  toWireName,
+  Type,
 } from "../src";
 
 let faux: FauxProviderRegistration | undefined;
 afterEach(() => faux?.unregister());
 
 describe("模型预算与真实用量", () => {
+  it("普通执行连续读取长文件时自动精简输入，保留交互决定和完整执行记录", async () => {
+    faux = registerFauxProvider({ tokensPerSecond: 100000 });
+    const content = `START_OF_FILE\n${"const value = 1;\n".repeat(2200)}\nEND_OF_FILE`;
+    const decision = "保持接口兼容".repeat(700);
+    const read = defineTool({
+      name: "reading.read",
+      description: "读取源码",
+      parameters: Type.Object({}),
+      risk: "safe",
+      execute: async () => content,
+    });
+    const ask = defineTool({
+      name: "tasks.ask_user",
+      description: "确认约束",
+      parameters: Type.Object({}),
+      risk: "safe",
+      interactionOnly: true,
+      execute: async () => decision,
+    });
+    const readCall = fauxToolCall(toWireName(read.name), {});
+    const askCall = fauxToolCall(toWireName(ask.name), {});
+    const user: Message = { role: "user", content: "只读检查，不修改项目", timestamp: 0 };
+    faux.setResponses([
+      fauxAssistantMessage([readCall, askCall], { stopReason: "toolUse" }),
+      (context) => {
+        expect(
+          estimateMessageTokens(context.messages) +
+            estimateTokens(context.systemPrompt ?? "") +
+            estimateTokens(JSON.stringify(context.tools ?? [])),
+        ).toBeLessThanOrEqual(inputBudget(8192, 1024));
+        expect(context.messages[0]).toEqual(user);
+        const results = context.messages.filter((message) => message.role === "toolResult");
+        expect(results[0]?.toolCallId).toBe(readCall.id);
+        expect(JSON.stringify(results[0])).toContain("工具输出已截取");
+        expect(JSON.stringify(results[0])).toContain("START_OF_FILE");
+        expect(JSON.stringify(results[0])).toContain("END_OF_FILE");
+        expect(results[1]).toMatchObject({
+          toolCallId: askCall.id,
+          content: [{ type: "text", text: decision }],
+        });
+        return fauxAssistantMessage(fauxText("检查完成"));
+      },
+    ]);
+    const events: AgentStreamEvent[] = [];
+    const result = await runAgent({
+      definition: {
+        name: "code",
+        title: "Code",
+        description: "Code",
+        systemPrompt: "帮助用户",
+        tools: [],
+      },
+      tools: [read, ask],
+      models: [
+        {
+          providerId: "faux",
+          providerName: "faux",
+          apiKey: "test",
+          model: { ...faux.getModel(), contextWindow: 8192, maxTokens: 1024 },
+        },
+      ],
+      messages: [user],
+      emit: (event) => events.push(event),
+      requestApproval: async () => true,
+    });
+    expect(result.text).toBe("检查完成");
+    expect(result.toolCalls[0]?.result).toBe(content);
+    expect(result.messages.find((message) => message.role === "toolResult")).toMatchObject({
+      content: [{ type: "text", text: content }],
+    });
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "response_status",
+        message: expect.stringContaining("精简"),
+      }),
+    );
+    expect(faux.state.callCount).toBe(2);
+  });
+
   it("工具正文裁剪保留用户要求、交互回答和调用对应关系", () => {
     const user: Message = { role: "user", content: "只读检查，不修改项目", timestamp: 0 };
     const answer: Message = {

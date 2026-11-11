@@ -22,6 +22,8 @@ import { ModelBrandIcon } from "../../components/ModelBrandIcon";
 import { api } from "../../lib/api";
 
 const SOURCE_LABEL = { manual: "手动", dotenv: ".env", "cc-switch": "CC Switch" } as const;
+const CONTEXT_PRESETS = [32768, 65536, 131072, 200000, 1000000] as const;
+const formatTokens = (value: number) => value.toLocaleString("en-US");
 
 function ProviderDialog({
   open,
@@ -203,50 +205,84 @@ function ProviderDialog({
           </div>
         ) : null}
         {currentModels.length > 0 ? (
-          <details className="rounded-xl border p-3">
-            <summary className="cursor-pointer text-[13px] font-medium">模型容量设置</summary>
+          <section aria-label="模型容量设置" className="rounded-xl border p-3">
+            <h3 className="text-[13px] font-medium">上下文与输出上限</h3>
             <p className="mt-2 text-[12px] text-muted">
-              按服务商提供的模型容量填写，单位为 token。未填写时使用 32,768 的上下文窗口和 4,096
-              的输出上限；两项清空可恢复默认。
+              按服务商实际支持的容量设置，单位为 token。留空时使用 32,768 的上下文窗口和 4,096
+              的输出上限。调大此值可减少长任务中断，但不能超过服务商限制。
             </p>
             <div className="mt-3 grid max-h-64 gap-4 overflow-y-auto">
-              {currentModels.map((model) => (
-                <div key={model} className="grid gap-2">
-                  <p className="break-all font-mono text-[12px]">{model}</p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <Field label="上下文窗口">
-                      <Input
-                        aria-label={`${model} 上下文窗口`}
-                        type="number"
-                        min={4096}
-                        max={2000000}
-                        step={1}
-                        value={limits[model]?.contextWindow ?? ""}
-                        placeholder="32768"
-                        onChange={(event) =>
-                          updateLimit(model, "contextWindow", event.target.value)
-                        }
-                      />
-                    </Field>
-                    <Field label="最大输出">
-                      <Input
-                        aria-label={`${model} 最大输出`}
-                        type="number"
-                        min={256}
-                        max={200000}
-                        step={1}
-                        value={limits[model]?.maxOutputTokens ?? ""}
-                        placeholder="4096"
-                        onChange={(event) =>
-                          updateLimit(model, "maxOutputTokens", event.target.value)
-                        }
-                      />
-                    </Field>
+              {currentModels.map((model) => {
+                const capacity = ModelLimits.safeParse({
+                  contextWindow: Number(limits[model]?.contextWindow || 32768),
+                  maxOutputTokens: Number(limits[model]?.maxOutputTokens || 4096),
+                });
+                return (
+                  <div key={model} className="grid gap-2">
+                    <p className="break-all font-mono text-[12px]">{model}</p>
+                    <div
+                      className="flex flex-wrap gap-1.5"
+                      role="group"
+                      aria-label={`${model} 快捷容量`}
+                    >
+                      {CONTEXT_PRESETS.map((value) => (
+                        <Button
+                          key={value}
+                          size="sm"
+                          variant={
+                            Number(limits[model]?.contextWindow || 32768) === value
+                              ? "secondary"
+                              : "outline"
+                          }
+                          onClick={() => updateLimit(model, "contextWindow", String(value))}
+                        >
+                          {value === 200000 ? "200K" : value < 1000000 ? `${value / 1024}K` : "1M"}
+                        </Button>
+                      ))}
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Field label="最大上下文">
+                        <Input
+                          aria-label={`${model} 上下文窗口`}
+                          type="number"
+                          min={4096}
+                          max={2000000}
+                          step={1}
+                          value={limits[model]?.contextWindow ?? ""}
+                          placeholder="32768"
+                          onChange={(event) =>
+                            updateLimit(model, "contextWindow", event.target.value)
+                          }
+                        />
+                      </Field>
+                      <Field label="最大输出">
+                        <Input
+                          aria-label={`${model} 最大输出`}
+                          type="number"
+                          min={256}
+                          max={200000}
+                          step={1}
+                          value={limits[model]?.maxOutputTokens ?? ""}
+                          placeholder="4096"
+                          onChange={(event) =>
+                            updateLimit(model, "maxOutputTokens", event.target.value)
+                          }
+                        />
+                      </Field>
+                    </div>
+                    <p
+                      className={`text-[12px] ${capacity.success ? "text-muted" : "text-danger"}`}
+                      aria-live="polite"
+                    >
+                      {capacity.success
+                        ? `实际输入预算约 ${formatTokens(Math.floor(capacity.data.contextWindow * 0.9) - capacity.data.maxOutputTokens)} tokens（已预留输出和安全余量）。`
+                        : "请填写有效容量，最大输出需小于上下文窗口的一半。"}
+                    </p>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
-          </details>
+          </section>
         ) : null}
         <Field label="API Key" hint={provider?.hasKey ? "已保存密钥，留空表示不修改" : undefined}>
           <Input

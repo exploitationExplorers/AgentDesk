@@ -39,9 +39,9 @@ export function inputBudget(contextWindow: number, maxOutputTokens: number): num
 }
 
 export class ModelContextBudgetError extends Error {
-  constructor(estimatedTokens: number, contextWindow: number) {
+  constructor(estimatedTokens: number, contextWindow: number, budget: number) {
     super(
-      `模型上下文超出输入预算（估算 ${estimatedTokens} tokens，窗口 ${contextWindow}）。已保留执行记录，请缩小检查范围或配置更大的模型窗口后继续。`,
+      `模型上下文超出输入预算（估算 ${estimatedTokens} tokens，输入预算 ${budget}，上下文窗口 ${contextWindow}）。已保留执行记录，请在 设置 > Provider > 编辑 > 上下文与输出上限 中按服务商支持的容量调大窗口，或缩小检查范围后继续。`,
     );
     this.name = "ModelContextBudgetError";
   }

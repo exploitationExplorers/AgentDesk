@@ -210,11 +210,18 @@ async function callModel(
       : outboundContext;
     const estimatedInputTokens = estimateMessageTokens(candidateContext.messages) + overhead;
     if (estimatedInputTokens > budget) {
-      contextError = new ModelContextBudgetError(estimatedInputTokens, contextWindow);
+      contextError = new ModelContextBudgetError(estimatedInputTokens, contextWindow, budget);
       lastError = contextError.message;
       continue;
     }
     contextError = undefined;
+    if (candidateContext.messages !== outboundContext.messages) {
+      emit({
+        type: "response_status",
+        agent,
+        message: "读取内容较多，已精简工具输出，完整结果保留在执行记录中…",
+      });
+    }
     for (let attempt = 0; attempt <= TRANSIENT_RETRIES; attempt++) {
       let produced = false;
       const remainingMs = deadline - Date.now();
@@ -323,6 +330,11 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentRunResult
   const maxTurns = definition.maxTurns ?? 12;
   if (!Number.isSafeInteger(maxTurns) || maxTurns < 1)
     throw new Error("Agent 的 maxTurns 必须是正整数");
+  const preservedToolResults = new Set(
+    tools
+      .filter((tool) => tool.interactionOnly)
+      .flatMap((tool) => [tool.name, toWireName(tool.name)]),
+  );
   if (options.durable) {
     return runDurableAgent(options, {
       model: (history) => {
@@ -338,11 +350,7 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentRunResult
           emit,
           signal,
           options.mask,
-          new Set(
-            tools
-              .filter((tool) => tool.interactionOnly)
-              .flatMap((tool) => [tool.name, toWireName(tool.name)]),
-          ),
+          preservedToolResults,
         );
       },
       tool: (call, toolOptions, access, execution) =>
@@ -366,6 +374,7 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentRunResult
       emit,
       signal,
       options.mask,
+      preservedToolResults,
     );
     providerId = used;
     messages.push(message);
