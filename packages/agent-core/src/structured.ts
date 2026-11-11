@@ -1,4 +1,10 @@
-import { complete, type Usage, type UserMessage } from "@mariozechner/pi-ai";
+import {
+  complete,
+  completeSimple,
+  type AssistantMessage,
+  type Usage,
+  type UserMessage,
+} from "@mariozechner/pi-ai";
 import type { z } from "zod";
 import { DEFAULT_CONTEXT_WINDOW, type ResolvedModel } from "./llm";
 import { estimateMessageTokens, estimateTokens, inputBudget } from "./context";
@@ -10,14 +16,33 @@ export interface CompleteOptions {
   prompt: string | UserMessage["content"];
   signal?: AbortSignal;
   maxTokens?: number;
+  /** 可选：覆盖供应商 SDK 的自动重试次数。 */
+  maxRetries?: number;
   /** 可选：发给模型前脱敏、拿到回复后换回真实值。 */
   mask?: MaskStore;
   /** 每次请求的供应商用量；包含解析重试和备用模型返回的用量。 */
   onUsage?: (usage: Usage, model: ResolvedModel, estimatedInputTokens: number) => void;
 }
 
-/** 普通单轮补全，带备用模型切换。 */
+export interface CompleteTextResult {
+  text: string;
+  stopReason: AssistantMessage["stopReason"];
+}
+
+/** 保留终止原因，使调用方能识别输出截断，并映射模型的思考强度。 */
+export function completeTextResult(options: CompleteOptions): Promise<CompleteTextResult> {
+  return completeTextInternal(options, true);
+}
+
+/** 普通单轮补全，保持现有字符串调用方的模型选项兼容。 */
 export async function completeText(options: CompleteOptions): Promise<string> {
+  return (await completeTextInternal(options, false)).text;
+}
+
+async function completeTextInternal(
+  options: CompleteOptions,
+  includeReasoning: boolean,
+): Promise<CompleteTextResult> {
   let lastError = "没有可用的模型";
   const systemPrompt = options.mask
     ? maskText(options.systemPrompt, options.mask)
@@ -38,21 +63,40 @@ export async function completeText(options: CompleteOptions): Promise<string> {
       lastError = `上下文超出 ${candidate.model.id} 的输入预算（估算 ${estimatedInputTokens} tokens），请缩短输入或配置更大的模型窗口`;
       continue;
     }
-    const message = await complete(
-      candidate.model,
+    const useSimple = includeReasoning && Boolean(candidate.reasoningEffort);
+    // Anthropic 的预算式 thinking 至少需要 1,024 tokens，还要留出正文空间；
+    // 不提高调用者的上限，小预算时通过通用适配层显式关闭 thinking。
+    const reasoning =
+      useSimple && (candidate.model.api !== "anthropic-messages" || maxTokens >= 2048)
+        ? candidate.reasoningEffort
+        : undefined;
+    const completeCandidate = useSimple ? completeSimple : complete;
+    const message = await completeCandidate(
+      // 通用适配层可能为 thinking 增加 token，仍须受本次请求的总输出预算约束。
+      useSimple ? { ...candidate.model, maxTokens } : candidate.model,
       {
         systemPrompt,
         messages,
       },
-      { apiKey: candidate.apiKey, signal: options.signal, maxTokens },
+      {
+        apiKey: candidate.apiKey,
+        signal: options.signal,
+        maxTokens,
+        ...(reasoning ? { reasoning } : {}),
+        ...(options.maxRetries !== undefined ? { maxRetries: options.maxRetries } : {}),
+      },
     );
     options.onUsage?.(message.usage, candidate, estimatedInputTokens);
+    options.signal?.throwIfAborted();
     if (message.stopReason !== "error" && message.stopReason !== "aborted") {
       const text = message.content
         .filter((c): c is { type: "text"; text: string } => c.type === "text")
         .map((c) => c.text)
         .join("");
-      return options.mask ? unmaskText(text, options.mask) : text;
+      return {
+        text: options.mask ? unmaskText(text, options.mask) : text,
+        stopReason: message.stopReason,
+      };
     }
     lastError = message.errorMessage ?? lastError;
   }

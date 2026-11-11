@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
@@ -31,16 +31,20 @@ import { isCliWorkbench } from "../../lib/tauri";
 import { toast } from "../../lib/toast";
 import { codeRoute } from "../../router";
 import { codeApi, type CodeSource } from "./api";
-import { outputText, projectActivity, stepHint, type CodeStep } from "./activity";
+import { outputText, stepHint, type CodeStep } from "./activity";
 import { DiffView } from "./DiffView";
 import { ArtifactWorkspace } from "./ArtifactWorkspace";
-import { FlowGraph } from "./FlowGraph";
-import { useRunTree } from "./useRunTree";
 import { useTaskEvents } from "./useTaskEvents";
 import { CollaborationView } from "./CollaborationView";
-import { CliTerminal } from "./CliTerminal";
 import { ElasticPanelHandle } from "./ElasticPanelHandle";
 import "./elastic-panel.css";
+
+const FlowGraph = lazy(() =>
+  import("./FlowGraph").then((module) => ({ default: module.FlowGraph })),
+);
+const CliTerminal = lazy(() =>
+  import("./CliTerminal").then((module) => ({ default: module.CliTerminal })),
+);
 
 const STATUS: Record<Task["status"], string> = {
   pending: "待开始",
@@ -309,9 +313,7 @@ function TaskDetail({
     queryFn: codeApi(source).approvals,
     refetchInterval: 1500,
   });
-  const { records, error } = useTaskEvents(source, task);
-  const activity = useMemo(() => projectActivity(records), [records]);
-  const runTree = useRunTree(records);
+  const { records, activity, runTree, error } = useTaskEvents(source, task);
   const [selectedChange, setSelectedChange] = useState<string | null>(null);
   const [selectedStep, setSelectedStep] = useState<string | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
@@ -591,12 +593,16 @@ function TaskDetail({
                 )}
               </TabsContent>
               <TabsContent value="flow" className="relative min-h-0 flex-1 pt-2">
-                <FlowGraph
-                  runsById={runTree.runsById}
-                  rootOrder={runTree.rootOrder}
-                  selectedRunId={selectedRunId}
-                  onSelectRun={selectRun}
-                />
+                {timelineView === "flow" && (
+                  <Suspense fallback={<p className="p-4 text-xs text-muted">正在加载流程图…</p>}>
+                    <FlowGraph
+                      runsById={runTree.runsById}
+                      rootOrder={runTree.rootOrder}
+                      selectedRunId={selectedRunId}
+                      onSelectRun={selectRun}
+                    />
+                  </Suspense>
+                )}
               </TabsContent>
             </Tabs>
             {task.purpose === "reference_analysis" && (
@@ -883,7 +889,9 @@ export function CodePage() {
       </header>
       <div className="flex min-h-0 flex-1">
         {source === "cli" ? (
-          <CliTerminal />
+          <Suspense fallback={<p className="p-6 text-sm text-muted">正在加载终端…</p>}>
+            <CliTerminal />
+          </Suspense>
         ) : (
           <>
             {!railCollapsed ? (

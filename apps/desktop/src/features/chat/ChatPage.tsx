@@ -1,8 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { AlertTriangle, ArrowDown, Menu, PanelRight, Files, X } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
-import { chatMessageContent, type AgentName, type ModelSelection } from "@agentdesk/shared";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
+import {
+  chatMessageContent,
+  type AgentName,
+  type ChatMessage,
+  type ModelSelection,
+} from "@agentdesk/shared";
 import { http } from "../../lib/http";
 import { BrowserLivePanel } from "../../components/BrowserLivePanel";
 import { Markdown } from "../../components/Markdown";
@@ -11,6 +16,7 @@ import { api } from "../../lib/api";
 import { chatRoute } from "../../router";
 import { useUi } from "../../stores/ui";
 import { Composer, type ComposerProject } from "./Composer";
+import { conversationDraftScope, useChatDrafts } from "./drafts";
 import { conversationsApi } from "./conversations-api";
 import { toast } from "../../lib/toast";
 import { ActionPrompt } from "./ActionPrompt";
@@ -53,6 +59,35 @@ function AgentAvatar({ agent }: { agent: AgentName | null }) {
   );
 }
 
+const SavedMessage = memo(function SavedMessage({ message }: { message: ChatMessage }) {
+  if (message.role === "user")
+    return (
+      <div className="flex justify-end">
+        <div className="chat-message-user max-w-[90%] whitespace-pre-wrap break-words px-4 py-3 text-[14px] leading-7 sm:max-w-[84%]">
+          {message.content}
+        </div>
+      </div>
+    );
+  return (
+    <div className="flex min-w-0 flex-col gap-2">
+      <div className="flex items-center gap-2 text-[13px] font-semibold">
+        <AgentAvatar agent={message.agent} />
+        {AGENT_META[message.agent ?? "orchestrator"].label}
+      </div>
+      <div className="min-w-0 flex-1 pl-0 sm:pl-9">
+        {message.display?.length ? (
+          <ChatTimeline blocks={message.display} />
+        ) : (
+          <>
+            <SavedSteps calls={message.toolCalls} />
+            <Markdown>{chatMessageContent(message.content)}</Markdown>
+          </>
+        )}
+      </div>
+    </div>
+  );
+});
+
 export function ChatPage() {
   const { c: conversationId } = chatRoute.useSearch();
   const navigate = useNavigate();
@@ -65,13 +100,32 @@ export function ChatPage() {
     id: string | null;
   } | null>(null);
   const workbench = useSessionWorkbench(conversationId, agent);
-  const { chatPrefill, setChatPrefill, browserPanelOpen, activeBrowserSessionId } = useUi();
-  const [prefill, setPrefill] = useState<string | undefined>();
+  const chatPrefill = useUi((s) => s.chatPrefill);
+  const setChatPrefill = useUi((s) => s.setChatPrefill);
+  const browserPanelOpen = useUi((s) => s.browserPanelOpen);
+  const activeBrowserSessionId = useUi((s) => s.activeBrowserSessionId);
   const [draftProject, setDraftProject] = useState<ComposerProject | null>(null);
+  const pendingNewConversation = useRef<{ routeEpoch: number } | null>(null);
+  const activeRoute = useRef({ conversationId, epoch: 0 });
+  if (activeRoute.current.conversationId !== conversationId) {
+    activeRoute.current = { conversationId, epoch: activeRoute.current.epoch + 1 };
+  }
   const reduced = useReducedMotion();
 
   const onConversation = useCallback(
-    (id: string) => void navigate({ to: "/", search: { c: id }, replace: true }),
+    (id: string) => {
+      const pending = pendingNewConversation.current;
+      pendingNewConversation.current = null;
+      // 离开再回到新会话也算新的草稿页面，迟到事件不能接管它。
+      if (
+        !pending ||
+        pending.routeEpoch !== activeRoute.current.epoch ||
+        activeRoute.current.conversationId
+      )
+        return;
+      useChatDrafts.getState().move(conversationDraftScope(), conversationDraftScope(id));
+      void navigate({ to: "/", search: { c: id }, replace: true });
+    },
     [navigate],
   );
   const { live, send, stop, clearConnectionError, streaming } = useChatStream(
@@ -196,9 +250,9 @@ export function ChatPage() {
   useEffect(() => {
     if (!chatPrefill) return;
     if (chatPrefill.agent) setAgent(chatPrefill.agent as AgentName);
-    setPrefill(chatPrefill.message);
+    useChatDrafts.getState().setText(conversationDraftScope(conversationId), chatPrefill.message);
     setChatPrefill(null);
-  }, [chatPrefill, setChatPrefill]);
+  }, [chatPrefill, setChatPrefill, conversationId]);
 
   useEffect(() => setHistoryOpen(false), [conversationId]);
   useEffect(() => {
@@ -225,7 +279,10 @@ export function ChatPage() {
 
   const handleSend = (text: string, forced?: AgentName, modelSelection?: ModelSelection) => {
     scroll.toBottom(false);
-    setPrefill(undefined);
+    useChatDrafts.getState().setText(conversationDraftScope(conversationId), "");
+    pendingNewConversation.current = conversationId
+      ? null
+      : { routeEpoch: activeRoute.current.epoch };
     setArtifactSelection(null);
     void send(
       text,
@@ -253,8 +310,8 @@ export function ChatPage() {
         workbench.data?.task?.purpose === "reference_analysis"
       }
       agent={agent}
+      draftScopeId={conversationDraftScope(conversationId)}
       onAgentChange={setAgent}
-      initial={prefill}
       autoFocus
       large={!conversationId && !live}
       context={workbench.data?.context}
@@ -421,32 +478,9 @@ export function ChatPage() {
                   ref={scroll.content}
                   className="mx-auto flex max-w-[840px] flex-col gap-8 px-5 py-7 sm:px-9 sm:py-10"
                 >
-                  {(messages.data ?? []).map((m) =>
-                    m.role === "user" ? (
-                      <div key={m.id} className="flex justify-end">
-                        <div className="chat-message-user max-w-[90%] whitespace-pre-wrap break-words px-4 py-3 text-[14px] leading-7 sm:max-w-[84%]">
-                          {m.content}
-                        </div>
-                      </div>
-                    ) : (
-                      <div key={m.id} className="flex min-w-0 flex-col gap-2">
-                        <div className="flex items-center gap-2 text-[13px] font-semibold">
-                          <AgentAvatar agent={m.agent} />
-                          {AGENT_META[m.agent ?? "orchestrator"].label}
-                        </div>
-                        <div className="min-w-0 flex-1 pl-0 sm:pl-9">
-                          {m.display?.length ? (
-                            <ChatTimeline blocks={m.display} />
-                          ) : (
-                            <>
-                              <SavedSteps calls={m.toolCalls} />
-                              <Markdown>{chatMessageContent(m.content)}</Markdown>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    ),
-                  )}
+                  {(messages.data ?? []).map((message) => (
+                    <SavedMessage key={message.id} message={message} />
+                  ))}
                   {live && !livePersisted ? (
                     <>
                       {!messages.data?.some(

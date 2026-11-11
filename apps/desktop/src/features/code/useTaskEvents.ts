@@ -2,6 +2,9 @@ import { useEffect, useState } from "react";
 import type { RunEventRecord, Task } from "@agentdesk/shared";
 import { subscribe } from "../../lib/http";
 import { codeApi, type CodeSource } from "./api";
+import { createTaskEventBuffer, type TaskEventSnapshot } from "./task-event-buffer";
+
+const emptySnapshot = createTaskEventBuffer({ taskId: "", onPublish: () => {} }).getSnapshot();
 
 /** 真 SSE 推送；断线由 EventSource 原生重连接管，服务端按 Last-Event-ID 续传游标。 */
 export function useTaskEvents(
@@ -10,24 +13,22 @@ export function useTaskEvents(
 ) {
   const { id: taskId, currentRunId, automationId } = task;
   const continuous = Boolean(automationId);
-  const [state, setState] = useState<{
-    key: string;
-    records: RunEventRecord[];
-    error: string | null;
-  }>({ key: "", records: [], error: null });
-  const key = `${source}:${taskId ?? ""}`;
+  const [state, setState] = useState<
+    TaskEventSnapshot & {
+      key: string;
+      error: string | null;
+    }
+  >({ key: "", ...emptySnapshot, error: null });
+  const key = JSON.stringify([source, taskId, currentRunId, continuous]);
   useEffect(() => {
     if (!taskId) return;
-    let records: RunEventRecord[] = [];
-    let lastSeq = 0;
+    const buffer = createTaskEventBuffer({
+      taskId,
+      onPublish: (snapshot) => setState({ key, ...snapshot, error: null }),
+    });
     const unsubscribe = subscribe<RunEventRecord>(
       codeApi(source).streamPath(taskId),
-      (record) => {
-        if (record.seq <= lastSeq) return;
-        lastSeq = record.seq;
-        records = [...records, record];
-        setState({ key, records, error: null });
-      },
+      buffer.append,
       {
         query: { after: "0" },
         // 历史根运行结束不能中断本轮回放；自动化任务与服务端保持持续订阅。
@@ -38,7 +39,10 @@ export function useTaskEvents(
           record.runId === currentRunId,
       },
     );
-    return unsubscribe;
+    return () => {
+      buffer.dispose();
+      unsubscribe();
+    };
   }, [source, taskId, key, currentRunId, continuous]);
-  return state.key === key ? state : { records: [], error: null };
+  return state.key === key ? state : { ...emptySnapshot, error: null };
 }

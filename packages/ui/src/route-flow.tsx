@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { cn } from "./cn";
+import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 
 const NS = "http://www.w3.org/2000/svg";
 
@@ -71,11 +72,21 @@ export function RouteFlow({
   const rowRefs = useRef(new Map<string, HTMLLIElement>());
   const wireRefs = useRef(new Map<string, SVGPathElement>());
   const srcWireRef = useRef<SVGPathElement>(null);
+  const wireLengths = useRef(new WeakMap<SVGPathElement, number>());
+  const still = usePrefersReducedMotion();
 
   const [chip, setChip] = useState("待命");
   const [caption, setCaption] = useState("—");
   const [activeId, setActiveId] = useState<string | null>(null);
   const [results, setResults] = useState<Record<string, string>>({});
+  const staticResults: Record<string, string> = {};
+  if (still) {
+    for (const step of steps) {
+      staticResults[step.targetId] = step.fail ? (step.tag ?? "失败") : (step.result ?? "完成");
+      if (step.fail && step.fallbackId)
+        staticResults[step.fallbackId] = step.fallbackTag ?? "已兜底";
+    }
+  }
 
   // 测量并重算所有连线的几何。
   useEffect(() => {
@@ -84,6 +95,7 @@ export function RouteFlow({
     if (!stage || !svg) return;
 
     const layout = () => {
+      wireLengths.current = new WeakMap();
       const r = stage.getBoundingClientRect();
       if (!r.width) return;
       const box = (el: Element) => {
@@ -136,13 +148,12 @@ export function RouteFlow({
   useEffect(() => {
     const svg = svgRef.current;
     const stage = stageRef.current;
-    if (!svg || !stage || steps.length === 0) return;
+    if (!svg || !stage || steps.length === 0 || still) return;
 
-    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     let trips: Trip[] = [];
     let clock = 0;
     let prev = 0;
-    let visible = true;
+    let visible = false;
     let raf = 0;
     let cancelled = false;
 
@@ -153,7 +164,7 @@ export function RouteFlow({
       dur: number,
     ) =>
       new Promise<void>((resolve) => {
-        trips.push({ dot, path, reverse, start: clock, dur: still ? 0 : dur, resolve });
+        trips.push({ dot, path, reverse, start: clock, dur, resolve });
       });
     const pause = (ms: number) => travel(null, null, false, ms);
 
@@ -174,7 +185,11 @@ export function RouteFlow({
         const k = tr.dur ? Math.min(1, (clock - tr.start) / tr.dur) : 1;
         if (tr.dot && tr.path) {
           const e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2; // easeInOutQuad
-          const len = tr.path.getTotalLength();
+          let len = wireLengths.current.get(tr.path);
+          if (len === undefined) {
+            len = tr.path.getTotalLength();
+            wireLengths.current.set(tr.path, len);
+          }
           if (len) {
             const pt = tr.path.getPointAtLength((tr.reverse ? 1 - e : e) * len);
             tr.dot.setAttribute("cx", String(pt.x));
@@ -189,7 +204,7 @@ export function RouteFlow({
     };
 
     const bump = (el: Element | null) => {
-      if (!el || still) return;
+      if (!el) return;
       el.classList.remove("animate-node-tick");
       void (el as HTMLElement).offsetWidth;
       el.classList.add("animate-node-tick");
@@ -213,7 +228,7 @@ export function RouteFlow({
           setCaption(s.caption);
 
           if (s.fail) {
-            if (row && !still) {
+            if (row) {
               row.classList.remove("animate-row-shake");
               void row.offsetWidth;
               row.classList.add("animate-row-shake");
@@ -241,7 +256,7 @@ export function RouteFlow({
           await travel(packet(true), srcWireRef.current, true, 320);
           if (cancelled) return;
           setActiveId(null);
-          await pause(still ? 700 : 420);
+          await pause(420);
           if (cancelled) return;
         }
         setChip("本轮完成");
@@ -250,29 +265,42 @@ export function RouteFlow({
     };
 
     const frame = (now: number) => {
+      raf = 0;
+      if (cancelled || !visible || document.hidden) return;
       const dt = Math.min(now - (prev || now), 50);
       prev = now;
-      if (visible && !document.hidden) {
-        clock += dt;
-        step();
-      }
+      clock += dt;
+      step();
       raf = requestAnimationFrame(frame);
     };
 
+    const syncVisibility = () => {
+      if (visible && !document.hidden && !cancelled) {
+        if (!raf) raf = requestAnimationFrame(frame);
+      } else {
+        cancelAnimationFrame(raf);
+        raf = 0;
+        prev = 0;
+      }
+    };
     const io = new IntersectionObserver((es) => {
-      visible = es[0]?.isIntersecting ?? true;
+      visible = es[0]?.isIntersecting ?? false;
+      syncVisibility();
     });
     io.observe(stage);
-    raf = requestAnimationFrame(frame);
+    document.addEventListener("visibilitychange", syncVisibility);
     void run();
 
     return () => {
       cancelled = true;
       cancelAnimationFrame(raf);
       io.disconnect();
+      document.removeEventListener("visibilitychange", syncVisibility);
+      for (const trip of trips) trip.resolve();
+      trips = [];
       svg.querySelectorAll(".rf-packet").forEach((p) => p.remove());
     };
-  }, [steps, loopDelay]);
+  }, [steps, loopDelay, still]);
 
   return (
     <div className={cn("rounded-2xl border bg-surface p-5", className)}>
@@ -299,12 +327,12 @@ export function RouteFlow({
         </svg>
 
         <Node innerRef={srcRef} {...source} />
-        <Node innerRef={hubRef} {...hub} accent chip={chip} />
+        <Node innerRef={hubRef} {...hub} accent chip={still && steps.length ? "本轮完成" : chip} />
 
         <ol className="relative z-[1] col-span-2 grid gap-1.5 pl-6 lg:col-span-1 lg:pl-0">
           {targets.map((t) => {
-            const active = activeId === t.id;
-            const result = results[t.id];
+            const active = !still && activeId === t.id;
+            const result = (still ? staticResults : results)[t.id];
             return (
               <li
                 key={t.id}
@@ -352,7 +380,7 @@ export function RouteFlow({
         aria-live="polite"
         className="flex min-h-[3em] items-center border-t pt-3.5 text-[14px] text-fg"
       >
-        {caption}
+        {still ? (steps.at(-1)?.caption ?? "—") : caption}
       </p>
     </div>
   );

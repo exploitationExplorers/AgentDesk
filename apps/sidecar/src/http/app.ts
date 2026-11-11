@@ -15,6 +15,7 @@ import { interviewRoutes } from "./routes/interview";
 import { memoryRoutes } from "./routes/memory";
 import { projectRoutes } from "./routes/projects";
 import { providerRoutes } from "./routes/providers";
+import { promptOptimizationRoutes } from "./routes/prompt-optimizations";
 import { systemRoutes } from "./routes/system";
 import { taskRoutes } from "./routes/tasks";
 import { wechatRoutes } from "./routes/wechat";
@@ -65,6 +66,7 @@ export function createApp(container: Container, options: { webRoot?: string } = 
 
   app.route("/api", systemRoutes(container));
   app.route("/api", providerRoutes(container));
+  app.route("/api", promptOptimizationRoutes(container));
   app.route("/api", projectRoutes(container));
   app.route("/api", feedRoutes(container));
   app.route("/api", reachRoutes(container));

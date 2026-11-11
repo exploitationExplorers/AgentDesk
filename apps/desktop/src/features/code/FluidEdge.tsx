@@ -1,4 +1,5 @@
 import { BaseEdge, getBezierPath, type Edge, type EdgeProps } from "@xyflow/react";
+import { usePrefersReducedMotion } from "@agentdesk/ui";
 import { memo, useEffect, useId, useRef } from "react";
 import type { FlowEdgeData } from "./flow-layout";
 
@@ -31,6 +32,7 @@ export const FluidEdge = memo(function FluidEdge({
   const pathRef = useRef<SVGPathElement>(null);
   const dotRef = useRef<SVGCircleElement>(null);
   const live = Boolean(data?.live);
+  const reduced = usePrefersReducedMotion();
   const gradId = useId().replace(/:/g, "");
 
   useEffect(() => {
@@ -38,35 +40,28 @@ export const FluidEdge = memo(function FluidEdge({
     const dot = dotRef.current;
     if (!path || !dot) return;
 
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const len = path.getTotalLength();
+    if (!len) return;
     if (reduced) {
-      const len = path.getTotalLength();
-      if (len) {
-        const pt = path.getPointAtLength(len * 0.5);
-        dot.setAttribute("cx", String(pt.x));
-        dot.setAttribute("cy", String(pt.y));
-        dot.setAttribute("opacity", live ? "0.85" : "0");
-      }
+      const pt = path.getPointAtLength(len * 0.5);
+      dot.setAttribute("cx", String(pt.x));
+      dot.setAttribute("cy", String(pt.y));
+      dot.setAttribute("opacity", live ? "0.85" : "0");
       return;
     }
 
     let raf = 0;
-    let start = 0;
-    let visible = true;
+    let prev = 0;
+    let elapsed = 0;
+    let visible = false;
+    let finished = false;
     const duration = live ? 1400 : 900;
 
     const frame = (now: number) => {
-      if (!start) start = now;
-      if (!visible || document.hidden) {
-        raf = requestAnimationFrame(frame);
-        return;
-      }
-      const len = path.getTotalLength();
-      if (!len) {
-        raf = requestAnimationFrame(frame);
-        return;
-      }
-      const elapsed = now - start;
+      raf = 0;
+      if (!visible || document.hidden || finished) return;
+      elapsed += now - (prev || now);
+      prev = now;
       const t = live ? (elapsed % duration) / duration : Math.min(1, elapsed / duration);
       const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
       const pt = path.getPointAtLength(ease * len);
@@ -78,21 +73,36 @@ export const FluidEdge = memo(function FluidEdge({
         // 播完一次后淡出，避免终态图上满屏飞点
         const fade = t >= 1 ? Math.max(0, 1 - (elapsed - duration) / 400) : 1;
         dot.setAttribute("opacity", String(fade));
-        if (fade <= 0) return;
+        if (fade <= 0) {
+          finished = true;
+          return;
+        }
       }
       raf = requestAnimationFrame(frame);
     };
 
+    const syncVisibility = () => {
+      if (visible && !document.hidden && !finished) {
+        if (!raf) raf = requestAnimationFrame(frame);
+      } else {
+        cancelAnimationFrame(raf);
+        raf = 0;
+        prev = 0;
+      }
+    };
     const io = new IntersectionObserver((entries) => {
-      visible = entries[0]?.isIntersecting ?? true;
+      visible = entries[0]?.isIntersecting ?? false;
+      syncVisibility();
     });
     io.observe(path);
-    raf = requestAnimationFrame(frame);
+    document.addEventListener("visibilitychange", syncVisibility);
     return () => {
+      finished = true;
       cancelAnimationFrame(raf);
       io.disconnect();
+      document.removeEventListener("visibilitychange", syncVisibility);
     };
-  }, [edgePath, live]);
+  }, [edgePath, live, reduced]);
 
   return (
     <>

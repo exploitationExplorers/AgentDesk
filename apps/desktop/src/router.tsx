@@ -3,25 +3,10 @@ import {
   createRootRoute,
   createRoute,
   createRouter,
+  lazyRouteComponent,
 } from "@tanstack/react-router";
 import { z } from "zod";
 import { AppShell } from "./components/AppShell";
-import { ChatPage } from "./features/chat/ChatPage";
-import { CodePage } from "./features/code/CodePage";
-import { DeployPage } from "./features/deploy/DeployPage";
-import { DiskPage } from "./features/disk/DiskPage";
-import { FeedPage } from "./features/feed/FeedPage";
-import { CareerMapPage } from "./features/learning/CareerMapPage";
-import { LearningPage } from "./features/learning/LearningPage";
-import { LibraryPage } from "./features/learning/LibraryPage";
-import { InterviewPage } from "./features/learning/InterviewPage";
-import { ReviewPage } from "./features/learning/ReviewPage";
-import { ProjectsPage } from "./features/projects/ProjectsPage";
-import { SettingsPage } from "./features/settings/SettingsPage";
-import { SkillsPage } from "./features/skills/SkillsPage";
-import { WorkflowEditorPage } from "./features/workflows/WorkflowEditorPage";
-import { WorkflowsPage } from "./features/workflows/WorkflowsPage";
-import { AutomationsPage } from "./features/automations/AutomationsPage";
 
 const rootRoute = createRootRoute({ component: AppShell });
 
@@ -29,12 +14,10 @@ const chatRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
   validateSearch: z.object({ c: z.string().optional() }),
-  component: ChatPage,
 });
 const projectsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/projects",
-  component: ProjectsPage,
 });
 const codeRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -44,73 +27,118 @@ const codeRoute = createRoute({
     c: z.string().optional(),
     source: z.enum(["workbench", "cli"]).optional(),
   }),
-  component: CodePage,
 });
 const deployRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/deploy",
-  component: DeployPage,
 });
 const diskRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/disk",
-  component: DiskPage,
 });
 const feedRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/feed",
-  component: FeedPage,
 });
 const learningRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/learning",
-  component: LearningPage,
 });
 const learningCareerRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/learning/career",
-  component: CareerMapPage,
 });
 const learningLibraryRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/learning/library",
-  component: LibraryPage,
 });
 const learningReviewRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/learning/review",
-  component: ReviewPage,
 });
 const learningInterviewRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/learning/interview",
-  component: InterviewPage,
 });
 const workflowsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/workflows",
-  component: WorkflowsPage,
 });
 const automationsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/automations",
-  component: AutomationsPage,
 });
 const workflowEditorRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/workflows/$id",
-  component: WorkflowEditorPage,
 });
 const skillsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/skills",
-  component: SkillsPage,
 });
 const settingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/settings",
   validateSearch: z.object({ tab: z.string().optional() }),
-  component: SettingsPage,
+});
+
+// 先确定路由与搜索参数的类型，再绑定组件，避免页面反向引用路由时出现类型推导循环。
+chatRoute.update({
+  component: lazyRouteComponent(() => import("./features/chat/ChatPage"), "ChatPage"),
+});
+projectsRoute.update({
+  component: lazyRouteComponent(() => import("./features/projects/ProjectsPage"), "ProjectsPage"),
+});
+codeRoute.update({
+  component: lazyRouteComponent(() => import("./features/code/CodePage"), "CodePage"),
+});
+deployRoute.update({
+  component: lazyRouteComponent(() => import("./features/deploy/DeployPage"), "DeployPage"),
+});
+diskRoute.update({
+  component: lazyRouteComponent(() => import("./features/disk/DiskPage"), "DiskPage"),
+});
+feedRoute.update({
+  component: lazyRouteComponent(() => import("./features/feed/FeedPage"), "FeedPage"),
+});
+learningRoute.update({
+  component: lazyRouteComponent(() => import("./features/learning/LearningPage"), "LearningPage"),
+});
+learningCareerRoute.update({
+  component: lazyRouteComponent(() => import("./features/learning/CareerMapPage"), "CareerMapPage"),
+});
+learningLibraryRoute.update({
+  component: lazyRouteComponent(() => import("./features/learning/LibraryPage"), "LibraryPage"),
+});
+learningReviewRoute.update({
+  component: lazyRouteComponent(() => import("./features/learning/ReviewPage"), "ReviewPage"),
+});
+learningInterviewRoute.update({
+  component: lazyRouteComponent(() => import("./features/learning/InterviewPage"), "InterviewPage"),
+});
+workflowsRoute.update({
+  component: lazyRouteComponent(
+    () => import("./features/workflows/WorkflowsPage"),
+    "WorkflowsPage",
+  ),
+});
+automationsRoute.update({
+  component: lazyRouteComponent(
+    () => import("./features/automations/AutomationsPage"),
+    "AutomationsPage",
+  ),
+});
+workflowEditorRoute.update({
+  component: lazyRouteComponent(
+    () => import("./features/workflows/WorkflowEditorPage"),
+    "WorkflowEditorPage",
+  ),
+});
+skillsRoute.update({
+  component: lazyRouteComponent(() => import("./features/skills/SkillsPage"), "SkillsPage"),
+});
+settingsRoute.update({
+  component: lazyRouteComponent(() => import("./features/settings/SettingsPage"), "SettingsPage"),
 });
 
 const routeTree = rootRoute.addChildren([
@@ -137,6 +165,13 @@ export const router = createRouter({
   routeTree,
   history: createHashHistory(),
   defaultPreload: "intent",
+  defaultPendingMs: 150,
+  defaultPendingMinMs: 0,
+  defaultPendingComponent: () => (
+    <div role="status" className="flex h-full items-center justify-center text-sm text-muted">
+      正在加载页面…
+    </div>
+  ),
 });
 
 declare module "@tanstack/react-router" {

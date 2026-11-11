@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { RunEventRecord, TaskStreamEvent } from "@agentdesk/shared";
 import { resolve } from "node:path";
+import { responses } from "../scripts/readme-fixtures";
 
 test("编码现场增量展示读取、文件差异和命令输出，刷新可回放", async ({ page }) => {
   let stage = 0;
@@ -145,7 +146,8 @@ test("编码现场增量展示读取、文件差异和命令输出，刷新可�
         body: sseBody(records.filter((e) => e.seq > after && (stage || e.seq <= 3))),
       });
     }
-    return route.continue();
+    const key = path.slice(4) as keyof typeof responses;
+    return route.fulfill({ json: responses[key] ?? [] });
   });
   await page.goto("/#/code?task=coding-demo");
   await expect(page.getByRole("heading", { name: "编码" })).toBeVisible();
@@ -186,6 +188,7 @@ test("编码现场增量展示读取、文件差异和命令输出，刷新可�
 
 test("新任务表单校验项目和目标，CLI 断开时显示可恢复错误", async ({ page }) => {
   let submitted: { goal: string; agent: string; workspace: string } | undefined;
+  let terminalAttempts = 0;
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/tasks") {
@@ -199,14 +202,17 @@ test("新任务表单校验项目和目标，CLI 断开时显示可恢复错误"
       return route.fulfill({
         json: [{ id: "project", name: "portal", path: "D:/projects/portal" }],
       });
-    if (url.pathname.startsWith("/api/cli-monitor"))
+    if (url.pathname.startsWith("/api/desktop-terminal")) {
+      if (url.pathname.endsWith("/start")) terminalAttempts++;
       return route.fulfill({
         status: 400,
         json: {
           error: { code: "BAD_REQUEST", message: "未找到正在运行的 CLI，请先执行 pnpm cli。" },
         },
       });
-    return route.continue();
+    }
+    const key = url.pathname.slice(4) as keyof typeof responses;
+    return route.fulfill({ json: responses[key] ?? [] });
   });
   await page.goto("/#/code");
   await page.getByRole("button", { name: "开始第一项任务" }).click();
@@ -219,5 +225,6 @@ test("新任务表单校验项目和目标，CLI 断开时显示可恢复错误"
   expect(submitted?.agent).toBe("code");
   await page.getByRole("button", { name: "CLI 会话", exact: true }).click();
   await expect(page.getByText("未找到正在运行的 CLI", { exact: false })).toBeVisible();
-  await expect(page.getByRole("button", { name: "重新连接" })).toBeVisible();
+  await page.getByRole("button", { name: "重试", exact: true }).click();
+  await expect.poll(() => terminalAttempts).toBe(2);
 });

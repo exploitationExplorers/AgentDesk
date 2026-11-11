@@ -1,6 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ArrowUp, Brain, FolderGit2, Settings2, Square, Sparkles, X } from "lucide-react";
+import {
+  ArrowUp,
+  Brain,
+  FolderGit2,
+  Loader2,
+  Settings2,
+  Square,
+  Sparkles,
+  WandSparkles,
+  X,
+} from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type {
   AgentName,
@@ -28,6 +38,9 @@ import { toast } from "../../lib/toast";
 import { AnchoredPortal } from "./AnchoredPortal";
 import { applyMentionAt, filterMentionSkills, mentionQueryAt } from "./mentions";
 import { SkillMentionMenu } from "./SkillMentionMenu";
+import { EMPTY_CHAT_DRAFT, useChatDrafts } from "./drafts";
+import { usePromptOptimization } from "./usePromptOptimization";
+import { PromptOptimizationPreview } from "./PromptOptimizationPreview";
 
 const EFFORT_STORAGE_KEY = "agentdesk.composer.reasoningEffort";
 
@@ -246,6 +259,7 @@ export function Composer({
   projectId,
   projectName,
   onProjectChange,
+  draftScopeId,
 }: {
   onSend: (text: string, options?: { modelSelection?: ModelSelection }) => void;
   onStop: () => void;
@@ -261,8 +275,13 @@ export function Composer({
   projectId?: string | null;
   projectName?: string | null;
   onProjectChange?: (project: ComposerProject | null) => void;
+  draftScopeId?: string;
 }) {
-  const [text, setText] = useState(initial ?? "");
+  const localScopeId = useId();
+  const scopeId = draftScopeId ?? `composer:${localScopeId}`;
+  const draft = useChatDrafts((state) => state.drafts[scopeId] ?? EMPTY_CHAT_DRAFT);
+  const text = draft.text;
+  const setText = (value: string) => useChatDrafts.getState().setText(scopeId, value);
   const [caret, setCaret] = useState(0);
   const [mentionIndex, setMentionIndex] = useState(0);
   const [mentionDismissed, setMentionDismissed] = useState(false);
@@ -281,6 +300,17 @@ export function Composer({
   const model = context?.model ?? binding?.model;
   const providerId = context?.providerId ?? binding?.providerId;
   const provider = providers.data?.find((item) => item.id === providerId);
+  const selection: ModelSelection | undefined =
+    model && provider?.enabled && provider.hasKey
+      ? { providerId: provider.id, model, reasoningEffort: effort }
+      : undefined;
+  const optimization = usePromptOptimization({
+    scopeId,
+    projectId,
+    agent,
+    modelSelection: selection,
+    unavailable: streaming || disabled,
+  });
   const thinkingDepth = effortToThinkingDepth(effort);
   const effortLabel =
     thinkingDepth === "simple" ? "轻量" : thinkingDepth === "deep" ? "深入" : "标准";
@@ -298,8 +328,13 @@ export function Composer({
   const mentionOpen = Boolean(activeMention) && mentionItems.length > 0 && !streaming && !disabled;
 
   useEffect(() => {
-    if (initial) setText(initial);
-  }, [initial]);
+    if (initial) useChatDrafts.getState().setText(scopeId, initial);
+  }, [initial, scopeId]);
+
+  useEffect(() => {
+    setCaret(0);
+    setMentionDismissed(true);
+  }, [scopeId]);
 
   useEffect(() => {
     setMentionIndex(0);
@@ -374,6 +409,7 @@ export function Composer({
     const value = text.trim();
     if (!value || streaming || disabled) return;
     const modelSelection = buildSelection();
+    optimization.cancel();
     onSend(value, modelSelection ? { modelSelection } : undefined);
     setText("");
     setCaret(0);
@@ -439,7 +475,7 @@ export function Composer({
           streaming ? "任务进行中，可先写下接下来的想法…" : "描述你的想法，或输入 @ 选择技能。"
         }
         toolbar={
-          <>
+          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
             <ChoiceMenu
               label="选择 Agent"
               value={agent}
@@ -457,16 +493,50 @@ export function Composer({
                     ),
                 };
               })}
-              onChange={(value) => onAgentChange?.(value)}
+              onChange={(value) => {
+                optimization.cancel();
+                onAgentChange?.(value);
+              }}
               disabled={!onAgentChange || streaming || disabled}
               className="shrink-0 bg-brand/6 text-brand"
             />
             <ProjectFolderPicker
               projectId={projectId}
               projectName={projectName}
-              onProjectChange={onProjectChange}
+              onProjectChange={
+                onProjectChange
+                  ? (project) => {
+                      optimization.cancel();
+                      onProjectChange(project);
+                    }
+                  : undefined
+              }
               disabled={streaming || disabled || !onProjectChange}
             />
+            <button
+              type="button"
+              aria-label="优化提示词"
+              title={
+                optimization.state?.status === "pending"
+                  ? "正在优化，可继续编辑草稿"
+                  : "优化当前草稿，预览后应用；会产生一次模型请求"
+              }
+              disabled={
+                !text.trim() || streaming || disabled || optimization.state?.status === "pending"
+              }
+              onClick={() => {
+                if (optimization.state?.status === "ready") optimization.setPreviewOpen(true);
+                else void optimization.start();
+              }}
+              className="flex h-9 shrink-0 items-center gap-1.5 rounded-xl px-2 text-[11px] text-brand transition-colors hover:bg-brand/8 focus-visible:outline-2 focus-visible:outline-brand disabled:opacity-40"
+            >
+              {optimization.state?.status === "pending" ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <WandSparkles className="h-3.5 w-3.5" />
+              )}
+              <span className="hidden lg:inline">优化提示词</span>
+            </button>
             <span className="mx-1 hidden h-4 w-px bg-border sm:block" aria-hidden="true" />
             <div ref={effortRoot} className="relative flex min-w-0 items-center">
               <Link
@@ -523,7 +593,7 @@ export function Composer({
                 </div>
               </AnchoredPortal>
             </div>
-          </>
+          </div>
         }
         action={
           <>
@@ -585,6 +655,92 @@ export function Composer({
           </>
         }
       />
+      {optimization.state ? (
+        <div
+          className="mt-2 flex flex-wrap items-center justify-between gap-2 px-2 text-xs"
+          aria-live="polite"
+        >
+          {optimization.state.status === "pending" ? (
+            <>
+              <span role="status" className="flex items-center gap-2 text-muted">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                正在优化，可继续编辑草稿…
+              </span>
+              <button
+                type="button"
+                onClick={optimization.cancel}
+                className="rounded px-2 py-1 text-muted hover:text-fg"
+              >
+                取消优化
+              </button>
+            </>
+          ) : optimization.state.status === "error" ? (
+            <>
+              <p role="alert" className="min-w-0 flex-1 break-words text-danger">
+                {optimization.state.message}
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => void optimization.start()}
+                  className="rounded px-2 py-1 text-brand"
+                >
+                  重试优化
+                </button>
+                <button
+                  type="button"
+                  onClick={optimization.cancel}
+                  aria-label="关闭优化提示"
+                  className="rounded p-1 text-muted"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <span role="status" className="text-muted">
+                {optimization.canApply
+                  ? "提示词已优化，检查后应用。"
+                  : "草稿已修改，优化结果仅供参考。"}
+              </span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => optimization.setPreviewOpen(true)}
+                  className="rounded px-2 py-1 text-brand"
+                >
+                  查看优化结果
+                </button>
+                <button
+                  type="button"
+                  onClick={optimization.cancel}
+                  aria-label="放弃优化结果"
+                  className="rounded p-1 text-muted"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      ) : null}
+      {optimization.state?.status === "ready" ? (
+        <PromptOptimizationPreview
+          key={optimization.state.snapshot.requestId}
+          state={optimization.state}
+          open={optimization.previewOpen}
+          canApply={optimization.canApply}
+          onClose={() => {
+            optimization.setPreviewOpen(false);
+            ref.current?.focus();
+          }}
+          onApply={() => {
+            if (optimization.apply()) requestAnimationFrame(() => ref.current?.focus());
+          }}
+          onRetry={() => void optimization.start()}
+        />
+      ) : null}
     </div>
   );
 }

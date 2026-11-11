@@ -48,11 +48,17 @@ async function fixture(page: Page, historyCount = 18) {
               agent: "code",
               delta: (event as CustomEvent<string>).detail,
             });
+          const fail = () => {
+            window.removeEventListener("chat-test-delta", listener);
+            controller.error(new Error("test stream disconnected"));
+          };
           window.addEventListener("chat-test-delta", listener);
+          window.addEventListener("chat-test-fail", fail, { once: true });
           window.addEventListener(
             "chat-test-end",
             () => {
               window.removeEventListener("chat-test-delta", listener);
+              window.removeEventListener("chat-test-fail", fail);
               emit({ type: "done" });
               controller.close();
             },
@@ -62,6 +68,7 @@ async function fixture(page: Page, historyCount = 18) {
             "abort",
             () => {
               window.removeEventListener("chat-test-delta", listener);
+              window.removeEventListener("chat-test-fail", fail);
               controller.error(new DOMException("Stopped", "AbortError"));
             },
             { once: true },
@@ -160,6 +167,60 @@ test("Agent 菜单可用键盘选择，发送与停止连接真实交互状态",
   await expect.poll(() => state.stops).toBe(1);
   await expect(page.getByRole("button", { name: "发送", exact: true })).toBeVisible();
   await expect(picker).toBeEnabled();
+});
+
+test("连续 150 个增量完整显示，历史消息和 GFM 表格保持正常", async ({ page }) => {
+  await fixture(page, 100);
+  await page.goto("/#/?c=motion-chat");
+  const history = page.getByRole("heading", { name: "第 99 次进展", exact: true });
+  await expect(history).toBeAttached();
+  const savedHtml = await history.locator("..").evaluate((el) => el.innerHTML);
+  await page.getByRole("textbox", { name: "发送消息" }).fill("验证流式输出");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  await expect(page.getByText("正在检查工作台。", { exact: true })).toBeVisible();
+  const chunks = Array.from({ length: 150 }, (_, index) => ` ${index}:✅`);
+  await page.evaluate((chunks) => {
+    for (const text of chunks)
+      window.dispatchEvent(new CustomEvent("chat-test-delta", { detail: text }));
+  }, chunks);
+  const timeline = page.getByLabel("任务进展").last();
+  await expect(timeline.locator(".ad-prose")).toHaveText(`正在检查工作台。${chunks.join("")}`);
+  await page.evaluate(() => {
+    window.dispatchEvent(
+      new CustomEvent("chat-test-delta", {
+        detail:
+          "\n\n| 项目 | 状态 |\n| --- | --- |\n| [项目文档](https://example.com/docs) | **完成** |",
+      }),
+    );
+  });
+  await expect(timeline.getByRole("table")).toContainText("完成");
+  await expect(timeline.getByRole("link", { name: "项目文档" })).toHaveAttribute(
+    "target",
+    "_blank",
+  );
+  await expect(timeline.getByRole("link", { name: "项目文档" })).toHaveAttribute(
+    "rel",
+    "noreferrer",
+  );
+  expect(await history.locator("..").evaluate((el) => el.innerHTML)).toBe(savedHtml);
+});
+
+test("连接异常前最后一个增量会显示并保留", async ({ page }) => {
+  await fixture(page, 2);
+  await page.goto("/#/?c=motion-chat");
+  await page.getByRole("textbox", { name: "发送消息" }).fill("验证异常保留");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  await expect(page.getByText("正在检查工作台。", { exact: true })).toBeVisible();
+  await page.evaluate(() => {
+    window.dispatchEvent(new CustomEvent("chat-test-delta", { detail: "最后一段：完整保留 🧑‍💻" }));
+    // 先让 reader 收到增量，再让连接失败，避免在传输队列内直接丢弃 chunk。
+    setTimeout(() => window.dispatchEvent(new Event("chat-test-fail")), 0);
+  });
+  await expect(page.getByLabel("任务进展").last()).toContainText("最后一段：完整保留 🧑‍💻");
+  await expect(
+    page.getByText("这次任务未能完成。已生成的成果会保留，你可以重试或调整要求后继续。"),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "发送", exact: true })).toBeVisible();
 });
 
 test("流式消息在底部跟随，上滑后保持阅读位置，支持回到最新", async ({ page }) => {

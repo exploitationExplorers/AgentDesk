@@ -40,6 +40,7 @@ import type {
   Provider,
   ProviderCandidate,
   ProviderInput,
+  PromptOptimizationRequest,
   RecipeStep,
   ReachCapabilities,
   ReachRequestInput,
@@ -58,6 +59,7 @@ import type {
   StarredRepo,
   Task,
 } from "@agentdesk/shared";
+import { PromptOptimizationResponse } from "@agentdesk/shared";
 import type { Workflow, WorkflowInput, WorkflowRun } from "@agentdesk/workflow/dsl";
 import { http, postStream } from "./http";
 
@@ -310,6 +312,10 @@ export const api = {
   conversations: () => http.get<Conversation[]>("/conversations"),
   messages: (id: string) => http.get<ChatMessage[]>(`/conversations/${id}/messages`),
   deleteConversation: (id: string) => http.delete(`/conversations/${id}`),
+  optimizePrompt: async (input: PromptOptimizationRequest, signal?: AbortSignal) =>
+    PromptOptimizationResponse.parse(
+      await http.post<PromptOptimizationResponse>("/prompt-optimizations", input, { signal }),
+    ),
   chat: (
     body: {
       conversationId?: string;

@@ -38,6 +38,7 @@ export async function request<T>(
   path: string,
   body?: unknown,
   query?: Record<string, string | undefined>,
+  options?: { signal?: AbortSignal },
 ): Promise<T> {
   const { url } = await info();
   const params = new URLSearchParams();
@@ -48,9 +49,11 @@ export async function request<T>(
     method,
     headers: await headers(),
     body: body === undefined ? undefined : JSON.stringify(body),
+    signal: options?.signal,
   });
   if (response.status === 204) return undefined as T;
   const text = await response.text();
+  options?.signal?.throwIfAborted();
   const data = text ? JSON.parse(text) : null;
   if (!response.ok) {
     const err = (data as ApiErrorBody | null)?.error;
@@ -67,7 +70,8 @@ export async function request<T>(
 export const http = {
   get: <T>(path: string, query?: Record<string, string | undefined>) =>
     request<T>("GET", path, undefined, query),
-  post: <T>(path: string, body?: unknown) => request<T>("POST", path, body ?? {}),
+  post: <T>(path: string, body?: unknown, options?: { signal?: AbortSignal }) =>
+    request<T>("POST", path, body ?? {}, undefined, options),
   put: <T>(path: string, body: unknown) => request<T>("PUT", path, body),
   patch: <T>(path: string, body: unknown) => request<T>("PATCH", path, body),
   delete: <T = void>(path: string) => request<T>("DELETE", path),

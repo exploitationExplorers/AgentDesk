@@ -10,6 +10,7 @@ import {
   type ChatProgress,
 } from "@agentdesk/shared";
 import { useUi } from "../../stores/ui";
+import { createChatEventBuffer } from "./chat-event-buffer";
 
 function sessionIdFromBrowserTool(name: string, args: unknown, result?: unknown): string | null {
   if (!name.startsWith("browser.")) return null;
@@ -65,9 +66,18 @@ export function useChatStream(
   const openBrowserPanel = useUi((s) => s.openBrowserPanel);
   const [live, setLive] = useState<LiveTurn | null>(null);
   const controller = useRef<AbortController | null>(null);
+  const bufferedEvents = useRef<ReturnType<typeof createChatEventBuffer> | null>(null);
   const activeConversation = useRef<string | undefined>(undefined);
   const stopRequested = useRef(false);
-  useEffect(() => () => controller.current?.abort(), []);
+  useEffect(
+    () => () => {
+      const ctrl = controller.current;
+      controller.current = null;
+      ctrl?.abort();
+      bufferedEvents.current = null;
+    },
+    [],
+  );
 
   const send = useCallback(
     async (
@@ -82,6 +92,7 @@ export function useChatStream(
       controller.current = ctrl;
       let convId = conversationId;
       let connectionFailed = false;
+      let acceptingEvents = true;
       activeConversation.current = conversationId;
       stopRequested.current = false;
       setLive({
@@ -219,10 +230,20 @@ export function useChatStream(
         });
       };
 
+      const buffer = createChatEventBuffer(
+        (events) => {
+          for (const event of events) apply(event);
+        },
+        { signal: ctrl.signal },
+      );
+      bufferedEvents.current = buffer;
+
       try {
         await api.chat(
           { conversationId, message, agent, workspace, modelSelection },
           (event) => {
+            // 新请求和卸载会中止旧缓冲，迟到的回调也不能写入新一轮状态。
+            if (!acceptingEvents || ctrl.signal.aborted || controller.current !== ctrl) return;
             if (event.type === "conversation" && event.conversationId !== convId) {
               convId = event.conversationId;
               activeConversation.current = convId;
@@ -230,12 +251,13 @@ export function useChatStream(
                 void http.post(`/conversations/${encodeURIComponent(convId)}/stop`);
               onConversation(event.conversationId);
             }
-            apply(event);
+            buffer.push(event);
           },
           ctrl.signal,
         );
       } catch (error) {
-        if (!ctrl.signal.aborted) {
+        if (!ctrl.signal.aborted && controller.current === ctrl) {
+          buffer.flush();
           connectionFailed = true;
           setLive((p) =>
             p
@@ -248,6 +270,11 @@ export function useChatStream(
           );
         }
       } finally {
+        acceptingEvents = false;
+        // EOF 和异常未必带 done；刷新持久化消息前先交付最后一段文本。
+        buffer.flush();
+        buffer.dispose();
+        if (bufferedEvents.current === buffer) bufferedEvents.current = null;
         if (convId) await queryClient.invalidateQueries({ queryKey: ["messages", convId] });
         void queryClient.invalidateQueries({ queryKey: ["conversations"] });
         void queryClient.invalidateQueries({ queryKey: ["session-workbench", convId] });
@@ -262,6 +289,7 @@ export function useChatStream(
 
   const stop = useCallback(async () => {
     stopRequested.current = true;
+    bufferedEvents.current?.flush();
     const id = activeConversation.current;
     if (id) await http.post(`/conversations/${encodeURIComponent(id)}/stop`);
   }, []);

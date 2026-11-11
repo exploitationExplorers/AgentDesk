@@ -3,6 +3,7 @@ export * from "./contracts/identity";
 export * from "./contracts/remote";
 export * from "./contracts/workspace-transfer";
 export * from "./contracts/provider";
+export * from "./contracts/prompt-optimization";
 export * from "./contracts/project";
 export * from "./contracts/deploy";
 export * from "./contracts/feed";

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import {
   Loader2,
   Check,
@@ -73,7 +73,17 @@ function ElapsedLabel({ active }: { active: boolean }) {
   return <span className="text-[12px] text-subtle">已处理 {formatElapsed(seconds)}</span>;
 }
 
-export function ChatTimeline({
+const TimelineText = memo(function TimelineText({ text }: { text: string }) {
+  return parseAgentDeskSegments(text).map((segment, index) =>
+    segment.kind === "markdown" ? (
+      <Markdown key={`text-${index}`}>{segment.text}</Markdown>
+    ) : (
+      <DisplayCard key={`card-${index}`} data={segment.data} />
+    ),
+  );
+});
+
+export const ChatTimeline = memo(function ChatTimeline({
   blocks,
   phase = "idle",
   waiting,
@@ -103,16 +113,9 @@ export function ChatTimeline({
 
   return (
     <div className="space-y-3" aria-label="任务进展">
-      {blocks.map((block, index) => {
-        if (block.kind !== "text") return null;
-        return parseAgentDeskSegments(block.text).map((segment, segmentIndex) =>
-          segment.kind === "markdown" ? (
-            <Markdown key={`text-${index}-${segmentIndex}`}>{segment.text}</Markdown>
-          ) : (
-            <DisplayCard key={`card-${index}-${segmentIndex}`} data={segment.data} />
-          ),
-        );
-      })}
+      {blocks.map((block, index) =>
+        block.kind === "text" ? <TimelineText key={index} text={block.text} /> : null,
+      )}
 
       {working || waiting || completed.length > 0 || running.length > 0 ? (
         <div className="space-y-1.5">
@@ -187,4 +190,4 @@ export function ChatTimeline({
       ) : null}
     </div>
   );
-}
+});

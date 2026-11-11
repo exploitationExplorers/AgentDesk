@@ -38,6 +38,7 @@ import { ProjectService } from "./services/projects";
 import { ProjectInstructionService } from "./services/project-instructions";
 import { PermissionRuleService } from "./services/permission-rules";
 import { ProviderService } from "./services/providers";
+import { PromptOptimizationService } from "./services/prompt-optimization";
 import { Scheduler } from "./services/scheduler";
 import { SettingsService } from "./services/settings";
 import { createOrchestratorExecutor } from "./services/task-executor";
@@ -65,6 +66,7 @@ export interface Container {
   autoloop: AutoloopService;
   permissionRules: PermissionRuleService;
   providers: ProviderService;
+  promptOptimization: PromptOptimizationService;
   projects: ProjectService;
   projectInstructions: ProjectInstructionService;
   feed: FeedService;
@@ -123,6 +125,10 @@ export async function createContainer(
   // 不开启时返回 undefined，agent-core 完全跳过脱敏逻辑。
   const maskFactory = (): MaskStore | undefined =>
     settings.get().contentMaskingEnabled ? createMaskStore() : undefined;
+  const promptOptimization = new PromptOptimizationService(providers, {
+    maskFactory,
+    shutdownSignal: shutdown.signal,
+  });
   const projects = new ProjectService(db, secrets, settings, providers, config.dataDir, hub);
   const projectInstructions = new ProjectInstructionService(projects);
   const lazyTasks: { current?: TaskService } = {};
@@ -360,6 +366,7 @@ export async function createContainer(
     autoloop,
     permissionRules,
     providers,
+    promptOptimization,
     projects,
     projectInstructions,
     feed,
