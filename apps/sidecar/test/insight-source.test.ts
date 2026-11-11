@@ -1,9 +1,10 @@
 import { expect, it, vi } from "vitest";
 import { articleMirrorCandidates } from "../src/services/article-mirrors";
 import { articleText, readPublicArticle } from "../src/services/insight-source";
+import type * as PublicFetchModule from "../src/services/public-fetch";
 
 vi.mock("../src/services/public-fetch", async (importOriginal) => {
-  const actual = await importOriginal();
+  const actual = await importOriginal<typeof PublicFetchModule>();
   return {
     ...actual,
     fetchPublicSource: vi.fn(),

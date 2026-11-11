@@ -20,6 +20,8 @@ import type { ConversationStore } from "./conversation-store";
 import type { ConversationContextService } from "./conversation-context";
 import { acquireConversation } from "./conversation-activity";
 import type { ProjectInstructionService } from "./project-instructions";
+import type { MemoryService } from "./memory";
+import { formatBehaviorGuidance, type EvolutionService } from "./evolution";
 import type { RunExecutor, RunOutcome, TaskService } from "./tasks";
 import { readRunToolHistory, summarizeToolCalls } from "./run-tool-history";
 import { runFailureMessage, emptyChatProgress, reduceChatProgress } from "@agentdesk/shared";
@@ -70,6 +72,7 @@ interface DelegateRouting {
  */
 export function createDelegateHandler(deps: {
   tasks: TaskService;
+  evolution?: EvolutionService;
   approvals: ApprovalService;
   taskId: string;
   parentRunId: string;
@@ -87,6 +90,7 @@ export function createDelegateHandler(deps: {
       trigger: "delegate",
       input: { userMessage: task },
     });
+    deps.evolution?.pin(childRun.id, parentRunId);
     const append = (event: TaskStreamEvent) =>
       tasks.appendEvent({ taskId, runId: childRun.id, parentRunId, event });
     const emit = (event: AgentStreamEvent) => {
@@ -138,6 +142,8 @@ export function createDelegateHandler(deps: {
 }
 
 export interface RealExecutorDeps {
+  memory?: MemoryService;
+  evolution?: EvolutionService;
   /** TaskService 在构造 executor 闭包之后才完成构造（循环依赖），延迟到真正执行时再取。 */
   getTasks: () => TaskService;
   orchestrator: Orchestrator;
@@ -174,6 +180,8 @@ export function createOrchestratorExecutor(deps: RealExecutorDeps): RunExecutor 
       const tasks = deps.getTasks();
       const { orchestrator, approvals, conversationStore, registry, autoApprove, maskFactory } =
         deps;
+      const behavior = deps.evolution?.pin(run.id, run.parentRunId ?? undefined);
+      const guidance = behavior ? formatBehaviorGuidance(behavior) : undefined;
 
       // 方案关口：requiresPlanApproval 的任务首条根 Run 只允许产出方案，不允许执行任何
       // 有副作用的操作——把可用工具收紧到"只读工具 + tasks.submit_plan"，不传给模型
@@ -269,6 +277,7 @@ export function createOrchestratorExecutor(deps: RealExecutorDeps): RunExecutor 
       );
       const onDelegate = createDelegateHandler({
         tasks,
+        evolution: deps.evolution,
         approvals,
         taskId: task.id,
         parentRunId: run.id,
@@ -327,8 +336,15 @@ export function createOrchestratorExecutor(deps: RealExecutorDeps): RunExecutor 
 
       try {
         const projectContext = await deps.projectInstructions.load(run.input.workspace, signal);
+        const memoryContext = {
+          workspace: run.input.workspace,
+          conversationId: task.conversationId ?? undefined,
+        };
+        const recalled = deps.memory?.withContext(memoryContext, () =>
+          deps.memory!.formatForPrompt(deps.memory!.recall(run.input.userMessage)),
+        );
         const context =
-          [run.input.context, resumeContext, projectContext, planGateHint]
+          [run.input.context, resumeContext, projectContext, planGateHint, recalled, guidance]
             .filter(Boolean)
             .join("\n\n") || undefined;
         const prepared = await deps.context?.prepare({
@@ -340,21 +356,25 @@ export function createOrchestratorExecutor(deps: RealExecutorDeps): RunExecutor 
           signal,
           emit,
         });
-        const result = await orchestrator.run({
-          history: prepared?.history ?? conversationStore.toPiMessages(history),
-          userMessage: run.input.userMessage,
-          agent: run.agent,
-          context,
-          signal,
-          emit,
-          requestApproval,
-          requestAnswer,
-          onDelegate,
-          allowedTools,
-          recordArtifact,
-          autoApprove,
-          mask: maskFactory(),
-        });
+        const execute = () =>
+          orchestrator.run({
+            history: prepared?.history ?? conversationStore.toPiMessages(history),
+            userMessage: run.input.userMessage,
+            agent: run.agent,
+            context,
+            signal,
+            emit,
+            requestApproval,
+            requestAnswer,
+            onDelegate,
+            allowedTools,
+            recordArtifact,
+            autoApprove,
+            mask: maskFactory(),
+          });
+        const result = await (deps.memory
+          ? deps.memory.withContext(memoryContext, execute)
+          : execute());
         conversationStore.insertMessage({
           id: newId(),
           conversationId: task.conversationId,
@@ -365,6 +385,16 @@ export function createOrchestratorExecutor(deps: RealExecutorDeps): RunExecutor 
           toolCalls: result.toolCalls,
           createdAt: nowIso(),
         });
+        if (!isPlanGate && deps.memory) {
+          await deps.memory.withContext(memoryContext, () =>
+            deps.memory!.captureFromTurn({
+              userText: run.input.userMessage,
+              assistantText: result.text,
+              conversationId: task.conversationId,
+              signal,
+            }),
+          );
+        }
         emit({ type: "run_ended", runId: run.id, status: "succeeded" });
 
         if (isPlanGate) {

@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
 import { applyMentionAt, filterMentionSkills, mentionQueryAt } from "./mentions";
 
 describe("composer skill mentions", () => {
@@ -24,22 +25,24 @@ describe("composer skill mentions", () => {
   ];
 
   it("resolves the active @ token from the caret", () => {
-    expect(mentionQueryAt("请用 @qa", 6)).toEqual({ start: 3, query: "qa", end: 6 });
-    expect(mentionQueryAt("请用 @qa 继续", 6)).toEqual({ start: 3, query: "qa", end: 6 });
-    expect(mentionQueryAt("请用 @qa 继续", 8)).toBeNull();
+    assert.deepEqual(mentionQueryAt("请用 @qa", 6), { start: 3, query: "qa", end: 6 });
+    assert.deepEqual(mentionQueryAt("请用 @qa 继续", 6), { start: 3, query: "qa", end: 6 });
+    assert.equal(mentionQueryAt("请用 @qa 继续", 8), null);
   });
 
   it("filters skills for the current agent", () => {
-    expect(filterMentionSkills(skills, "", "orchestrator").map((skill) => skill.name)).toEqual([
-      "qa-regression",
-    ]);
-    expect(filterMentionSkills(skills, "bt", "deploy").map((skill) => skill.name)).toEqual([
-      "bt-deploy",
-    ]);
+    assert.deepEqual(
+      filterMentionSkills(skills, "", "orchestrator").map((skill) => skill.name),
+      ["qa-regression"],
+    );
+    assert.deepEqual(
+      filterMentionSkills(skills, "bt", "deploy").map((skill) => skill.name),
+      ["bt-deploy"],
+    );
   });
 
   it("inserts the completed mention at the caret", () => {
-    expect(applyMentionAt("请用 @qa", 3, 6, "qa-regression")).toEqual({
+    assert.deepEqual(applyMentionAt("请用 @qa", 3, 6, "qa-regression"), {
       value: "请用 @qa-regression ",
       caret: 18,
     });

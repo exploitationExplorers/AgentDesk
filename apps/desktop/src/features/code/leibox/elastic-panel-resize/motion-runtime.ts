@@ -57,8 +57,10 @@ export function createSurface(
   const observers = new Set<ResizeObserver | IntersectionObserver>();
   const cleanups: (() => void)[] = [];
   for (const rule of config.css.matchAll(/@font-face\s*\{([^}]+)\}/g)) {
-    const name = rule[1].match(/font-family:\s*["']?([^;"']+)/)?.[1]?.trim();
-    const source = rule[1].match(/src:\s*(url\([^)]*\))/)?.[1];
+    const definition = rule[1];
+    if (!definition) continue;
+    const name = definition.match(/font-family:\s*["']?([^;"']+)/)?.[1]?.trim();
+    const source = definition.match(/src:\s*(url\([^)]*\))/)?.[1];
     if (!name || !source) continue;
     const key = `${name}:${source}`;
     let cached = fonts.get(key);

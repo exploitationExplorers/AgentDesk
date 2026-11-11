@@ -17,6 +17,7 @@ import type { DeployService } from "../services/deploy";
 import type { FeedService } from "../services/feed";
 import type { DiskService } from "../services/disk";
 import type { MemoryService } from "../services/memory";
+import { containsSensitiveMemory } from "../services/memory-safety";
 import type { ProjectService } from "../services/projects";
 import type { SettingsService } from "../services/settings";
 import type { WorkflowService } from "../services/workflows";
@@ -701,7 +702,8 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
   registry.register(
     defineTool({
       name: "memory.store",
-      description: "把用户明确要求记住的偏好、事实或决定写入长期记忆。用户说「记住」时调用。",
+      description:
+        "把用户明确要求记住的偏好、事实或决定写入长期记忆。仅用户说「记住」时调用；项目事实按当前工作区隔离，不保存凭据。",
       parameters: Type.Object({
         text: Type.String({ description: "要记住的一句话" }),
         kind: Type.Union([
@@ -710,7 +712,11 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
           Type.Literal("decision"),
         ]),
       }),
-      risk: "safe",
+      risk: "confirm",
+      describeApproval: ({ text }) => ({
+        title: "保存长期记忆",
+        detail: containsSensitiveMemory(text) ? "内容包含凭据，长期记忆将拒绝保存。" : text,
+      }),
       execute: async ({ text, kind }) => memory.store({ text, kind, source: "tool" }),
     }),
     defineTool({

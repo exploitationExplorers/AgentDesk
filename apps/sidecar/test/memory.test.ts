@@ -40,7 +40,9 @@ describe("memory", () => {
 
     expect(second.created).toBe(false);
     expect(second.memory.id).toBe(first.memory.id);
-    expect(second.memory.kind).toBe("fact");
+    expect(second.memory.kind).toBe("preference");
+    expect(second.memory.source).toBe("tool");
+    expect(second.memory.status).toBe("active");
     expect(memory.list()).toHaveLength(1);
   });
 

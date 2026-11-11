@@ -31,7 +31,10 @@ browser-profiles/
 wechat-reports/
 decrypted/
 .tmp*
-.workflow/.scratchpad/
+.workflow/
+__pycache__/
+*.pyc
+*.pyo
 # 私有技能只在本机使用，不纳入开源仓库。
 apps/sidecar/skills/wechat-daily-report/
 apps/sidecar/skills-private/

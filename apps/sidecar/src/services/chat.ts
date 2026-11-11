@@ -26,6 +26,7 @@ import {
   releaseConversation,
 } from "./conversation-activity";
 import type { MemoryService } from "./memory";
+import { formatBehaviorGuidance, type EvolutionService } from "./evolution";
 import type { ProjectInstructionService } from "./project-instructions";
 import { createDelegateHandler } from "./task-executor";
 import type { TaskService } from "./tasks";
@@ -37,6 +38,7 @@ export class ChatService {
   readonly conversations: ConversationService;
   private readonly conversationStore: ConversationStore;
   private contextService?: ConversationContextService;
+  private evolutionService?: EvolutionService;
   private readonly active = new Map<string, { controller: AbortController; done: Promise<void> }>();
 
   stop(conversationId: string): void {
@@ -52,6 +54,10 @@ export class ChatService {
 
   setContextService(service: ConversationContextService): void {
     this.contextService = service;
+  }
+
+  setEvolutionService(service: EvolutionService): void {
+    this.evolutionService = service;
   }
 
   constructor(
@@ -347,17 +353,25 @@ export class ChatService {
       };
       let text = "";
       let context: string | undefined;
+      const effectiveWorkspace = shadow
+        ? this.tasks.getRun(shadow.runId)?.input.workspace
+        : workspace;
+      const memoryContext = { workspace: effectiveWorkspace, conversationId };
       try {
-        context = this.memory.formatForPrompt(this.memory.recall(req.message)) || undefined;
+        context =
+          this.memory.withContext(memoryContext, () =>
+            this.memory.formatForPrompt(this.memory.recall(req.message)),
+          ) || undefined;
       } catch (error) {
         console.error("[memory] recall failed", error);
       }
       try {
-        const effectiveWorkspace = shadow
-          ? this.tasks.getRun(shadow.runId)?.input.workspace
-          : workspace;
         const projectContext = await this.projectInstructions.load(effectiveWorkspace, signal);
-        context = [context, projectContext].filter(Boolean).join("\n\n") || undefined;
+        const behavior = this.evolutionService?.pin(
+          shadow?.runId ?? `chat:${conversationId}:${assistantId}`,
+        );
+        const guidance = behavior ? formatBehaviorGuidance(behavior) : undefined;
+        context = [context, projectContext, guidance].filter(Boolean).join("\n\n") || undefined;
         const prepared = await this.contextService?.prepare({
           conversationId,
           history,
@@ -368,47 +382,54 @@ export class ChatService {
           signal,
           emit: forwardToShadow,
         });
-        const result = await this.orchestrator.run({
-          history: prepared?.history ?? this.conversationStore.toPiMessages(history),
-          userMessage: req.message,
-          agent: req.agent,
-          modelSelection: req.modelSelection,
-          context,
-          signal,
-          emit: forwardToShadow,
-          requestApproval: (request) =>
-            this.approvals.request(
-              { kind: "tool", ...request, conversationId },
-              signal,
-              (approval) =>
-                forwardToShadow({
-                  type: "approval_required",
-                  approvalId: approval.id,
-                  title: approval.title,
-                  detail: approval.detail,
-                  risk: approval.risk,
-                  payload: approval.payload,
-                  reason: approval.reason,
-                }),
-            ),
-          requestAnswer,
-          autoApprove: this.autoApprove,
-          mask: this.maskFactory(),
-          recordArtifact: shadow
-            ? (input) =>
-                this.tasks.recordArtifact({ ...input, taskId: shadow.taskId, runId: shadow.runId })
-            : undefined,
-          onDelegate: shadow
-            ? createDelegateHandler({
-                tasks: this.tasks,
-                approvals: this.approvals,
-                taskId: shadow.taskId,
-                parentRunId: shadow.runId,
+        const result = await this.memory.withContext(memoryContext, () =>
+          this.orchestrator.run({
+            history: prepared?.history ?? this.conversationStore.toPiMessages(history),
+            userMessage: req.message,
+            agent: req.agent,
+            modelSelection: req.modelSelection,
+            context,
+            signal,
+            emit: forwardToShadow,
+            requestApproval: (request) =>
+              this.approvals.request(
+                { kind: "tool", ...request, conversationId },
                 signal,
-                onAgentEvent: traced,
-              })
-            : undefined,
-        });
+                (approval) =>
+                  forwardToShadow({
+                    type: "approval_required",
+                    approvalId: approval.id,
+                    title: approval.title,
+                    detail: approval.detail,
+                    risk: approval.risk,
+                    payload: approval.payload,
+                    reason: approval.reason,
+                  }),
+              ),
+            requestAnswer,
+            autoApprove: this.autoApprove,
+            mask: this.maskFactory(),
+            recordArtifact: shadow
+              ? (input) =>
+                  this.tasks.recordArtifact({
+                    ...input,
+                    taskId: shadow.taskId,
+                    runId: shadow.runId,
+                  })
+              : undefined,
+            onDelegate: shadow
+              ? createDelegateHandler({
+                  tasks: this.tasks,
+                  evolution: this.evolutionService,
+                  approvals: this.approvals,
+                  taskId: shadow.taskId,
+                  parentRunId: shadow.runId,
+                  signal,
+                  onAgentEvent: traced,
+                })
+              : undefined,
+          }),
+        );
         text = result.text;
         this.insertMessage({
           id: assistantId,
@@ -421,12 +442,14 @@ export class ChatService {
           createdAt: nowIso(),
         });
         try {
-          await this.memory.captureFromTurn({
-            userText: req.message,
-            assistantText: text,
-            conversationId,
-            signal,
-          });
+          await this.memory.withContext(memoryContext, () =>
+            this.memory.captureFromTurn({
+              userText: req.message,
+              assistantText: text,
+              conversationId,
+              signal,
+            }),
+          );
         } catch (error) {
           console.error("[memory] capture failed", error);
         }

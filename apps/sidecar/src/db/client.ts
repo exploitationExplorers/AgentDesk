@@ -3,6 +3,7 @@ import { drizzle, type BetterSQLite3Database } from "drizzle-orm/better-sqlite3"
 import { join } from "node:path";
 import * as schema from "./schema";
 import { migrateRemoteDatabase } from "./remote-migrations";
+import { migrateMemoryDatabase } from "./memory-migrations";
 
 export type Db = BetterSQLite3Database<typeof schema>;
 
@@ -22,6 +23,7 @@ export function openDatabase(dataDir: string | ":memory:"): DbHandle {
     if (!runColumns.some((column) => column.name === "execution_owner"))
       raw.exec("ALTER TABLE runs ADD COLUMN execution_owner TEXT NOT NULL DEFAULT 'local'");
     migrateRemoteDatabase(raw);
+    migrateMemoryDatabase(raw);
     return { db: drizzle(raw, { schema }), raw, close: () => raw.close() };
   } catch (error) {
     raw.close();

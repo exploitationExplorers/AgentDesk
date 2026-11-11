@@ -4,6 +4,7 @@ import {
   Brain,
   Bot,
   GitBranch,
+  FlaskConical,
   KeyRound,
   Search,
   Settings,
@@ -27,6 +28,7 @@ import { BindingsTab } from "./BindingsTab";
 import { GeneralTab } from "./GeneralTab";
 import { GitAccountsTab } from "./GitAccountsTab";
 import { MemoryTab } from "./MemoryTab";
+import { EvolutionTab } from "./EvolutionTab";
 import { ProvidersTab } from "./ProvidersTab";
 import { ReachTab } from "./ReachTab";
 import "./settings.css";
@@ -80,6 +82,13 @@ const SECTIONS = [
     icon: Brain,
     description: "管理 Agent 保留的信息与长期偏好。",
     component: MemoryTab,
+  },
+  {
+    value: "evolution",
+    label: "评测与进化",
+    icon: FlaskConical,
+    description: "比较改进候选、验证行为并管理可回退的版本。",
+    component: EvolutionTab,
   },
 ] as const;
 

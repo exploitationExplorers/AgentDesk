@@ -13,6 +13,8 @@ import { reachRoutes } from "./routes/reach";
 import { learningRoutes } from "./routes/learning";
 import { interviewRoutes } from "./routes/interview";
 import { memoryRoutes } from "./routes/memory";
+import { evaluationRoutes } from "./routes/evaluations";
+import { evolutionRoutes } from "./routes/evolution";
 import { projectRoutes } from "./routes/projects";
 import { providerRoutes } from "./routes/providers";
 import { promptOptimizationRoutes } from "./routes/prompt-optimizations";
@@ -73,6 +75,8 @@ export function createApp(container: Container, options: { webRoot?: string } = 
   app.route("/api", learningRoutes(container));
   app.route("/api", interviewRoutes(container));
   app.route("/api", memoryRoutes(container));
+  app.route("/api", evaluationRoutes(container));
+  app.route("/api", evolutionRoutes(container));
   app.route("/api", diskRoutes(container));
   app.route("/api", deployRoutes(container));
   app.route("/api", browserRoutes(container));

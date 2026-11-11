@@ -36,6 +36,13 @@ import type {
   LearningSource,
   LearningToday,
   Memory,
+  MemoryPolicy,
+  BehaviorVersion,
+  EvolutionProposal,
+  EvolutionProposalInput,
+  EvaluationRun,
+  EvolutionEvidence,
+  EvolutionFeedback,
   Project,
   Provider,
   ProviderCandidate,
@@ -189,8 +196,45 @@ export const api = {
     http.put<ReachSettings>("/reach/settings", settings),
   runReach: (input: ReachRequestInput) => http.post<ReachResult>("/reach/run", input),
   memories: () => http.get<Memory[]>("/memories"),
+  memoryPolicy: () => http.get<MemoryPolicy>("/memories/policy"),
+  updateMemoryPolicy: (policy: MemoryPolicy) => http.put<MemoryPolicy>("/memories/policy", policy),
+  approveMemory: (id: string) => http.post<Memory>(`/memories/${encodeURIComponent(id)}/approve`),
+  correctMemory: (id: string, text: string) =>
+    http.put<Memory>(`/memories/${encodeURIComponent(id)}`, { text }),
   deleteMemory: (id: string) =>
     http.delete<{ id: string; deleted: true }>(`/memories/${encodeURIComponent(id)}`),
+  evolution: () =>
+    http.get<{
+      activeVersion: BehaviorVersion;
+      versions: BehaviorVersion[];
+      proposals: EvolutionProposal[];
+      evaluations: EvaluationRun[];
+      evidence: EvolutionEvidence[];
+      feedback: EvolutionFeedback[];
+    }>("/evolution"),
+  evolutionEvidence: () => http.get<EvolutionEvidence[]>("/evolution/evidence"),
+  evolutionFeedback: (runId: string, rating: "helpful" | "unhelpful", note: string) =>
+    http.post<EvolutionFeedback>("/evolution/feedback", { runId, rating, note }),
+  createEvolutionProposal: (input: EvolutionProposalInput) =>
+    http.post<EvolutionProposal>("/evolution/proposals", input),
+  generateEvolutionProposal: (evidenceRunIds: string[]) =>
+    http.post<EvolutionProposal>("/evolution/proposals/generate", {
+      evidenceRunIds,
+      allowModelCalls: true,
+    }),
+  evaluateEvolutionProposal: (id: string, mode: "memory" | "agent") =>
+    http.post<EvaluationRun>(`/evolution/proposals/${encodeURIComponent(id)}/evaluate`, {
+      mode,
+      allowModelCalls: mode === "agent",
+    }),
+  publishEvolutionProposal: (id: string, evaluationId: string) =>
+    http.post<BehaviorVersion>(`/evolution/proposals/${encodeURIComponent(id)}/publish`, {
+      evaluationId,
+    }),
+  rejectEvolutionProposal: (id: string) =>
+    http.post<EvolutionProposal>(`/evolution/proposals/${encodeURIComponent(id)}/reject`),
+  rollbackEvolution: (versionId: string) =>
+    http.post<BehaviorVersion>("/evolution/rollback", { versionId }),
   diskStatus: () => http.get<DiskStatus>("/disk/status"),
   diskScan: () => http.get<DiskScan | null>("/disk/scan"),
   scanDisk: (volumePath?: string) => http.post<DiskScan>("/disk/scan", { volumePath }),

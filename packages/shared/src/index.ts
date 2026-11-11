@@ -15,6 +15,8 @@ export * from "./contracts/approval";
 export * from "./contracts/settings";
 export * from "./contracts/browser";
 export * from "./contracts/memory";
+export * from "./contracts/evaluation";
+export * from "./contracts/evolution";
 export * from "./contracts/disk";
 export * from "./contracts/task";
 export * from "./contracts/code";

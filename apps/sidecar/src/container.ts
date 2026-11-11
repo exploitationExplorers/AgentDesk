@@ -34,6 +34,8 @@ import { LearningService } from "./services/learning";
 import { LearningLibraryService } from "./services/learning-library";
 import { InterviewService } from "./services/interview";
 import { MemoryService } from "./services/memory";
+import { EvaluationService } from "./services/evaluation";
+import { EvolutionService } from "./services/evolution";
 import { ProjectService } from "./services/projects";
 import { ProjectInstructionService } from "./services/project-instructions";
 import { PermissionRuleService } from "./services/permission-rules";
@@ -75,6 +77,8 @@ export interface Container {
   library: LearningLibraryService;
   interview: InterviewService;
   memory: MemoryService;
+  evaluation: EvaluationService;
+  evolution: EvolutionService;
   disk: DiskService;
   deploy: DeployService;
   browser: BrowserService;
@@ -196,6 +200,8 @@ export async function createContainer(
   const feed = new FeedService(db, settings, providers, hub);
   const reach = new ReachService(db, secrets);
   const memory = new MemoryService(dbHandle.raw, providers);
+  const evaluation = new EvaluationService(dbHandle.raw, providers);
+  const evolution = new EvolutionService(dbHandle.raw, providers, evaluation, shutdown.signal);
   const learning = new LearningService(db, providers);
   const library = new LearningLibraryService(db, providers);
   const interview = new InterviewService(db, providers, secrets);
@@ -281,6 +287,8 @@ export async function createContainer(
     context,
     registry: effectiveRegistry,
     projectInstructions,
+    memory,
+    evolution: remoteOptions ? undefined : evolution,
     autoApprove,
     maskFactory,
   });
@@ -353,6 +361,7 @@ export async function createContainer(
     maskFactory,
   );
   chat.setContextService(context);
+  if (!remoteOptions) chat.setEvolutionService(evolution);
   const insights = new ProjectInsightService(db, projects, tasks, providers, maskFactory);
   const scheduler = new Scheduler(db, settings, feed, workflows);
 
@@ -375,6 +384,8 @@ export async function createContainer(
     library,
     interview,
     memory,
+    evaluation,
+    evolution,
     disk,
     deploy,
     browser,
