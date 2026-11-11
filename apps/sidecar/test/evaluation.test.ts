@@ -12,6 +12,7 @@ import { toWireName, type ModelResolver, type ResolvedModel } from "@agentdesk/a
 import { AppError } from "@agentdesk/shared";
 import { openDatabase, type DbHandle } from "../src/db/client";
 import { EvaluationService } from "../src/services/evaluation";
+import { MEMORY_CASES } from "../src/services/evaluation-fixtures";
 import { evaluationRoutes } from "../src/http/routes/evaluations";
 
 let db: DbHandle | undefined;
@@ -49,6 +50,27 @@ function fauxSetup() {
 }
 
 describe("EvaluationService", () => {
+  it("评测版本随实际数据和执行实现生成，不使用手写日期", async () => {
+    const service = setup();
+    const dataset = service.datasets().find((item) => item.mode === "memory")!;
+    const before = await service.run({ ...input, maxCases: 1 });
+    expect(before.datasetVersion).toBe(dataset.version);
+    expect(before.graderVersion).toMatch(/^sha256:[a-f0-9]{64}$/);
+    expect(service.datasets().find((item) => item.mode === "agent")!.version).not.toBe(
+      dataset.version,
+    );
+    const fixture = MEMORY_CASES[0]!;
+    const title = fixture.title;
+    try {
+      fixture.title = `${title}（修订案例）`;
+      const after = await service.run({ ...input, maxCases: 1 });
+      expect(after.datasetVersion).not.toBe(before.datasetVersion);
+      expect(after.datasetHash).not.toBe(before.datasetHash);
+      expect(after.graderVersion).toBe(before.graderVersion);
+    } finally {
+      fixture.title = title;
+    }
+  });
   it("使用真实MemoryService运行完整记忆回归，独立状态且不调用模型", async () => {
     const resolve = vi.fn<ModelResolver["resolve"]>().mockImplementation(async () => {
       throw new Error("must not call models");

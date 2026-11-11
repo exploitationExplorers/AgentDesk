@@ -33,6 +33,15 @@ export const MemoryCorrection = z.object({
 });
 export type MemoryCorrection = z.infer<typeof MemoryCorrection>;
 
+/** 设置页直接确认的用户记忆，不接受客户端指定来源或项目命名空间。 */
+export const MemoryCreate = z
+  .object({
+    text: z.string().trim().min(2).max(500),
+    kind: MemoryKind,
+  })
+  .strict();
+export type MemoryCreate = z.infer<typeof MemoryCreate>;
+
 /** 跨会话保留的一条偏好、事实或决定。 */
 export const Memory = z.object({
   id: z.string(),

@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Brain, Check, Pencil, Trash2 } from "lucide-react";
+import { Brain, Check, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useState } from "react";
 import type { Memory, MemoryKind, MemoryPolicy } from "@agentdesk/shared";
-import { Badge, Button, Card, EmptyState, Spinner, Textarea } from "@agentdesk/ui";
+import { Badge, Button, Card, EmptyState, Field, Select, Spinner, Textarea } from "@agentdesk/ui";
 import { api } from "../../lib/api";
 
 const KIND_LABEL: Record<MemoryKind, string> = {
@@ -58,9 +58,14 @@ function PolicySwitch({
 
 export function MemoryTab() {
   const client = useQueryClient();
-  const memories = useQuery({ queryKey: ["memories"], queryFn: api.memories });
+  const memories = useQuery({
+    queryKey: ["memories"],
+    queryFn: api.memories,
+    refetchInterval: 15_000,
+  });
   const policy = useQuery({ queryKey: ["memory-policy"], queryFn: api.memoryPolicy });
   const [filter, setFilter] = useState<"current" | "candidate" | "all">("current");
+  const [creating, setCreating] = useState(false);
   const update = useMutation({
     mutationFn: api.updateMemoryPolicy,
     onSuccess: (next) => client.setQueryData(["memory-policy"], next),
@@ -139,8 +144,42 @@ export function MemoryTab() {
             </Button>
           ))}
         </div>
-        <span className="text-xs text-subtle">{shown.length} 条记录</span>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-subtle">
+            {shown.length} / {items.length} 条记录
+          </span>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={memories.isFetching || policy.isFetching}
+            onClick={() => {
+              void memories.refetch();
+              void policy.refetch();
+            }}
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            刷新
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!policy.data?.enabled}
+            onClick={() => setCreating(!creating)}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            添加记忆
+          </Button>
+        </div>
       </div>
+      {creating ? (
+        <MemoryComposer
+          onSaved={() => {
+            setCreating(false);
+            setFilter("current");
+          }}
+          onCancel={() => setCreating(false)}
+        />
+      ) : null}
       <p className="text-xs leading-6 text-subtle">
         用户偏好与项目事实按作用域保留。API
         Key、密码等凭据不进入普通记忆。更正会保留替代关系；删除后会抑制旧内容被自动重新提取。
@@ -164,11 +203,21 @@ export function MemoryTab() {
       {memories.isSuccess && shown.length === 0 ? (
         <EmptyState
           icon={<Brain className="h-6 w-6" />}
-          title={filter === "candidate" ? "没有待确认的记忆" : "这里还没有记忆"}
+          title={
+            filter === "candidate"
+              ? "没有待确认的记忆"
+              : items.length > 0
+                ? "当前筛选下没有记忆"
+                : "这里还没有记忆"
+          }
           description={
             filter === "candidate"
               ? "自动提取的候选会出现在这里。"
-              : "在对话中说“记住……”可以保存稳定信息。"
+              : candidates.length > 0
+                ? `有 ${candidates.length} 条候选等待确认，请切换到“待确认”审核。`
+                : items.length > 0
+                  ? "切换到“全部记录”查看已过期或被更正的内容。"
+                  : "点击“添加记忆”直接保存，或在对话中说“记住……”。自动提取的内容需要在“待确认”中审核。"
           }
         />
       ) : null}
@@ -180,6 +229,70 @@ export function MemoryTab() {
         </Card>
       ) : null}
     </div>
+  );
+}
+
+function MemoryComposer({ onSaved, onCancel }: { onSaved: () => void; onCancel: () => void }) {
+  const client = useQueryClient();
+  const [text, setText] = useState("");
+  const [kind, setKind] = useState<MemoryKind>("preference");
+  const create = useMutation({
+    mutationFn: () => api.createMemory({ text: text.trim(), kind }),
+    onSuccess: async () => {
+      await client.invalidateQueries({ queryKey: ["memories"] });
+      onSaved();
+    },
+  });
+  return (
+    <Card className="grid gap-4 p-5">
+      <h3 className="text-sm font-semibold">添加用户记忆</h3>
+      <p className="text-xs leading-6 text-muted">
+        保存后立即生效，适用于跨项目的用户信息。此操作只写入本地，不调用模型；后续召回会将相关记忆提供给当前对话模型。
+      </p>
+      <Field label="记忆类型">
+        <Select
+          aria-label="记忆类型"
+          value={kind}
+          disabled={create.isPending}
+          onChange={(event) => setKind(event.target.value as MemoryKind)}
+        >
+          {Object.entries(KIND_LABEL).map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      <Field label="记忆内容">
+        <Textarea
+          aria-label="记忆内容"
+          value={text}
+          onChange={(event) => setText(event.target.value)}
+          maxLength={500}
+          rows={3}
+          disabled={create.isPending}
+        />
+      </Field>
+      <div className="flex gap-2">
+        <Button
+          size="sm"
+          variant="primary"
+          loading={create.isPending}
+          disabled={text.trim().length < 2}
+          onClick={() => create.mutate()}
+        >
+          确认保存
+        </Button>
+        <Button size="sm" variant="ghost" disabled={create.isPending} onClick={onCancel}>
+          取消
+        </Button>
+      </div>
+      {create.isError ? (
+        <p role="alert" className="text-xs text-danger">
+          保存失败：{create.error.message}
+        </p>
+      ) : null}
+    </Card>
   );
 }
 

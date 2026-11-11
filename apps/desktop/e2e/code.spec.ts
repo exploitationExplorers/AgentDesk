@@ -168,6 +168,24 @@ test("编码现场增量展示读取、文件差异和命令输出，刷新可�
   });
   await page.getByRole("button", { name: /工具输出/ }).click();
   await expect(page.getByTestId("tool-output")).toContainText("Tests 4 passed");
+  const timeline = page.getByRole("region", { name: "执行时间线", exact: true });
+  const inspector = page.getByRole("region", { name: "代码检查器", exact: true });
+  const expandedWidth = (await timeline.boundingBox())!.width;
+  await page.getByRole("button", { name: "收起右侧结果面板", exact: true }).click();
+  await expect(inspector).toBeHidden();
+  expect((await timeline.boundingBox())!.width).toBeGreaterThan(expandedWidth + 100);
+  await expect(page.getByRole("button", { name: "展开结果面板", exact: true })).toBeFocused();
+  await page.reload();
+  await expect(page.getByTestId("execution-process")).toBeVisible();
+  await expect(inspector).toBeHidden();
+  await page.getByRole("button", { name: "展开代码检查器", exact: true }).click();
+  await expect(inspector).toBeVisible();
+  await page.getByRole("button", { name: "工具输出", exact: true }).click();
+  await expect(page.getByTestId("tool-output")).toContainText("Tests 4 passed");
+  await page.getByRole("button", { name: "收起右侧结果面板", exact: true }).click();
+  await page.getByRole("button", { name: /读取文件.*session.ts/ }).click();
+  await expect(inspector).toBeVisible();
+  await expect(page.getByTestId("tool-output")).toContainText("restoreSession");
   // 上面两个断言能看到 stage=1 之后的新内容，本身已经证明 EventSource 重连过（不是只拿到首次
   // 快照）；这里再确认确实发生了不止一次 stream 请求，不依赖浏览器重连时 Last-Event-ID 的具体取值。
   expect(cursors.length).toBeGreaterThan(1);
@@ -184,6 +202,10 @@ test("编码现场增量展示读取、文件差异和命令输出，刷新可�
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   );
+  await page.getByRole("button", { name: "收起右侧结果面板", exact: true }).click();
+  await expect(inspector).toBeHidden();
+  await page.getByRole("button", { name: "展开结果面板", exact: true }).click();
+  await expect(inspector).toBeVisible();
 });
 
 test("新任务表单校验项目和目标，CLI 断开时显示可恢复错误", async ({ page }) => {

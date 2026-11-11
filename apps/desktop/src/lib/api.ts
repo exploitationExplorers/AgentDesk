@@ -36,6 +36,8 @@ import type {
   LearningSource,
   LearningToday,
   Memory,
+  MemoryCreate,
+  ModelSelection,
   MemoryPolicy,
   BehaviorVersion,
   EvolutionProposal,
@@ -66,7 +68,11 @@ import type {
   StarredRepo,
   Task,
 } from "@agentdesk/shared";
-import { PromptOptimizationResponse } from "@agentdesk/shared";
+import {
+  MemoryList,
+  MemoryPolicy as MemoryPolicySchema,
+  PromptOptimizationResponse,
+} from "@agentdesk/shared";
 import type { Workflow, WorkflowInput, WorkflowRun } from "@agentdesk/workflow/dsl";
 import { http, postStream } from "./http";
 
@@ -195,8 +201,9 @@ export const api = {
   updateReachSettings: (settings: ReachSettings) =>
     http.put<ReachSettings>("/reach/settings", settings),
   runReach: (input: ReachRequestInput) => http.post<ReachResult>("/reach/run", input),
-  memories: () => http.get<Memory[]>("/memories"),
-  memoryPolicy: () => http.get<MemoryPolicy>("/memories/policy"),
+  memories: async () => MemoryList.parse(await http.get<unknown>("/memories")),
+  memoryPolicy: async () => MemoryPolicySchema.parse(await http.get<unknown>("/memories/policy")),
+  createMemory: (input: MemoryCreate) => http.post<Memory>("/memories", input),
   updateMemoryPolicy: (policy: MemoryPolicy) => http.put<MemoryPolicy>("/memories/policy", policy),
   approveMemory: (id: string) => http.post<Memory>(`/memories/${encodeURIComponent(id)}/approve`),
   correctMemory: (id: string, text: string) =>
@@ -222,10 +229,15 @@ export const api = {
       evidenceRunIds,
       allowModelCalls: true,
     }),
-  evaluateEvolutionProposal: (id: string, mode: "memory" | "agent") =>
+  evaluateEvolutionProposal: (
+    id: string,
+    mode: "memory" | "agent",
+    modelSelection?: ModelSelection,
+  ) =>
     http.post<EvaluationRun>(`/evolution/proposals/${encodeURIComponent(id)}/evaluate`, {
       mode,
       allowModelCalls: mode === "agent",
+      ...(mode === "agent" ? { modelSelection } : {}),
     }),
   publishEvolutionProposal: (id: string, evaluationId: string) =>
     http.post<BehaviorVersion>(`/evolution/proposals/${encodeURIComponent(id)}/publish`, {

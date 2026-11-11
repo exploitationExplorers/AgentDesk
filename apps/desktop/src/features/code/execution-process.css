@@ -1,0 +1,507 @@
+/* Execution process — collab tokens in the left timeline panel. */
+.ad-exec-process {
+  --collab-sky: #3ec7ff;
+  --collab-mint: #3dd6a5;
+  --collab-amber: #f0c14b;
+  --collab-violet: #a78bfa;
+  --collab-coral: #ff7a59;
+  --collab-danger: #ff6b7a;
+  --collab-line: rgba(120, 150, 200, 0.18);
+  --collab-ink: var(--ad-fg);
+  --collab-muted: var(--ad-muted);
+  --collab-subtle: var(--ad-subtle);
+  --collab-color: var(--ad-brand);
+  color: var(--collab-ink);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.ad-exec-process-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ad-exec-process-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  font-size: 11px;
+  color: var(--collab-muted);
+}
+
+.ad-exec-process-metrics b {
+  color: var(--collab-ink);
+  font-weight: 600;
+}
+
+.ad-exec-process-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--collab-mint);
+  font-size: 10px;
+}
+
+.ad-exec-process-live i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--collab-mint);
+  box-shadow: 0 0 8px var(--collab-mint);
+  animation: ad-exec-pulse 1.6s ease-in-out infinite;
+}
+
+.ad-exec-process-round {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--collab-muted);
+}
+
+.ad-exec-process-round select {
+  max-width: 180px;
+  padding: 5px 8px;
+  border: 1px solid var(--ad-border);
+  border-radius: 7px;
+  background: var(--ad-surface);
+  color: var(--ad-fg);
+  font-size: 11px;
+}
+
+.ad-exec-process-goal {
+  border: 1px solid var(--collab-line);
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: color-mix(in srgb, var(--ad-brand) 8%, var(--ad-surface-2));
+}
+
+.ad-exec-process-goal > span {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  color: var(--ad-brand);
+}
+
+.ad-exec-process-goal p {
+  margin: 6px 0 0;
+  white-space: pre-wrap;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--collab-ink);
+}
+
+.ad-exec-process-lanes {
+  border: 1px solid var(--collab-line);
+  border-radius: 12px;
+  padding: 12px;
+  background: color-mix(in srgb, var(--ad-surface-2) 45%, transparent);
+  min-width: 0;
+}
+
+.ad-exec-process-lanes-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.ad-exec-process-lanes-heading h3 {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.ad-exec-process-lanes-heading p {
+  margin: 0;
+  font-size: 10px;
+  color: var(--collab-muted);
+}
+
+.ad-exec-process-scale {
+  display: grid;
+  grid-template-columns: minmax(72px, 88px) minmax(0, 1fr);
+  gap: 8px;
+  margin-bottom: 6px;
+  font: 10px var(--font-mono);
+  color: var(--collab-subtle);
+}
+
+.ad-exec-process-scale > div {
+  display: flex;
+  justify-content: space-between;
+}
+
+.ad-exec-process-lane {
+  display: grid;
+  grid-template-columns: minmax(72px, 88px) minmax(0, 1fr);
+  gap: 8px;
+  width: 100%;
+  min-height: 32px;
+  align-items: center;
+  text-align: left;
+  cursor: pointer;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  padding: 2px 4px;
+}
+
+.ad-exec-process-lane:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.ad-exec-process-lane.is-selected {
+  background: color-mix(in srgb, var(--collab-color) 12%, transparent);
+}
+
+.ad-exec-process-lane-name {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  color: var(--collab-muted);
+  font-size: 11px;
+}
+
+.ad-exec-process-lane-name i {
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--collab-color);
+  box-shadow: 0 0 8px var(--collab-color);
+}
+
+.ad-exec-process-lane-name span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ad-exec-process-lane-track {
+  position: relative;
+  height: 28px;
+  border-right: 1px solid rgba(120, 150, 200, 0.12);
+  background: linear-gradient(90deg, rgba(120, 150, 200, 0.12) 1px, transparent 1px);
+  background-size: 25% 100%;
+  overflow: hidden;
+  border-radius: 4px;
+}
+
+.ad-exec-process-lane-track::before {
+  content: "";
+  position: absolute;
+  inset: 13px 0 auto;
+  height: 1px;
+  background: rgba(120, 150, 200, 0.12);
+}
+
+.ad-exec-process-lane-bar {
+  position: absolute;
+  top: 9px;
+  height: 8px;
+  min-width: 3px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--collab-color) 28%, transparent);
+  border: 1px solid color-mix(in srgb, var(--collab-color) 55%, transparent);
+}
+
+.ad-exec-process-lane-bar.is-running {
+  background: var(--collab-color);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--collab-color) 45%, transparent);
+}
+
+.ad-exec-process-lane-bar.is-waiting {
+  background: color-mix(in srgb, var(--collab-amber) 30%, transparent);
+  border-color: var(--collab-amber);
+}
+
+.ad-exec-process-lane-bar.is-failed {
+  background: color-mix(in srgb, var(--collab-danger) 28%, transparent);
+  border-color: var(--collab-danger);
+}
+
+.ad-exec-process-lane-bar.is-cancelled,
+.ad-exec-process-lane-bar.is-queued {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--collab-subtle);
+  border-style: dashed;
+}
+
+.ad-exec-process-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+  font-size: 10px;
+  color: var(--collab-muted);
+}
+
+.ad-exec-process-status.is-running {
+  color: var(--collab-color, var(--ad-brand));
+}
+
+.ad-exec-process-status.is-succeeded {
+  color: var(--collab-mint);
+}
+
+.ad-exec-process-status.is-failed {
+  color: var(--collab-danger);
+}
+
+.ad-exec-process-status.is-waiting {
+  color: var(--collab-amber);
+}
+
+.ad-exec-process-detail {
+  border: 1px solid var(--collab-line);
+  border-radius: 12px;
+  padding: 14px;
+  background: var(--ad-surface);
+  min-width: 0;
+}
+
+.ad-exec-process-detail-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 12px;
+}
+
+.ad-exec-process-detail-head strong {
+  font-weight: 600;
+}
+
+.ad-exec-process-detail-head .ad-exec-process-meta {
+  margin-left: auto;
+  font: 10px var(--font-mono);
+  color: var(--collab-subtle);
+}
+
+.ad-exec-process-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ad-exec-process-steps-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 14px 0 6px;
+  padding: 12px 2px 0;
+  border-top: 1px solid var(--ad-border);
+  font-size: 10px;
+  color: var(--ad-muted);
+}
+
+.ad-exec-process-steps-heading > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.ad-exec-process-steps-heading b {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--ad-surface-2);
+  color: var(--ad-fg);
+  font: 10px var(--font-mono);
+}
+
+.ad-exec-process-step {
+  position: relative;
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto 13px;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  padding: 10px 8px;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
+}
+
+.ad-exec-process-step:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  left: 23px;
+  top: calc(50% + 19px);
+  bottom: -13px;
+  width: 1px;
+  background: var(--collab-line);
+}
+
+.ad-exec-process-step:hover {
+  background: color-mix(in srgb, var(--ad-surface-2) 70%, transparent);
+}
+
+.ad-exec-process-step.is-selected {
+  border-color: color-mix(in srgb, var(--ad-brand) 30%, var(--ad-border));
+  background: color-mix(in srgb, var(--ad-brand) 7%, var(--ad-surface));
+}
+
+.ad-exec-process-step:focus-visible {
+  outline: 2px solid var(--ad-brand);
+  outline-offset: 1px;
+}
+
+.ad-exec-process-step-icon {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid var(--ad-border);
+  border-radius: 9px;
+  background: var(--ad-surface-2);
+  color: var(--ad-muted);
+}
+
+.ad-exec-process-step[data-status="running"] .ad-exec-process-step-icon {
+  border-color: color-mix(in srgb, var(--ad-brand) 35%, var(--ad-border));
+  background: color-mix(in srgb, var(--ad-brand) 10%, var(--ad-surface));
+  color: var(--ad-brand);
+}
+
+.ad-exec-process-step[data-status="error"] .ad-exec-process-step-icon {
+  color: var(--ad-danger);
+}
+
+.ad-exec-process-step-body {
+  min-width: 0;
+}
+
+.ad-exec-process-step-title {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
+}
+
+.ad-exec-process-step-title strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.ad-exec-process-step-number {
+  flex-shrink: 0;
+  color: var(--collab-subtle);
+  font: 9px var(--font-mono);
+}
+
+.ad-exec-process-step-hint {
+  display: block;
+  margin-top: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 10px/1.5 var(--font-mono);
+  color: var(--collab-muted);
+}
+
+.ad-exec-process-step-meta {
+  display: flex;
+  align-items: flex-end;
+  flex-direction: column;
+  gap: 5px;
+  color: var(--collab-subtle);
+  font-size: 9px;
+}
+
+.ad-exec-process-step-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.ad-exec-process-step-state svg {
+  width: 11px;
+  height: 11px;
+}
+
+.ad-exec-process-step-meta time {
+  font: 9px var(--font-mono);
+}
+
+.ad-exec-process-step-arrow {
+  color: var(--collab-subtle);
+  opacity: 0;
+}
+
+.ad-exec-process-step:hover .ad-exec-process-step-arrow,
+.ad-exec-process-step:focus-visible .ad-exec-process-step-arrow,
+.ad-exec-process-step.is-selected .ad-exec-process-step-arrow {
+  opacity: 1;
+}
+
+@container code-detail (max-width: 420px) {
+  .ad-exec-process-step {
+    grid-template-columns: 26px minmax(0, 1fr) auto;
+    gap: 8px;
+    padding-inline: 4px;
+  }
+  .ad-exec-process-step-icon {
+    width: 26px;
+    height: 28px;
+  }
+  .ad-exec-process-step:not(:last-child)::after {
+    left: 17px;
+  }
+  .ad-exec-process-step-arrow,
+  .ad-exec-process-step-number,
+  .ad-exec-process-step-meta time {
+    display: none;
+  }
+}
+
+.ad-exec-process-empty {
+  padding: 10px 4px;
+  font-size: 12px;
+  color: var(--collab-muted);
+}
+
+@keyframes ad-exec-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(0.85);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ad-exec-process-live i {
+    animation: none;
+  }
+  .ad-exec-process-step {
+    transition: none;
+  }
+}

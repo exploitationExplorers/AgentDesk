@@ -4,13 +4,12 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import {
   ArrowDown,
   ArrowRight,
-  Check,
   Circle,
-  Code2,
   FileCode2,
   GitCompareArrows,
-  Loader2,
   Network,
+  PanelRightClose,
+  PanelRightOpen,
   Plus,
   Radio,
   RefreshCw,
@@ -19,25 +18,25 @@ import {
   Terminal,
   Trash2,
   X,
-  XCircle,
 } from "lucide-react";
 import type { Approval, Run, Task } from "@agentdesk/shared";
 import { Button, Segmented, Tabs, TabsContent, TabsList, TabsTrigger, cn } from "@agentdesk/ui";
 import { AppMark } from "../../components/AppMark";
-import { Markdown } from "../../components/Markdown";
 import { TOOL_LABELS } from "../../lib/agents";
 import { approvalDisplay } from "../../lib/approval-display";
 import { isCliWorkbench } from "../../lib/tauri";
 import { toast } from "../../lib/toast";
 import { codeRoute } from "../../router";
 import { codeApi, type CodeSource } from "./api";
-import { outputText, stepHint, type CodeStep } from "./activity";
+import { outputText, stepHint } from "./activity";
 import { DiffView } from "./DiffView";
 import { ArtifactWorkspace } from "./ArtifactWorkspace";
 import { useTaskEvents } from "./useTaskEvents";
 import { CollaborationView } from "./CollaborationView";
+import { ExecutionProcessView } from "./ExecutionProcessView";
 import { ElasticPanelHandle } from "./ElasticPanelHandle";
 import "./elastic-panel.css";
+import "./code-workspace.css";
 
 const FlowGraph = lazy(() =>
   import("./FlowGraph").then((module) => ({ default: module.FlowGraph })),
@@ -73,13 +72,6 @@ const time = (date: string) =>
     minute: "2-digit",
     second: "2-digit",
   });
-
-function StepIcon({ status }: { status: CodeStep["status"] }) {
-  if (status === "running") return <Loader2 className="h-4 w-4 animate-spin text-info" />;
-  if (status === "error") return <XCircle className="h-4 w-4 text-danger" />;
-  if (status === "cancelled") return <Square className="h-3.5 w-3.5 text-subtle" />;
-  return <Check className="h-4 w-4 text-success" />;
-}
 
 function ApprovalCard({
   approval,
@@ -320,6 +312,23 @@ function TaskDetail({
   const [timelineView, setTimelineView] = useState<"timeline" | "flow">("timeline");
   const [workspaceView, setWorkspaceView] = useState<"execution" | "collaboration">("execution");
   const [tab, setTab] = useState<"diff" | "output" | "artifacts">("diff");
+  const [inspectorCollapsed, setInspectorCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem("agentdesk.code.inspector-collapsed") === "true";
+    } catch {
+      return false;
+    }
+  });
+  const inspectorToggle = useRef<HTMLButtonElement>(null);
+  const toggleInspector = (collapsed: boolean) => {
+    setInspectorCollapsed(collapsed);
+    try {
+      localStorage.setItem("agentdesk.code.inspector-collapsed", String(collapsed));
+    } catch {
+      // 存储不可用时仍允许在当前任务内切换布局。
+    }
+    if (collapsed) inspectorToggle.current?.focus();
+  };
   const [followup, setFollowup] = useState("");
   useEffect(() => {
     onWorkspaceViewChange?.(workspaceView);
@@ -331,15 +340,18 @@ function TaskDetail({
     activity.steps.filter((s) => s.name === "shell.run").at(-1) ??
     activity.steps.at(-1);
   const currentRun = runs.data?.find((r) => r.id === task.currentRunId);
-  const pending =
-    approvals.data?.filter(
-      (a) =>
-        activity.approvalIds.has(a.id) ||
-        (a.payload &&
-          typeof a.payload === "object" &&
-          "taskId" in a.payload &&
-          a.payload.taskId === task.id),
-    ) ?? [];
+  const pending = useMemo(
+    () =>
+      approvals.data?.filter(
+        (a) =>
+          activity.approvalIds.has(a.id) ||
+          (a.payload &&
+            typeof a.payload === "object" &&
+            "taskId" in a.payload &&
+            a.payload.taskId === task.id),
+      ) ?? [],
+    [approvals.data, activity.approvalIds, task.id],
+  );
   const busy = currentRun ? ["running", "queued"].includes(currentRun.status) : activeTask(task);
   const action = useMutation({
     mutationFn: (kind: "cancel" | "review" | "followup") => {
@@ -367,6 +379,10 @@ function TaskDetail({
   );
   const files = new Set(activity.changes.map((c) => c.change.path)).size;
   const runList: Run[] = runs.data ?? [];
+  const pendingApprovalIds = useMemo(
+    () => new Set(pending.map((approval) => approval.id)),
+    [pending],
+  );
   const selectRun = (runId: string) => {
     setSelectedRunId(runId);
     const last = activity.steps.filter((s) => s.runId === runId).at(-1);
@@ -375,8 +391,15 @@ function TaskDetail({
       setTab("output");
     }
   };
+  const selectStep = (stepKey: string) => {
+    setSelectedStep(stepKey);
+    const match = activity.steps.find((item) => item.key === stepKey);
+    if (match) setSelectedRunId(match.runId);
+    setTab("output");
+    toggleInspector(false);
+  };
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+    <div className="ad-code-detail flex min-h-0 min-w-0 flex-1 flex-col">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b px-6 py-4">
         <div className="min-w-0">
           <h2 className="max-w-[50vw] truncate text-sm font-semibold" title={task.title}>
@@ -479,118 +502,71 @@ function TaskDetail({
               );
               if (match) setSelectedChange(match.key);
               setTab("diff");
+              toggleInspector(false);
               setWorkspaceView("execution");
             }}
             onOpenArtifacts={() => {
               setTab("artifacts");
+              toggleInspector(false);
               setWorkspaceView("execution");
             }}
           />
         </div>
       ) : (
-        <div className="grid min-h-0 flex-1 grid-cols-1 xl:grid-cols-[minmax(300px,0.85fr)_minmax(360px,1.15fr)]">
+        <div className="ad-code-workspace" data-inspector-collapsed={inspectorCollapsed}>
           <section className="flex min-h-0 min-w-0 flex-col border-r" aria-label="执行时间线">
             <Tabs
               value={timelineView}
               onValueChange={(value) => setTimelineView(value as "timeline" | "flow")}
               className="flex min-h-0 flex-1 flex-col"
             >
-              <div className="flex items-center justify-between px-5 pt-2">
+              <div className="ad-code-execution-toolbar">
                 <TabsList className="w-auto">
                   <TabsTrigger value="timeline">执行过程</TabsTrigger>
                   <TabsTrigger value="flow">流程图</TabsTrigger>
                 </TabsList>
-                <span className="text-xs text-subtle">{activity.steps.length} 个步骤</span>
+                <button
+                  ref={inspectorToggle}
+                  type="button"
+                  className="ad-code-panel-toggle"
+                  aria-label={inspectorCollapsed ? "展开结果面板" : "收起结果面板"}
+                  aria-expanded={!inspectorCollapsed}
+                  aria-controls="code-inspector"
+                  title={inspectorCollapsed ? "展开结果面板" : "收起结果面板"}
+                  onClick={() => toggleInspector(!inspectorCollapsed)}
+                >
+                  {inspectorCollapsed ? (
+                    <PanelRightOpen size={15} />
+                  ) : (
+                    <PanelRightClose size={15} />
+                  )}
+                  <span>结果面板</span>
+                </button>
               </div>
               <TabsContent
                 value="timeline"
                 className="min-h-0 flex-1 overflow-y-auto px-5 pb-5 pt-3"
               >
-                <div className="mb-5 rounded-xl bg-surface-2/70 p-3.5">
-                  <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.15em] text-subtle">
-                    任务目标
-                  </p>
-                  <p className="whitespace-pre-wrap text-[13px] leading-relaxed">{task.goal}</p>
-                </div>
-                {runList.map((run) => (
-                  <div key={run.id} className="mb-5">
-                    <div className="mb-3 flex items-center gap-2 text-xs">
-                      <span className="flex h-6 w-6 items-center justify-center rounded-lg border bg-surface">
-                        <Code2 className="h-3.5 w-3.5 text-emerald-500" />
-                      </span>
-                      <span className="font-medium">
-                        {run.agent === "code" ? "编码助手" : run.agent}
-                      </span>
-                      {run.parentRunId && <span className="text-subtle">委派任务</span>}
-                      <span className="ml-auto font-mono text-[10px] text-subtle">
-                        {time(run.createdAt)}
-                      </span>
+                <ExecutionProcessView
+                  task={task}
+                  runs={runList}
+                  session={runTree}
+                  records={records}
+                  activity={activity}
+                  selectedRunId={selectedRunId}
+                  selectedStep={selectedStep}
+                  outputSelected={tab === "output"}
+                  loading={runs.isLoading}
+                  approvalsError={approvals.error?.message}
+                  pendingApprovalIds={pendingApprovalIds}
+                  onSelectRun={selectRun}
+                  onSelectStep={selectStep}
+                  approvalsSlot={pending.map((approval) => (
+                    <div className="mb-1" key={approval.id}>
+                      <ApprovalCard approval={approval} source={source} refresh={refresh} />
                     </div>
-                    <div className="ml-3 border-l pl-4">
-                      {activity.steps
-                        .filter((s) => s.runId === run.id)
-                        .map((s) => (
-                          <button
-                            key={s.key}
-                            type="button"
-                            onClick={() => {
-                              setSelectedStep(s.key);
-                              setTab("output");
-                            }}
-                            className={cn(
-                              "mb-1.5 flex w-full items-start gap-2.5 rounded-lg px-2 py-2.5 text-left transition-colors hover:bg-surface-2",
-                              selectedStep === s.key && tab === "output" && "bg-surface-2",
-                            )}
-                          >
-                            <span className="mt-0.5 shrink-0">
-                              <StepIcon
-                                status={
-                                  s.status === "running" &&
-                                  ["failed", "cancelled"].includes(run.status)
-                                    ? "error"
-                                    : s.status
-                                }
-                              />
-                            </span>
-                            <span className="min-w-0">
-                              <span className="block text-xs font-medium">
-                                {TOOL_LABELS[s.name] ?? s.name}
-                              </span>
-                              <span
-                                className="mt-1 block truncate font-mono text-[11px] text-subtle"
-                                title={stepHint(s)}
-                              >
-                                {stepHint(s)}
-                              </span>
-                            </span>
-                          </button>
-                        ))}
-                      {(activity.textByRun.get(run.id) || run.resultText) && (
-                        <div className="mt-3 text-[13px]">
-                          <Markdown>
-                            {activity.textByRun.get(run.id) || run.resultText || ""}
-                          </Markdown>
-                        </div>
-                      )}
-                      {run.resultError && (
-                        <p className="mt-2 text-xs text-danger">{run.resultError}</p>
-                      )}
-                      {run.status === "running" &&
-                        !activity.steps.some((s) => s.runId === run.id) && (
-                          <p className="py-3 text-xs text-subtle">正在理解任务、读取项目上下文…</p>
-                        )}
-                    </div>
-                  </div>
-                ))}
-                {runs.isLoading && <p className="py-4 text-xs text-subtle">正在加载执行记录…</p>}
-                {pending.map((approval) => (
-                  <div className="mb-3" key={approval.id}>
-                    <ApprovalCard approval={approval} source={source} refresh={refresh} />
-                  </div>
-                ))}
-                {approvals.error && (
-                  <p className="text-xs text-danger">无法同步审批：{approvals.error.message}</p>
-                )}
+                  ))}
+                />
               </TabsContent>
               <TabsContent value="flow" className="relative min-h-0 flex-1 pt-2">
                 {timelineView === "flow" && (
@@ -646,8 +622,30 @@ function TaskDetail({
                 </form>
               )}
           </section>
-          <section className="flex min-h-0 min-w-0 flex-col bg-surface/35" aria-label="代码检查器">
-            <div className="flex items-center gap-5 border-b px-5">
+          {inspectorCollapsed ? (
+            <div className="ad-code-inspector-rail">
+              <button
+                type="button"
+                className="ad-code-inspector-restore"
+                aria-label="展开代码检查器"
+                aria-expanded={false}
+                aria-controls="code-inspector"
+                title="展开结果面板"
+                onClick={() => toggleInspector(false)}
+              >
+                <PanelRightOpen size={16} />
+                <span>结果</span>
+                {files > 0 ? <b>{files}</b> : null}
+              </button>
+            </div>
+          ) : null}
+          <section
+            id="code-inspector"
+            hidden={inspectorCollapsed}
+            className="ad-code-inspector"
+            aria-label="代码检查器"
+          >
+            <div className="ad-code-inspector-toolbar">
               <button
                 type="button"
                 onClick={() => setTab("diff")}
@@ -687,6 +685,18 @@ function TaskDetail({
                 <span className="text-success">+{total.add}</span>
                 <span className="ml-2 text-danger">−{total.del}</span>
               </div>
+              <button
+                type="button"
+                className="ad-code-panel-toggle ad-code-panel-close"
+                aria-label="收起右侧结果面板"
+                aria-expanded={true}
+                aria-controls="code-inspector"
+                title="收起结果面板"
+                onClick={() => toggleInspector(true)}
+              >
+                <PanelRightClose size={15} />
+                <span>收起</span>
+              </button>
             </div>
             {tab === "artifacts" ? (
               <ArtifactWorkspace taskId={task.id} source={source} />

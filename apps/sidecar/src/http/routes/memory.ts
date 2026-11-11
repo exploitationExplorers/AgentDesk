@@ -1,10 +1,23 @@
 import { Hono } from "hono";
-import { MemoryCorrection, MemoryPolicyPatch } from "@agentdesk/shared";
+import {
+  AppError,
+  ErrorCode,
+  MemoryCorrection,
+  MemoryCreate,
+  MemoryPolicyPatch,
+} from "@agentdesk/shared";
 import type { Container } from "../../container";
 
 export function memoryRoutes({ memory }: Container) {
   const app = new Hono();
   app.get("/memories", (c) => c.json(memory.withManagement(() => memory.listAll())));
+  app.post("/memories", async (c) => {
+    const body: unknown = await c.req.json().catch(() => {
+      throw new AppError(ErrorCode.BadRequest, "请求内容必须是有效的 JSON");
+    });
+    const input = MemoryCreate.parse(body);
+    return c.json(memory.store({ ...input, source: "tool" }).memory);
+  });
   app.get("/memories/policy", (c) => c.json(memory.getPolicy()));
   app.put("/memories/policy", async (c) =>
     c.json(memory.updatePolicy(MemoryPolicyPatch.parse(await c.req.json()))),

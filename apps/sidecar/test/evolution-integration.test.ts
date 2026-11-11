@@ -132,6 +132,42 @@ it("记忆候选经认证管理接口审核、更正和遗忘，不污染默认�
   expect((await request("/memories/policy")).status).toBe(200);
 });
 
+it("设置页直接创建真实用户记忆，不调用模型并拒绝伪造来源或凭据", async () => {
+  expect((await app.request("/api/memories", { method: "POST", body: "{}" })).status).toBe(401);
+  const resolver = vi.mocked(container.providers.resolve);
+  const calls = resolver.mock.calls.length;
+  const response = await request("/memories", "POST", {
+    text: "用户希望报告中注明实际验证方式",
+    kind: "preference",
+  });
+  expect(response.status).toBe(200);
+  const memory = await response.json();
+  expect(memory).toMatchObject({ namespace: "user", status: "active", source: "tool" });
+  expect(resolver.mock.calls).toHaveLength(calls);
+  expect(
+    (await (await request("/memories")).json()).some(
+      (item: { id: string }) => item.id === memory.id,
+    ),
+  ).toBe(true);
+  expect(
+    (await request("/memories", "POST", { text: "无效来源", kind: "fact", source: "auto" })).status,
+  ).toBe(400);
+  expect(
+    (await request("/memories", "POST", { text: "password=synthetic-password-123", kind: "fact" }))
+      .status,
+  ).toBe(400);
+  expect((await request(`/memories/${memory.id}`, "DELETE")).status).toBe(200);
+  expect(
+    (
+      await app.request("/api/memories", {
+        method: "POST",
+        headers: { "X-AgentDesk-Token": token, "Content-Type": "application/json" },
+        body: "{",
+      })
+    ).status,
+  ).toBe(400);
+});
+
 it("真实聊天固定行为版本到Run，并可提交反馈作为后续候选证据", async () => {
   faux.setResponses([fauxAssistantMessage(fauxText("本次使用合成模型完成验证。"))]);
   const conversationId = await container.chat.send(

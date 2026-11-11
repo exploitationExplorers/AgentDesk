@@ -33,9 +33,6 @@ import {
   type MemoryEvaluationCase,
 } from "./evaluation-fixtures";
 
-const GRADER_VERSION = "agentdesk-deterministic-v1";
-const DATASET_VERSION = "2026-11-11.1";
-
 function behaviorHash(value: BehaviorSnapshot): string {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }
@@ -104,7 +101,7 @@ export class EvaluationService {
   datasets(): EvaluationDataset[] {
     return (["memory", "agent"] as const).map((mode) => ({
       id: `agentdesk-${mode}-regression`,
-      version: DATASET_VERSION,
+      version: `sha256:${fixtureHash(mode)}`,
       mode,
       title: mode === "memory" ? "本地记忆治理回归" : "Agent 隔离工具回归",
       description:
@@ -261,7 +258,8 @@ export class EvaluationService {
       datasetId: dataset.id,
       datasetVersion: dataset.version,
       datasetHash: fixtureHash(parsed.mode),
-      graderVersion: GRADER_VERSION,
+      // 对实际运行的实现取指纹，修改工具适配、评分或门槛时不会沿用旧标识。
+      graderVersion: `sha256:${createHash("sha256").update(EvaluationService.toString()).digest("hex")}`,
       environment: `node-${process.versions.node};synthetic-fixtures;isolated-memory;mock-tools-only`,
       model: pinned?.model.id ?? null,
       providerId: pinned?.providerId ?? null,

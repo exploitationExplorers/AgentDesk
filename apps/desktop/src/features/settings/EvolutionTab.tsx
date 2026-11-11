@@ -7,7 +7,17 @@ import type {
   EvolutionEvidence,
   EvolutionProposal,
 } from "@agentdesk/shared";
-import { Badge, Button, Card, EmptyState, Field, Input, Spinner, Textarea } from "@agentdesk/ui";
+import {
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  Field,
+  Input,
+  Select,
+  Spinner,
+  Textarea,
+} from "@agentdesk/ui";
 import { api } from "../../lib/api";
 
 const STATUS_LABEL = {
@@ -442,6 +452,22 @@ function ProposalCard({
 }) {
   const [review, setReview] = useState<"agent" | "publish" | null>(null);
   const [allowModel, setAllowModel] = useState(false);
+  const [modelKey, setModelKey] = useState("");
+  const providers = useQuery({
+    queryKey: ["providers"],
+    queryFn: api.providers,
+    enabled: review === "agent",
+  });
+  const modelOptions = (providers.data ?? [])
+    .filter((provider) => provider.enabled)
+    .flatMap((provider) =>
+      provider.models.map((model) => ({
+        key: JSON.stringify([provider.id, model]),
+        label: `${provider.name} / ${model}`,
+        selection: { providerId: provider.id, model },
+      })),
+    );
+  const modelSelection = modelOptions.find((option) => option.key === modelKey)?.selection;
   const busy = useIsMutating({ mutationKey: ACTION_KEY }) > 0;
   const evaluation = evaluations.find((run) => run.id === proposal.evaluationId) ?? evaluations[0];
   const currentBase = proposal.baseVersionId === activeVersion.id;
@@ -455,7 +481,11 @@ function ProposalCard({
         if (!evaluation) throw new Error("请先完成评测");
         await api.publishEvolutionProposal(proposal.id, evaluation.id);
       } else if (kind === "reject") await api.rejectEvolutionProposal(proposal.id);
-      else await api.evaluateEvolutionProposal(proposal.id, kind);
+      else {
+        if (kind === "agent" && (!allowModel || !modelSelection))
+          throw new Error("请明确选择评测模型并允许本次调用");
+        await api.evaluateEvolutionProposal(proposal.id, kind, modelSelection);
+      }
     },
     onSuccess: () => {
       setReview(null);
@@ -553,6 +583,28 @@ function ProposalCard({
             基线和候选使用独立测试状态。合成任务会发送给当前配置模型，产生 token
             费用；工具返回只来自测试 fixtures，不执行真实命令或部署。
           </p>
+          <Field label="评测模型" className="mt-3">
+            <Select
+              aria-label="评测模型"
+              value={modelKey}
+              disabled={providers.isPending || action.isPending}
+              onChange={(event) => setModelKey(event.target.value)}
+            >
+              <option value="">请选择模型</option>
+              {modelOptions.map((option) => (
+                <option key={option.key} value={option.key}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          {providers.isError ? (
+            <p role="alert" className="mt-2 text-xs text-danger">
+              加载模型失败：{providers.error.message}
+            </p>
+          ) : providers.isSuccess && modelOptions.length === 0 ? (
+            <p className="mt-2 text-xs text-muted">请先在“模型 Provider”中启用至少一个模型。</p>
+          ) : null}
           <label className="mt-3 flex items-start gap-2 text-xs leading-6">
             <input
               type="checkbox"
@@ -568,7 +620,7 @@ function ProposalCard({
               size="sm"
               variant="primary"
               loading={action.isPending}
-              disabled={busy || !allowModel}
+              disabled={busy || !allowModel || !modelSelection}
               onClick={() => action.mutate("agent")}
             >
               确认开始评测
