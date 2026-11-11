@@ -33,12 +33,15 @@ import "./collaboration.css";
 const EMPTY_ARTIFACTS: never[] = [];
 const COLORS = [
   "var(--collab-sky)",
-  "var(--ad-brand)",
+  "var(--collab-violet)",
   "var(--collab-mint)",
   "var(--collab-amber)",
+  "var(--collab-coral)",
 ];
 const colorStyle = (color: string): CSSProperties => ({ "--collab-color": color }) as CSSProperties;
 const clock = (value: number) => new Date(value).toLocaleTimeString("zh-CN", { hour12: false });
+const hubLabel = (agent: CollaborationRun["agent"]) =>
+  agent === "orchestrator" ? "主控 · AgentDesk" : `主控 · ${AGENT_META[agent].label}`;
 
 function Status({ value }: { value: CollaborationStatus }) {
   return (
@@ -148,7 +151,7 @@ export function CollaborationView({
         to: target,
         color: index ? "var(--collab-mint)" : "var(--collab-sky)",
         live:
-          model.root?.status === "running" &&
+          model.root?.status === "running" ||
           (index ? model.events.length > 0 : model.outputs.length > 0),
       })),
     ],
@@ -235,12 +238,13 @@ export function CollaborationView({
       <section className="ad-collab-workspace" aria-label="Agent 协作图">
         <div className="ad-collab-workspace-top">
           <div className="ad-collab-run-title">
-            <Radio size={13} />
+            {model.live ? <i className="ad-collab-live" aria-hidden="true" /> : <Radio size={13} />}
             <strong title={task.title}>{task.title}</strong>
           </div>
           <div className="ad-collab-metrics">
             <span>
-              <b>{model.members.filter((run) => run.status === "running").length}</b> 成员执行中
+              <b>{model.members.filter((run) => run.status === "running").length}</b> 子 Agent
+              执行中
             </span>
             <span>
               <b>{model.completed}</b> / {model.members.length} 完成
@@ -263,7 +267,7 @@ export function CollaborationView({
               <CollaborationWires host={board} wires={wires} />
               <section className="ad-collab-column">
                 <h3>
-                  <span>01</span>执行成员<small>{model.members.length} RUNS</small>
+                  <span>01</span>子 Agent<small>{model.members.length} AGENTS</small>
                 </h3>
                 <div className="ad-collab-members">
                   {model.members.map((run, index) => {
@@ -278,7 +282,7 @@ export function CollaborationView({
                         style={colorStyle(colors.get(run.id) ?? "var(--ad-brand)")}
                         data-collab-node
                         data-testid="collaboration-member"
-                        aria-label={`查看${AGENT_META[run.agent].label}的任务详情`}
+                        aria-label={`查看子 Agent ${AGENT_META[run.agent].label}的任务详情`}
                       >
                         <span className="ad-collab-member-top">
                           <span className="ad-collab-avatar">
@@ -310,15 +314,15 @@ export function CollaborationView({
                   {!model.members.length ? (
                     <div className="ad-collab-no-members">
                       <GitBranch size={22} />
-                      <p>本轮由主控直接执行</p>
-                      <small>委派给其他 Agent 后，成员会出现在这里。</small>
+                      <p>等待子 Agent 加入</p>
+                      <small>主控委派任务后，各子 Agent 会出现在左侧并连线到中间。</small>
                     </div>
                   ) : null}
                 </div>
               </section>
               <section className="ad-collab-column">
                 <h3>
-                  <span>02</span>主控编排<small>ORCHESTRATOR</small>
+                  <span>02</span>主控调度<small>ORCHESTRATOR</small>
                 </h3>
                 <article className="ad-collab-hub" data-collab-node>
                   <button
@@ -331,12 +335,8 @@ export function CollaborationView({
                       <Bot size={23} />
                     </span>
                     <span>
-                      <strong>
-                        {model.root.agent === "orchestrator"
-                          ? "AgentDesk"
-                          : `${AGENT_META[model.root.agent].label}助手`}
-                      </strong>
-                      <small>拆解任务 · 协调执行 · 汇总结果</small>
+                      <strong>{hubLabel(model.root.agent)}</strong>
+                      <small>拆解任务 · 协调子 Agent · 汇总结果</small>
                     </span>
                     <Status value={model.root.status} />
                   </button>
@@ -465,12 +465,14 @@ export function CollaborationView({
             </div>
             <section className="ad-collab-timeline" aria-label="协作执行时间轴">
               <div className="ad-collab-timeline-heading">
-                <h3>执行时间轴</h3>
-                <p>每个成员，一条独立的轨迹</p>
-                <span>{model.live ? "实时更新" : "历史记录"}</span>
+                <h3>LOGS · 执行时间轴</h3>
+                <p>每个子 Agent，一条独立的轨迹</p>
+                <span className={model.live ? "is-live" : undefined}>
+                  {model.live ? "实时更新" : "历史记录"}
+                </span>
               </div>
               <div className="ad-collab-scale">
-                <span>成员 / 任务</span>
+                <span>Agent / 任务</span>
                 <div>
                   {[0, 0.25, 0.5, 0.75, 1].map((part) => (
                     <span key={part}>{formatRunDuration(duration * part)}</span>
@@ -484,7 +486,7 @@ export function CollaborationView({
                   key={run.id}
                   style={colorStyle(colors.get(run.id) ?? "var(--ad-brand)")}
                   onClick={() => openRun(run)}
-                  aria-label={`${AGENT_META[run.agent].label}，${COLLABORATION_STATUS[run.status]}，耗时 ${formatRunDuration((run.endedAt ?? end) - run.startedAt)}`}
+                  aria-label={`${run.id === model.root?.id ? "主控" : AGENT_META[run.agent].label}，${COLLABORATION_STATUS[run.status]}，耗时 ${formatRunDuration((run.endedAt ?? end) - run.startedAt)}`}
                 >
                   <span className="ad-collab-lane-name">
                     <i />

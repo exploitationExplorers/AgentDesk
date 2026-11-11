@@ -20,6 +20,12 @@ import { renderMarkdown } from "./markdown.js";
 import type { ApprovalStep, HistoryMessage, Turn } from "./types.js";
 import { useApprovalWaiter } from "./useApprovalWaiter.js";
 import CommandPanel from "./CommandPanel.js";
+import {
+  applyMention,
+  mentionQuery,
+  mentionSuggestions,
+  type MentionableSkill,
+} from "./mentions.js";
 import { commandSuggestions } from "./slash-commands.js";
 import { useSlashCommands } from "./useSlashCommands.js";
 
@@ -102,6 +108,7 @@ export default function App({
   const [dismissedInput, setDismissedInput] = useState<string | null>(null);
   const [inputHistory, setInputHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState<number | null>(null);
+  const [skills, setSkills] = useState<MentionableSkill[]>([]);
   const draftRef = useRef("");
   const inputTouched = useRef(false);
   const controllerRef = useRef<AbortController | null>(null);
@@ -145,17 +152,43 @@ export default function App({
     onExit: exit,
   });
   const { agent, theme } = commands;
-  const suggestions =
+  const slashSuggestions =
     !commands.panel && !commands.loading && dismissedInput !== input
       ? commandSuggestions(input)
+      : [];
+  const skillSuggestions =
+    !commands.panel &&
+    !commands.loading &&
+    dismissedInput !== input &&
+    slashSuggestions.length === 0
+      ? mentionSuggestions(input, skills, agent)
       : [];
   const filteredItems = commands.panel?.items?.filter((item) =>
     `${item.label} ${item.detail ?? ""}`.toLowerCase().includes(input.toLowerCase()),
   );
   const menuCount = commands.panel
     ? (filteredItems?.length ?? commands.panel.lines?.length ?? 0)
-    : suggestions.length;
+    : slashSuggestions.length || skillSuggestions.length;
   const activeMenuIndex = Math.min(menuIndex, Math.max(0, menuCount - 1));
+  const insertSkillMention = (skill: MentionableSkill) => {
+    const active = mentionQuery(input);
+    if (!active) return;
+    changeInput(applyMention(input, active.start, skill.name));
+  };
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const list = await (await apiRequest<MentionableSkill[]>(state, "/skills")).json();
+        if (active) setSkills(list);
+      } catch {
+        if (active) setSkills([]);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [state, apiRequest]);
   const changeInput = (value: string) => {
     inputTouched.current = true;
     setInput(value);
@@ -359,7 +392,7 @@ export default function App({
       if (busy) {
         controllerRef.current?.abort();
         dispatch({ type: "ABORT_TURN" });
-      } else if (suggestions.length) setDismissedInput(input);
+      } else if (slashSuggestions.length || skillSuggestions.length) setDismissedInput(input);
       return;
     }
     if (key.ctrl && character === "o") {
@@ -368,9 +401,14 @@ export default function App({
       return;
     }
     if (key.tab) {
-      if (suggestions.length && !busy) {
-        const selected = suggestions[activeMenuIndex];
+      if (slashSuggestions.length && !busy) {
+        const selected = slashSuggestions[activeMenuIndex];
         if (selected) changeInput(`/${selected.name} `);
+        return;
+      }
+      if (skillSuggestions.length && !busy) {
+        const selected = skillSuggestions[activeMenuIndex];
+        if (selected) insertSkillMention(selected);
         return;
       }
       if (stepFocusActive) setStepFocusActive(false);
@@ -381,10 +419,9 @@ export default function App({
       return;
     }
     if (!busy && !stepFocusActive && (key.upArrow || key.downArrow)) {
-      if (suggestions.length) {
-        setMenuIndex(
-          (activeMenuIndex + (key.upArrow ? -1 : 1) + suggestions.length) % suggestions.length,
-        );
+      const pickerCount = slashSuggestions.length || skillSuggestions.length;
+      if (pickerCount) {
+        setMenuIndex((activeMenuIndex + (key.upArrow ? -1 : 1) + pickerCount) % pickerCount);
       } else if (inputHistory.length) {
         if (historyIndex === null) draftRef.current = input;
         const next = key.upArrow
@@ -499,14 +536,29 @@ export default function App({
               theme={theme}
             />
           ) : null}
-          {suggestions.length > 0 && !busy ? (
+          {slashSuggestions.length > 0 && !busy ? (
             <CommandPanel
               panel={{
                 title: "指令",
-                items: suggestions.map((item) => ({
+                items: slashSuggestions.map((item) => ({
                   id: item.name,
                   label: `/${item.name}`,
                   detail: item.description,
+                })),
+              }}
+              index={activeMenuIndex}
+              limit={Math.max(3, Math.min(7, rows - 12))}
+              theme={theme}
+            />
+          ) : null}
+          {skillSuggestions.length > 0 && !busy ? (
+            <CommandPanel
+              panel={{
+                title: "提及技能",
+                items: skillSuggestions.map((item) => ({
+                  id: item.name,
+                  label: `@${item.name}`,
+                  detail: `Skill · ${item.description}`,
                 })),
               }}
               index={activeMenuIndex}
@@ -528,7 +580,12 @@ export default function App({
                 }
                 return;
               }
-              const selected = suggestions[activeMenuIndex];
+              if (skillSuggestions.length) {
+                const selected = skillSuggestions[activeMenuIndex];
+                if (selected) insertSkillMention(selected);
+                return;
+              }
+              const selected = slashSuggestions[activeMenuIndex];
               const message = selected ? `/${selected.name}` : value;
               if (!message.trim()) return;
               inputTouched.current = true;
@@ -543,7 +600,9 @@ export default function App({
             }}
             disabled={busy || commands.loading}
             focused={!stepFocusActive && (!commands.panel || Boolean(commands.panel.items))}
-            placeholder={commands.panel?.items ? "输入关键词筛选…" : "输入消息，或 / 查看指令"}
+            placeholder={
+              commands.panel?.items ? "输入关键词筛选…" : "输入消息，/ 指令，或 @ 选择技能"
+            }
             color={theme.color}
           />
           <StatusBar

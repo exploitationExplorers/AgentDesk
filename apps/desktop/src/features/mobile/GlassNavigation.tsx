@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { GlassTabMenu } from "./leibox/glass-tab-menu/GlassTabMenu";
 
 const tabs = ["工作区", "任务", "审批", "设置"] as const;
-const navigationOptions = { height: 74 };
+const navigationOptions = { height: 65 };
 
 export function GlassNavigation({
   active,
@@ -34,21 +34,20 @@ export function GlassNavigation({
         root.appendChild(style);
       }
       style.textContent = `
-        :host{height:74px!important;overflow:visible!important}
-        .motion-frame{width:100%!important;height:74px!important;transform:none!important;overflow:visible}
-        .motion-body,.glass-tab-demo{width:100%;height:74px;min-height:74px;overflow:visible;background:transparent}
-        .gt-stage{position:relative;left:auto;top:auto;width:100%;height:74px;transform:none;transform-origin:top left}
-        .gt-cluster{left:0;bottom:0;width:100%;height:68px}
-        .gt-panel{left:0!important;bottom:0;width:100%!important;height:64px!important;border:1px solid rgba(255,255,255,.9);border-radius:20px!important;background:rgba(251,252,249,.93);box-shadow:0 10px 32px rgba(25,53,45,.18);backdrop-filter:blur(20px) saturate(1.15);-webkit-backdrop-filter:blur(20px) saturate(1.15)}
-        .gt-tabs{left:0;bottom:0;width:calc(100% - 58px);height:64px;padding:4px;grid-template-columns:repeat(4,minmax(0,1fr));transform:none!important}
-        .gt-selection,.gt-lens{left:4px;top:5px;width:calc((100% - 8px)/4);height:54px;border-radius:14px;transform:translateX(calc(var(--navigation-selection,0)*100%))!important}
-        .gt-tab{width:100%;height:54px;border-radius:14px;display:flex;flex-direction:column;gap:1px;color:#315c4f}
-        .gt-tab[aria-selected=true]{color:#164b3e}
-        .gt-tab .gt-icon{width:21px;height:21px}
-        .gt-tab::after{content:attr(aria-label);font:600 10px/1.2 system-ui,-apple-system,sans-serif;color:currentColor;white-space:nowrap}
-        .gt-tab:focus-visible,.gt-toggle:focus-visible{outline:3px solid #d57c4c;outline-offset:2px}
-        .gt-toggle{right:4px;bottom:4px;width:56px;height:56px;border:1px solid rgba(255,255,255,.95);border-radius:15px;background:#1b5143!important;box-shadow:0 3px 9px rgba(20,56,46,.2)}
-        .gt-plus:before,.gt-plus:after{background:#fff}
+        :host{height:65px!important;overflow:visible!important}
+        .motion-frame{width:100%!important;height:65px!important;transform:none!important;overflow:visible}
+        .motion-body,.glass-tab-demo{width:100%;height:65px;min-height:65px;overflow:visible;background:transparent}
+        .gt-stage{position:relative;left:auto;top:auto;width:100%;height:65px;transform:none;transform-origin:top left}
+        .gt-cluster{left:0;bottom:0;width:100%;height:65px}
+        .gt-panel{left:0!important;bottom:0;width:100%!important;height:65px!important;border:1px solid #31415b;border-radius:17px!important;background:rgba(17,26,43,.95);box-shadow:0 10px 30px #0008,inset 0 1px #ffffff06;backdrop-filter:blur(22px) saturate(1.2);-webkit-backdrop-filter:blur(22px) saturate(1.2)}
+        .gt-tabs{left:0;bottom:0;width:100%;height:65px;padding:6px;grid-template-columns:repeat(4,minmax(0,1fr));transform:none!important}
+        .gt-selection,.gt-lens{left:6px;top:6px;width:calc((100% - 12px)/4);height:calc(100% - 12px);border-radius:11px;border:1px solid #34536f;background:linear-gradient(#21354c,#172b40);box-shadow:inset 0 1px #ffffff0a;transform:translateX(calc(var(--navigation-selection,0)*100%))!important}
+        .gt-tab{width:100%;height:100%;border-radius:11px;display:flex;flex-direction:column;gap:5px;color:#7d90ae}
+        .gt-tab[aria-selected=true]{color:#a3ddf5}
+        .gt-tab .gt-icon{width:19px;height:19px}
+        .gt-tab::after{content:attr(aria-label);font:550 11px/1.1 system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;color:currentColor;white-space:nowrap}
+        .gt-tab:focus-visible,.gt-toggle:focus-visible{outline:3px solid #b17636;outline-offset:2px}
+        .gt-toggle{display:none!important}
         .gt-menu,.gt-sr{display:none!important}
         @media(prefers-reduced-motion:reduce){.gt-selection,.gt-lens{transition:none!important}}
       `;

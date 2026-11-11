@@ -1,0 +1,107 @@
+.ad-elastic-handle {
+  position: relative;
+  z-index: 5;
+  flex: none;
+  width: 14px;
+  margin: 0 -7px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: ew-resize;
+  touch-action: none;
+  outline: none;
+}
+.ad-elastic-handle svg {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 56px;
+  height: 120px;
+  transform: translate(-50%, -50%);
+  overflow: visible;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+.ad-elastic-handle.is-visible svg,
+.ad-elastic-handle:focus-visible svg {
+  opacity: 1;
+}
+.ad-elastic-ink,
+.ad-elastic-outline {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.ad-elastic-ink {
+  stroke: color-mix(in srgb, var(--ad-brand) 70%, #9aa3b5);
+  stroke-width: 3.5;
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--ad-brand) 35%, transparent));
+}
+.ad-elastic-outline {
+  stroke: color-mix(in srgb, var(--ad-fg) 18%, transparent);
+  stroke-width: 7;
+}
+.ad-elastic-handle.is-dragging .ad-elastic-ink {
+  stroke: var(--ad-brand);
+}
+.ad-elastic-handle:focus-visible::after {
+  content: "";
+  position: absolute;
+  inset: 18% 1px;
+  border: 2px solid color-mix(in srgb, var(--ad-brand) 55%, transparent);
+  border-radius: 12px;
+}
+.ad-elastic-collapse {
+  position: absolute;
+  left: 50%;
+  top: 18%;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  transform: translateX(-50%);
+  border-radius: 6px;
+  color: var(--ad-muted);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+  background: color-mix(in srgb, var(--ad-surface) 88%, transparent);
+}
+.ad-elastic-handle.is-visible .ad-elastic-collapse {
+  opacity: 0.85;
+}
+.ad-elastic-expand {
+  flex: none;
+  width: 22px;
+  border: 0;
+  border-right: 1px solid var(--ad-border);
+  background: color-mix(in srgb, var(--ad-surface) 90%, transparent);
+  color: var(--ad-muted);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+.ad-elastic-expand:hover {
+  color: var(--ad-brand);
+  background: color-mix(in srgb, var(--ad-brand) 8%, var(--ad-surface));
+}
+.ad-code-rail {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  min-width: 0;
+  border-right: 1px solid var(--ad-border);
+  overflow: hidden;
+  transition: width 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.ad-code-rail.is-dragging {
+  transition: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ad-code-rail,
+  .ad-elastic-handle svg,
+  .ad-elastic-collapse {
+    transition: none;
+  }
+}

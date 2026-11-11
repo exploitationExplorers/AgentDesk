@@ -425,6 +425,220 @@
   pointer-events: none;
 }
 
+.gf-sheet--drop {
+  animation: gf-drop 0.85s var(--gf-ease) both;
+}
+@keyframes gf-drop {
+  0% {
+    translate: 0 -190px;
+    rotate: -9deg;
+    opacity: 0;
+  }
+  35% {
+    opacity: 1;
+  }
+  72% {
+    translate: 0 10px;
+    rotate: 1deg;
+  }
+  100% {
+    translate: 0 0;
+    rotate: 0deg;
+    opacity: 1;
+  }
+}
+
+.gf-front--bump {
+  animation: gf-bump 0.7s var(--gf-ease) 0.38s both;
+}
+@keyframes gf-bump {
+  0% {
+    scale: 1;
+  }
+  35% {
+    scale: 1.018 0.975;
+  }
+  70% {
+    scale: 0.996 1.006;
+  }
+  100% {
+    scale: 1;
+  }
+}
+
+/* LeiBox 右下角 key：Studio 三点菜单 / 添加落入。 */
+.gf-key {
+  all: unset;
+  box-sizing: border-box;
+  position: absolute;
+  right: 28px;
+  bottom: 28px;
+  z-index: 12;
+  width: 58px;
+  height: 58px;
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition:
+    transform 0.35s var(--gf-spring),
+    box-shadow 0.35s var(--gf-ease),
+    background 0.35s var(--gf-ease),
+    opacity 0.6s var(--gf-ease) 0.7s,
+    scale 0.7s var(--gf-spring) 0.7s;
+}
+.gf-key:hover {
+  transform: translateY(-2px);
+}
+.gf-key:active {
+  transform: translateY(0) scale(0.93);
+  transition-duration: 0.12s;
+}
+.gf-key:focus-visible {
+  outline: 2px solid var(--ad-brand, #4c8dff);
+  outline-offset: 3px;
+}
+.gf-key--add {
+  color: #fff;
+  background: radial-gradient(120% 90% at 50% 0%, #3a3a3f 0%, #121214 55%, #050506 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    inset 0 -3px 8px rgba(0, 0, 0, 0.7),
+    0 0 0 1px rgba(0, 0, 0, 0.75),
+    0 14px 22px -8px rgba(0, 0, 0, 0.55);
+}
+.gf-root[data-tone="dark"] .gf-key--add {
+  color: #111113;
+  background: radial-gradient(120% 90% at 50% 0%, #ffffff 0%, #ececee 55%, #d2d2d6 100%);
+  box-shadow:
+    inset 0 1px 0 #fff,
+    inset 0 -3px 8px rgba(0, 0, 0, 0.14),
+    0 0 0 1px rgba(0, 0, 0, 0.4),
+    0 14px 22px -8px rgba(0, 0, 0, 0.7);
+}
+.gf-key--more {
+  color: #111113;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92) 0%, rgba(226, 226, 230, 0.82) 100%);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow:
+    inset 0 1px 0 #fff,
+    inset 0 -2px 4px rgba(0, 0, 0, 0.06),
+    0 0 0 1px rgba(0, 0, 0, 0.16),
+    0 10px 18px -8px rgba(0, 0, 0, 0.3);
+}
+.gf-root[data-tone="dark"] .gf-key--more {
+  color: #f5f5f7;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0.06) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 0 0 1px rgba(255, 255, 255, 0.1),
+    0 10px 18px -8px rgba(0, 0, 0, 0.6);
+}
+.gf-key--more[aria-expanded="true"] {
+  transform: scale(0.96);
+}
+.gf-glyph {
+  display: block;
+  max-width: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+}
+.gf-glyph--plus {
+  width: 26px;
+  height: 26px;
+  stroke-width: 1.6;
+  animation: gf-turn 0.6s var(--gf-spring);
+}
+.gf-glyph--more {
+  width: 30px;
+  height: 12px;
+  stroke-width: 1.7;
+  fill: currentColor;
+  stroke: none;
+}
+@keyframes gf-turn {
+  from {
+    rotate: -90deg;
+  }
+  to {
+    rotate: 0deg;
+  }
+}
+
+.gf-menu {
+  position: absolute;
+  right: 22px;
+  bottom: 90px;
+  z-index: 20;
+  min-width: 176px;
+  padding: 6px;
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  background: rgba(252, 252, 253, 0.72);
+  backdrop-filter: blur(24px) saturate(1.6);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 0 0 0.5px rgba(0, 0, 0, 0.14),
+    0 24px 48px -16px rgba(10, 12, 20, 0.4);
+  transform-origin: 100% 100%;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(6px) scale(0.94);
+  transition:
+    opacity 0.2s var(--gf-ease),
+    transform 0.32s var(--gf-spring),
+    visibility 0s 0.32s;
+}
+.gf-menu[data-open] {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition-delay: 0s;
+}
+.gf-root[data-tone="dark"] .gf-menu {
+  background: rgba(30, 30, 34, 0.72);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 0 0 0.5px rgba(255, 255, 255, 0.1),
+    0 24px 48px -16px rgba(0, 0, 0, 0.8);
+}
+.gf-menu-item {
+  all: unset;
+  box-sizing: border-box;
+  padding: 9px 12px;
+  border-radius: 10px;
+  font-size: 13.5px;
+  font-weight: 450;
+  color: #18181b;
+  cursor: pointer;
+}
+.gf-root[data-tone="dark"] .gf-menu-item {
+  color: #f4f4f5;
+}
+.gf-menu-item:hover,
+.gf-menu-item:focus-visible {
+  background: rgba(24, 24, 27, 0.07);
+}
+.gf-root[data-tone="dark"] .gf-menu-item:hover,
+.gf-root[data-tone="dark"] .gf-menu-item:focus-visible {
+  background: rgba(255, 255, 255, 0.09);
+}
+.gf-menu-item--danger {
+  color: #d92d20;
+}
+.gf-root[data-tone="dark"] .gf-menu-item--danger {
+  color: #ff6b5e;
+}
+
+.gf-root:not([data-entered]) .gf-key {
+  opacity: 0;
+  scale: 0.6;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .gf-root *,
   .gf-root *::before,

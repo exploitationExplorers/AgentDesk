@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, type CSSProperties } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { cn } from "../cn";
 
 const BACK_PATH =
@@ -14,6 +14,13 @@ export type GlassFolderItem = {
   meta?: string;
 };
 
+export type GlassFolderMenuItem = {
+  id: string;
+  label: string;
+  onSelect: () => void;
+  danger?: boolean;
+};
+
 function fanSlot(index: number, count: number) {
   return count <= 1 ? 0 : (index / (count - 1)) * 2 - 1;
 }
@@ -25,7 +32,25 @@ function jitter(seed: string) {
   return { x: ((n - 0.5) * 10).toFixed(2), r: ((n * 0.7 - 0.35) * 3.2).toFixed(2) };
 }
 
-/** LeiBox 玻璃文件夹：受控展开，扇出业务条目；省略演示画布与三栏沙盒。 */
+function MoreGlyph() {
+  return (
+    <svg className="gf-glyph gf-glyph--more" viewBox="0 0 30 12" aria-hidden="true">
+      <rect x="1" y="1.5" width="8" height="9" rx="3.4" />
+      <rect x="11" y="1.5" width="8" height="9" rx="3.4" />
+      <rect x="21" y="1.5" width="8" height="9" rx="3.4" />
+    </svg>
+  );
+}
+
+function AddGlyph() {
+  return (
+    <svg className="gf-glyph gf-glyph--plus" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 4.5v15M4.5 12h15" />
+    </svg>
+  );
+}
+
+/** LeiBox 玻璃文件夹：受控展开，扇出业务条目；支持右下角 key（more 菜单 / add）点击效果。 */
 export function GlassFolder({
   label,
   open,
@@ -37,6 +62,10 @@ export function GlassFolder({
   scale = 0.78,
   className,
   emptyText = "暂无项目",
+  action = "more",
+  menuItems,
+  onAdd,
+  droppingId,
 }: {
   label: string;
   open: boolean;
@@ -48,10 +77,21 @@ export function GlassFolder({
   scale?: number;
   className?: string;
   emptyText?: string;
+  /** LeiBox Studio 文件夹的三点菜单，或 + 落入添加。 */
+  action?: "more" | "add" | false;
+  menuItems?: GlassFolderMenuItem[];
+  onAdd?: () => void;
+  /** 新导入条目 id，触发落入动画。 */
+  droppingId?: string | null;
 }) {
   const root = useRef<HTMLDivElement>(null);
+  const front = useRef<HTMLDivElement>(null);
+  const keyRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const filesId = useId();
-  // 项目选择优先展示列表前部；超出部分后续可接搜索，避免演示式只露末尾。
+  const menuId = useId();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [bumping, setBumping] = useState(false);
   const visible = items.slice(0, MAX_VISIBLE);
   const resolvedTone =
     tone === "auto"
@@ -59,6 +99,12 @@ export function GlassFolder({
         ? "dark"
         : "light"
       : tone;
+
+  const bump = () => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    setBumping(false);
+    requestAnimationFrame(() => setBumping(true));
+  };
 
   useEffect(() => {
     const node = root.current;
@@ -108,6 +154,94 @@ export function GlassFolder({
     };
   }, []);
 
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onPointer = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (menuRef.current?.contains(target) || keyRef.current?.contains(target)) return;
+      setMenuOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setMenuOpen(false);
+        keyRef.current?.focus();
+      }
+    };
+    document.addEventListener("pointerdown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [menuOpen]);
+
+  useEffect(() => {
+    if (droppingId) bump();
+  }, [droppingId]);
+
+  const keyButton: ReactNode =
+    action === "add" ? (
+      <button
+        ref={keyRef}
+        type="button"
+        className="gf-key gf-key--add"
+        aria-label={`添加项目到 ${label}`}
+        onClick={(event) => {
+          event.stopPropagation();
+          bump();
+          onAdd?.();
+        }}
+      >
+        <AddGlyph />
+      </button>
+    ) : action === "more" ? (
+      <>
+        <button
+          ref={keyRef}
+          type="button"
+          className="gf-key gf-key--more"
+          aria-label={`${label} 更多操作`}
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          aria-controls={menuOpen ? menuId : undefined}
+          onClick={(event) => {
+            event.stopPropagation();
+            setMenuOpen((value) => !value);
+          }}
+        >
+          <MoreGlyph />
+        </button>
+        <div
+          ref={menuRef}
+          id={menuId}
+          role="menu"
+          aria-label="文件夹操作"
+          className="gf-menu"
+          data-open={menuOpen ? "" : undefined}
+          {...(!menuOpen ? { inert: true } : {})}
+        >
+          {(menuItems ?? []).map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              role="menuitem"
+              tabIndex={menuOpen ? 0 : -1}
+              className={cn("gf-menu-item", item.danger && "gf-menu-item--danger")}
+              onClick={(event) => {
+                event.stopPropagation();
+                setMenuOpen(false);
+                item.onSelect();
+                keyRef.current?.focus();
+              }}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      </>
+    ) : null;
+
   return (
     <div
       ref={root}
@@ -143,7 +277,7 @@ export function GlassFolder({
                   key={item.id}
                   type="button"
                   role="listitem"
-                  className="gf-sheet"
+                  className={cn("gf-sheet", droppingId === item.id && "gf-sheet--drop")}
                   aria-pressed={selectedId === item.id}
                   aria-label={`选择 ${item.name}`}
                   style={
@@ -158,6 +292,12 @@ export function GlassFolder({
                   onClick={() => {
                     onSelect(item.id);
                     onOpenChange(false);
+                    setMenuOpen(false);
+                  }}
+                  onAnimationEnd={(event) => {
+                    if (event.animationName === "gf-drop") {
+                      event.currentTarget.classList.remove("gf-sheet--drop");
+                    }
                   }}
                 >
                   <span className="gf-lines" aria-hidden="true">
@@ -174,7 +314,14 @@ export function GlassFolder({
             })}
           </div>
           {!items.length ? <p className="gf-empty">{emptyText}</p> : null}
-          <div className="gf-front" style={{ clipPath: `path('${FRONT_PATH}')` }}>
+          <div
+            ref={front}
+            className={cn("gf-front", bumping && "gf-front--bump")}
+            style={{ clipPath: `path('${FRONT_PATH}')` }}
+            onAnimationEnd={(event) => {
+              if (event.animationName === "gf-bump") setBumping(false);
+            }}
+          >
             <div className="gf-tint" aria-hidden="true" />
             <div className="gf-spec" aria-hidden="true" />
             <svg className="gf-rim gf-front-rim" viewBox="0 0 340 198" aria-hidden="true">
@@ -186,7 +333,10 @@ export function GlassFolder({
               aria-expanded={open}
               aria-controls={filesId}
               aria-label={`${open ? "收起" : "展开"} ${label}，${items.length} 项`}
-              onClick={() => onOpenChange(!open)}
+              onClick={() => {
+                setMenuOpen(false);
+                onOpenChange(!open);
+              }}
             />
             <div className="gf-label">
               <span className="gf-title">{label}</span>
@@ -195,6 +345,7 @@ export function GlassFolder({
               </span>
             </div>
           </div>
+          {keyButton}
         </div>
       </div>
     </div>

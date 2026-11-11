@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { AgentName, AgentStreamEvent } from "@agentdesk/shared";
+import type { AgentName, AgentStreamEvent, ModelSelection } from "@agentdesk/shared";
 import { api } from "../../lib/api";
 import { http } from "../../lib/http";
 import {
@@ -75,6 +75,7 @@ export function useChatStream(
       conversationId: string | undefined,
       agent?: AgentName,
       workspace?: string,
+      modelSelection?: ModelSelection,
     ) => {
       controller.current?.abort();
       const ctrl = new AbortController();
@@ -220,7 +221,7 @@ export function useChatStream(
 
       try {
         await api.chat(
-          { conversationId, message, agent, workspace },
+          { conversationId, message, agent, workspace, modelSelection },
           (event) => {
             if (event.type === "conversation" && event.conversationId !== convId) {
               convId = event.conversationId;

@@ -4,6 +4,18 @@
   --chat-shadow: 0 8px 32px -16px color-mix(in srgb, var(--ad-fg) 18%, transparent);
   background: var(--chat-canvas);
 }
+/* LeiBox GlassSelection 适配技能 @ 菜单：品牌色滑动高亮。 */
+.skill-mention-selection {
+  border-color: color-mix(in srgb, var(--ad-brand) 34%, var(--lb-rim));
+  background: color-mix(
+    in srgb,
+    var(--ad-brand) 14%,
+    rgba(var(--lb-selection), calc(0.92 - 0.55 * var(--lb-travel, 0)))
+  );
+  box-shadow:
+    0 10px 24px -14px color-mix(in srgb, var(--ad-brand) 45%, var(--lb-shadow)),
+    inset 0 1px 1px var(--lb-highlight);
+}
 .chat-workspace :where(button, a, input, select):focus-visible {
   outline: 2px solid var(--ad-brand);
   outline-offset: 3px;

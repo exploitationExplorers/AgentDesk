@@ -8,6 +8,8 @@ export interface CollaborationWire {
   live: boolean;
 }
 
+const cnWire = (live: boolean) => (live ? "ad-collab-wire is-live" : "ad-collab-wire");
+
 export function CollaborationWires({
   host,
   wires,
@@ -72,11 +74,11 @@ export function CollaborationWires({
             style={
               {
                 "--collab-color": wire.color,
-                "--collab-delay": `${index * -0.7}s`,
+                "--collab-delay": `${index * -0.55}s`,
               } as CSSProperties
             }
           >
-            <path className="ad-collab-wire" d={d} />
+            <path className={cnWire(wire.live)} d={d} />
             {wire.live ? (
               <>
                 <path className="ad-collab-packet" d={d} pathLength={100} />

@@ -68,6 +68,8 @@ export interface SkillInfo {
   agents: string[];
   triggers: string[];
   dir: string;
+  userInvocable?: boolean;
+  disableModelInvocation?: boolean;
 }
 
 export interface WechatGroup {
@@ -219,6 +221,7 @@ export const api = {
   refreshProjectStars: () =>
     http.post<{ updated: number; gained: number }>("/projects/refresh-stars"),
   addProject: (path: string) => http.post<Project>("/projects", { path }),
+  pickProjectDirectory: () => http.post<{ path: string | null }>("/projects/pick-directory"),
   listRemoteRepos: (platform: "github" | "gitee" | "gitlab") =>
     http.get<RemoteRepo[]>("/projects/remote", { platform }),
   starredRepos: () => http.get<StarredRepo[]>("/projects/starred"),
@@ -308,7 +311,13 @@ export const api = {
   messages: (id: string) => http.get<ChatMessage[]>(`/conversations/${id}/messages`),
   deleteConversation: (id: string) => http.delete(`/conversations/${id}`),
   chat: (
-    body: { conversationId?: string; message: string; agent?: string; workspace?: string },
+    body: {
+      conversationId?: string;
+      message: string;
+      agent?: string;
+      workspace?: string;
+      modelSelection?: { providerId: string; model: string; reasoningEffort?: string };
+    },
     onEvent: (e: AgentStreamEvent) => void,
     signal?: AbortSignal,
   ) => postStream<AgentStreamEvent>("/chat", body, onEvent, signal),

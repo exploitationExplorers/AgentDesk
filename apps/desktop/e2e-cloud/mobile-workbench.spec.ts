@@ -112,8 +112,13 @@ test("邮箱 OTP 登录后在 360/390/430 px 管理项目与任务，无横向�
   await page.getByLabel("邮箱地址").fill("owner@example.com");
   await page.getByRole("button", { name: "发送登录验证码" }).click();
   await expect(page.getByText(/验证码将发送至收件箱/)).toBeVisible();
-  await page.getByLabel("6 位验证码").fill("123456");
-  await page.getByRole("button", { name: "验证并登录" }).click();
+  const otp = page.getByLabel("6 位验证码").or(page.getByRole("textbox").first());
+  if (await page.getByRole("button", { name: "输入验证码" }).count()) {
+    await page.getByRole("button", { name: "输入验证码" }).click();
+  }
+  await otp.fill("123456");
+  const verify = page.getByRole("button", { name: "验证并登录" });
+  if (await verify.count()) await verify.click();
   await expect(page.getByRole("heading", { name: "工作区" })).toBeVisible();
   await expect(page.getByRole("button", { name: /agentdesk/ })).toBeVisible();
 
@@ -144,7 +149,7 @@ test("邮箱 OTP 登录后在 360/390/430 px 管理项目与任务，无横向�
   await expect(page.getByRole("heading", { name: task.title })).toBeVisible();
   await page.getByRole("tab", { name: "设置", exact: true }).click();
   await expect(page.getByRole("heading", { name: "设置", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "新建任务", exact: true }).click();
+  await page.getByRole("button", { name: "新建任务" }).first().click();
   await expect(page.getByRole("heading", { name: "给项目一个目标。" })).toBeVisible();
   await expect(page.getByLabel("你想完成什么？")).toBeVisible();
   await page.getByRole("tab", { name: "工作区", exact: true }).click();
@@ -202,7 +207,7 @@ test("提交任务后保留详情，离线审批不发送，恢复后提交绑�
     await route.fulfill({ json: { resolved: true } });
   });
   await page.goto("/cloud.html");
-  await page.getByRole("button", { name: "新建 AI 任务", exact: true }).click();
+  await page.getByRole("button", { name: "新建任务" }).first().click();
   await page.getByLabel("你想完成什么？").fill("检查测试文件");
   await page.getByRole("button", { name: "提交任务", exact: true }).click();
   await expect(page.getByRole("heading", { name: task.title })).toBeVisible();

@@ -130,7 +130,7 @@ export class Orchestrator {
 
   private isolateTools(name: AgentName, text: string, tools: ReturnType<Orchestrator["toolsFor"]>) {
     const skills =
-      this.deps.skills?.matchTriggers(name, text).filter((skill) => skill.isolateTools) ?? [];
+      this.deps.skills?.matchActivated(name, text).filter((skill) => skill.isolateTools) ?? [];
     // 多个隔离技能取交集；技能不能借加载其他技能扩大本轮的实际工具集。
     return tools.filter(
       (tool) =>

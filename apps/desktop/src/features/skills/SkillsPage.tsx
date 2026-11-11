@@ -286,7 +286,9 @@ function SkillCard({ skill, onOpen }: { skill: SkillInfo; onOpen: () => void }) 
             打开技能
           </Button>
         ) : (
-          <p className="text-[12px] text-subtle">Bot 对话中可按触发词自动加载，暂无独立运行界面</p>
+          <p className="text-[12px] text-subtle">
+            Bot / 终端对话中输入 @ 选择，或按触发词自动加载；暂无独立运行界面
+          </p>
         )}
       </div>
     </Card>

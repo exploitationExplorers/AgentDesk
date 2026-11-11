@@ -20,9 +20,10 @@ import {
 } from "lucide-react";
 import { OtpVerification } from "./leibox/otp-verification/OtpVerification";
 import { BootScreen } from "./BootScreen";
+import { CollabScene } from "./CollabScene";
 import { LoginAtmosphere } from "./LoginAtmosphere";
-import { ProjectFloodCards } from "./ProjectFloodCards";
-import { RecentTasksStack } from "./RecentTasksStack";
+import { ProjectCards } from "./ProjectCards";
+import { TaskRows } from "./TaskRows";
 import type {
   AgentModelBinding,
   RemoteApprovalDecision,
@@ -396,12 +397,16 @@ export function MobileApp() {
       return (
         <WorkspaceView
           selectedHost={selectedHost}
+          hosts={hosts}
+          hostId={actualHostId}
           hostLoading={hostsQuery.loading}
           projects={projects}
           projectsLoading={projectsQuery.loading}
           tasks={tasks}
+          onSelectHost={selectHost}
           onProject={selectProject}
           onTask={selectTask}
+          onApprovals={() => navigate("approvals")}
           onCreate={() => navigate("new-task")}
           onAddRepo={() =>
             navigate(selectedHost?.kind === "cloud" ? "repository-setup" : "connectors")
@@ -624,50 +629,30 @@ export function MobileApp() {
 
   return (
     <div className="m-app">
-      <header className="m-topbar">
-        <div className="m-brand">
-          <span className="m-brand-mark">
-            <Code2 size={20} />
-          </span>
-          <div>
-            <strong>AgentDesk</strong>
-            <small>随行工作台</small>
-          </div>
+      <header className="m-app-header">
+        <div>
+          <p className="m-app-eyebrow">AGENTDESK / CONTROL ROOM</p>
+          <h1>{title}</h1>
         </div>
-        <div className="m-top-actions">
-          <span className={`m-net${online ? " is-online" : " is-offline"}`}>
+        <div className="m-header-actions">
+          <span
+            className={`m-net${online ? " is-online" : " is-offline"}`}
+            aria-label={online ? "在线" : "离线"}
+          >
             <span />
-            {online ? "在线" : "离线"}
           </span>
           <Refresh onClick={refresh} busy={hostsQuery.loading || tasksQuery.loading} />
+          <button
+            type="button"
+            className="m-create-avatar"
+            aria-label="新建任务"
+            onClick={() => navigate("new-task")}
+          >
+            <Plus size={18} aria-hidden="true" />
+          </button>
         </div>
       </header>
       <main className="m-main">
-        <div className="m-page-heading">
-          <div>
-            <span className="m-overline">AGENTDESK CLOUD</span>
-            <h1>{title}</h1>
-          </div>
-          {selectedHost && (
-            <label className="m-host-select" aria-label="当前执行宿主">
-              <span className="m-host-icon">
-                {selectedHost.kind === "cloud" ? <Cloud size={15} /> : <Laptop size={15} />}
-              </span>
-              <select
-                aria-label="当前执行宿主"
-                value={actualHostId ?? ""}
-                onChange={(event) => selectHost(event.target.value)}
-              >
-                {hosts.map((host) => (
-                  <option key={host.id} value={host.id}>
-                    {host.name}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown size={14} />
-            </label>
-          )}
-        </div>
         {!online && <Notice error>离线模式：显示的数据可能已过期，所有写操作已暂停。</Notice>}
         {(hostsQuery.error ||
           projectsQuery.error ||
@@ -888,22 +873,30 @@ function Login({
 
 function WorkspaceView({
   selectedHost,
+  hosts,
+  hostId,
   hostLoading,
   projects,
   projectsLoading,
   tasks,
+  onSelectHost,
   onProject,
   onTask,
+  onApprovals,
   onCreate,
   onAddRepo,
 }: {
   selectedHost: CloudHost | null;
+  hosts: CloudHost[];
+  hostId: string | null;
   hostLoading: boolean;
   projects: CloudProject[];
   projectsLoading: boolean;
   tasks: Task[];
+  onSelectHost: (id: string) => void;
   onProject: (project: CloudProject) => void;
   onTask: (id: string) => void;
+  onApprovals: () => void;
   onCreate: () => void;
   onAddRepo: () => void;
 }) {
@@ -911,77 +904,127 @@ function WorkspaceView({
   const active = tasks.filter((task) =>
     ["queued", "planning", "running"].includes(task.status),
   ).length;
+  const completed = tasks.filter((task) =>
+    ["completed", "succeeded", "closed"].includes(task.status),
+  ).length;
   const fallbackBranch = selectedHost?.kind === "cloud" ? "云端工作区" : "已授权目录";
+  const online = selectedHost?.status === "online";
   return (
     <>
-      <section className="m-work-summary m-work-summary-glass">
-        <div className="m-summary-top">
-          <span className="m-summary-icon">
-            <Activity size={17} />
+      <section className="m-runner" aria-label="执行端与任务概览">
+        <div className="m-runner-line">
+          <span className="m-runner-icon">
+            {selectedHost?.kind === "cloud" ? (
+              <Cloud size={18} aria-hidden="true" />
+            ) : (
+              <Laptop size={18} aria-hidden="true" />
+            )}
           </span>
-          <span>{selectedHost?.kind === "cloud" ? "CLOUD RUNNER" : "COMPANY CONNECTOR"}</span>
-          <Status value={selectedHost?.status ?? "offline"} />
-        </div>
-        <strong>{selectedHost?.name ?? "尚未连接执行宿主"}</strong>
-        <div className="m-summary-foot">
-          <span>最近活动：{displayTime(selectedHost?.lastSeen)}</span>
-          <span className="m-summary-separator" />
-          <span>{active} 个执行中</span>
-          <span className="m-summary-separator" />
-          <span>{pending} 项待审批</span>
-        </div>
-      </section>
-      <div className="m-section-head">
-        <div>
-          <span className="m-overline">PROJECTS</span>
-          <h2>你的项目</h2>
-        </div>
-        <button className="m-text-button" onClick={onAddRepo}>
-          添加项目 <Plus size={15} />
-        </button>
-      </div>
-      {projectsLoading || hostLoading ? (
-        <LoadingRows count={2} />
-      ) : projects.length ? (
-        <ProjectFloodCards
-          projects={projects}
-          fallbackBranch={fallbackBranch}
-          onSelect={onProject}
-        />
-      ) : (
-        <Empty title={selectedHost ? "这个宿主还没有可用项目" : "添加执行宿主以开始"}>
-          已连接的仓库和办公室项目会显示在这里。
-        </Empty>
-      )}
-      <section className="m-section m-recent">
-        <div className="m-section-head">
-          <div>
-            <span className="m-overline">RECENT RUNS</span>
-            <h2>最近任务</h2>
+          <div className="m-runner-info">
+            <strong>{selectedHost?.name ?? "尚未连接执行宿主"}</strong>
+            <p>
+              <span className={`m-online${online ? "" : " is-offline"}`}>
+                <i className="m-dot" />
+                {online ? "在线" : "离线"}
+              </span>
+              <span> · 最近活动 {displayTime(selectedHost?.lastSeen)}</span>
+            </p>
           </div>
-          <button
-            className="m-text-button"
-            onClick={() => onTask(tasks[0]?.id ?? "")}
-            disabled={!tasks[0]}
-          >
-            全部 <ArrowRight size={15} />
-          </button>
+          <label className="m-runner-switch" aria-label="切换执行端">
+            <select
+              aria-label="当前执行宿主"
+              value={hostId ?? ""}
+              onChange={(event) => onSelectHost(event.target.value)}
+              disabled={!hosts.length}
+            >
+              {hosts.map((host) => (
+                <option key={host.id} value={host.id}>
+                  {host.name}
+                </option>
+              ))}
+            </select>
+            <ChevronDown size={17} aria-hidden="true" />
+          </label>
         </div>
-        {tasks.length ? (
-          <RecentTasksStack tasks={tasks.slice(0, 5)} onSelect={onTask} />
-        ) : (
-          <div className="m-inline-empty">
-            <span>还没有远程任务</span>
-            <button className="m-inline-action" onClick={onCreate}>
-              创建第一个任务
+        <div className="m-metrics">
+          <div className="m-metric">
+            <strong>{active}</strong>
+            <span>执行中</span>
+          </div>
+          <div className={`m-metric${pending ? " is-attention" : ""}`}>
+            <button
+              type="button"
+              className="m-metric-btn"
+              onClick={onApprovals}
+              aria-label="查看待审批"
+            >
+              <strong>{pending}</strong>
+              <span>待审批</span>
             </button>
           </div>
+          <div className="m-metric">
+            <strong>{completed}</strong>
+            <span>已完成</span>
+          </div>
+        </div>
+      </section>
+
+      <section className="m-section">
+        <div className="m-section-head">
+          <h2>
+            你的项目
+            <small>{projects.length || 0}</small>
+          </h2>
+          <button type="button" className="m-text-button" onClick={onAddRepo}>
+            <Plus size={14} aria-hidden="true" />
+            添加项目
+          </button>
+        </div>
+        {projectsLoading || hostLoading ? (
+          <LoadingRows count={2} />
+        ) : projects.length ? (
+          <ProjectCards
+            projects={projects}
+            host={selectedHost}
+            fallbackBranch={fallbackBranch}
+            onSelect={onProject}
+          />
+        ) : (
+          <Empty title={selectedHost ? "这个宿主还没有可用项目" : "添加执行宿主以开始"}>
+            已连接的仓库和办公室项目会显示在这里。
+          </Empty>
         )}
       </section>
-      <Button className="m-wide-action" onClick={onCreate}>
-        <Sparkles size={17} />
-        新建 AI 任务
-      </Button>
+
+      <CollabScene tasks={tasks} onOpenTask={onTask} />
+
+      <section className="m-section m-recent">
+        <div className="m-section-head">
+          <h2>最近任务</h2>
+          <Button className="m-small-primary" onClick={onCreate}>
+            <Plus size={15} aria-hidden="true" />
+            新建任务
+          </Button>
+        </div>
+        {tasks.length ? (
+          <TaskRows tasks={tasks.slice(0, 3)} onSelect={onTask} />
+        ) : (
+          <Empty title="从一个小目标开始">
+            检查代码、整理方案，或完成一次部署。
+            <br />
+            点击「新建任务」，让 Agent 帮你推进。
+          </Empty>
+        )}
+      </section>
+
+      <div className="m-helper">
+        <ShieldCheck size={16} aria-hidden="true" />
+        <p>
+          <strong>放心交给 Agent，关键操作由你决定。</strong>
+          <br />
+          需要确认的操作会出现在「审批」中。
+        </p>
+      </div>
     </>
   );
 }
@@ -1047,11 +1090,7 @@ function ProjectView({
       {loading ? (
         <LoadingRows />
       ) : tasks.length ? (
-        <div className="m-task-list">
-          {tasks.map((task) => (
-            <TaskRow key={task.id} task={task} onClick={() => onTask(task.id)} />
-          ))}
-        </div>
+        <TaskRows tasks={tasks} projectName={project.name} onSelect={onTask} />
       ) : (
         <Empty title="还没有任务" />
       )}
@@ -1070,29 +1109,33 @@ function TasksView({
 }) {
   const [filter, setFilter] = useState("all");
   const filtered =
-    filter === "active"
-      ? tasks.filter((task) =>
-          ["queued", "planning", "running", "awaiting_plan_approval", "awaiting_review"].includes(
-            task.status,
-          ),
+    filter === "running"
+      ? tasks.filter(
+          (task) =>
+            ["queued", "planning", "running"].includes(task.status) ||
+            task.status.startsWith("awaiting_"),
         )
-      : filter === "complete"
+      : filter === "completed"
         ? tasks.filter((task) =>
-            ["completed", "failed", "cancelled", "closed"].includes(task.status),
+            ["completed", "succeeded", "failed", "cancelled", "closed"].includes(task.status),
           )
         : tasks;
   const filters: [string, string][] = [
     ["all", "全部"],
-    ["active", "进行中"],
-    ["complete", "已结束"],
+    ["running", "执行中"],
+    ["completed", "已完成"],
   ];
   return (
     <>
-      <div className="m-segment" role="tablist" aria-label="任务筛选">
+      <p className="m-view-desc">跟踪 Agent 的执行过程与任务结果。</p>
+      <div className="m-filters" role="tablist" aria-label="任务筛选">
         {filters.map(([value, label]) => (
           <button
+            type="button"
             role="tab"
+            className="m-filter"
             aria-selected={filter === value}
+            aria-pressed={filter === value}
             key={value}
             onClick={() => setFilter(value)}
           >
@@ -1103,36 +1146,13 @@ function TasksView({
       {loading ? (
         <LoadingRows count={4} />
       ) : filtered.length ? (
-        <div className="m-task-list m-task-list-page">
-          {filtered.map((task) => (
-            <TaskRow key={task.id} task={task} onClick={() => onTask(task.id)} />
-          ))}
-        </div>
+        <TaskRows tasks={filtered} onSelect={onTask} />
       ) : (
-        <Empty title="没有匹配的任务">任务会在创建后显示执行状态和结果。</Empty>
+        <Empty title="这里还没有任务">
+          {filter === "all" ? "创建任务后，进度与结果会显示在这里。" : "当前筛选下暂无任务。"}
+        </Empty>
       )}
     </>
-  );
-}
-
-function TaskRow({ task, onClick }: { task: Task; onClick: () => void }) {
-  return (
-    <button className="m-task-row" onClick={onClick}>
-      <span className={`m-task-mark status-mark-${task.status}`}>
-        <Code2 size={16} />
-      </span>
-      <span className="m-task-info">
-        <strong>{task.title}</strong>
-        <small>
-          {task.agent ?? "native-bot"} <span />
-          {displayTime(task.updatedAt)}
-        </small>
-      </span>
-      <span className="m-task-end">
-        <Status value={task.status} />
-        <ArrowRight size={15} />
-      </span>
-    </button>
   );
 }
 
@@ -1446,6 +1466,7 @@ function ApprovalsView({
   };
   return (
     <>
+      <p className="m-view-desc">先了解操作内容，再决定是否继续。</p>
       {host && (
         <div className="m-approval-context">
           <ShieldCheck size={17} />

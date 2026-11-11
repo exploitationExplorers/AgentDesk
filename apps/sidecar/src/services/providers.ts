@@ -231,16 +231,21 @@ export class ProviderService implements ModelResolver {
     return this.listBindings();
   }
 
-  private toResolved(provider: Provider, model: string): ResolvedModel | null {
+  private toResolved(
+    provider: Provider,
+    model: string,
+    reasoningEffort?: ModelSelection["reasoningEffort"],
+  ): ResolvedModel | null {
     if (!provider.enabled) return null;
     const apiKey = this.secrets.get(secretId(provider.id));
     if (!apiKey) return null;
     return {
       providerId: provider.id,
       providerName: provider.name,
-      model: buildModel(provider, model),
+      model: buildModel(provider, model, { reasoning: Boolean(reasoningEffort) }),
       apiKey,
       capacitySource: provider.modelLimits?.[model] ? "configured" : "default",
+      reasoningEffort,
     };
   }
 
@@ -255,7 +260,7 @@ export class ProviderService implements ModelResolver {
   async resolve(agent: AgentName, selection?: ModelSelection): Promise<ResolvedModel[]> {
     if (selection) {
       const provider = this.validateSelection(selection);
-      const resolved = this.toResolved(provider, selection.model);
+      const resolved = this.toResolved(provider, selection.model, selection.reasoningEffort);
       if (!resolved) throw new AppError(ErrorCode.ProviderUnavailable, "所选模型不可用");
       return [resolved];
     }

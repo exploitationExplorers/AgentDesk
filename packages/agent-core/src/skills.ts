@@ -107,15 +107,38 @@ export class SkillRegistry {
     );
   }
 
+  /** 用户通过 @技能名 显式点选的技能（含仅允许用户调用、禁止模型主动加载的技能）。 */
+  matchMentions(agent: AgentName, text: string): Skill[] {
+    const names = new Set(
+      [...text.matchAll(/(^|[^@\w-])@([a-zA-Z0-9][\w-]*)/g)].map((match) =>
+        match[2]!.toLowerCase(),
+      ),
+    );
+    if (names.size === 0) return [];
+    return this.forAgent(agent).filter(
+      (skill) => skill.userInvocable !== false && names.has(skill.name.toLowerCase()),
+    );
+  }
+
+  /** 本轮应注入完整指令的技能：触发词命中 ∪ @提及。 */
+  matchActivated(agent: AgentName, text: string): Skill[] {
+    const byName = new Map<string, Skill>();
+    for (const skill of this.matchTriggers(agent, text)) byName.set(skill.name, skill);
+    for (const skill of this.matchMentions(agent, text)) byName.set(skill.name, skill);
+    return [...byName.values()];
+  }
+
   promptFor(agent: AgentName, userText: string): string {
     const available = this.forAgent(agent).filter((s) => !s.disableModelInvocation);
-    if (available.length === 0) return "";
+    if (available.length === 0 && this.matchMentions(agent, userText).length === 0) return "";
     const catalog = available.map((s) => `- ${s.name}: ${s.description}`).join("\n");
-    const activated = this.matchTriggers(agent, userText)
+    const activated = this.matchActivated(agent, userText)
       .map((s) => `<skill name="${s.name}" version="${s.version}">\n${s.instructions}\n</skill>`)
       .join("\n\n");
     return [
-      `可用技能（需要时调用 skills.load 获取完整指令）：\n${catalog}`,
+      available.length
+        ? `可用技能（需要时调用 skills.load 获取完整指令，也可由用户用 @技能名 显式点选）：\n${catalog}`
+        : "",
       activated ? `本轮已激活的技能：\n${activated}` : "",
     ]
       .filter(Boolean)

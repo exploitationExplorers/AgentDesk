@@ -94,7 +94,7 @@ describe("会话模型选择", () => {
         toolCalls: [],
       };
     });
-    const a = { providerId: provider.id, model: "selected" };
+    const a = { providerId: provider.id, model: "selected", reasoningEffort: "high" as const };
     const b = { providerId: other.id, model: "other" };
     const responses = await Promise.all([
       call("/chat", { message: "A", modelSelection: a }),
@@ -112,6 +112,11 @@ describe("会话模型选择", () => {
         { message: "default", selection: undefined },
       ]),
     );
+    const withEffort = await container.providers.resolve("code", a);
+    expect(withEffort[0]).toMatchObject({
+      reasoningEffort: "high",
+      model: { id: "selected", reasoning: true },
+    });
     const conversations = (await (
       await call("/conversations", undefined, "GET")
     ).json()) as Conversation[];

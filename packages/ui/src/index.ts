@@ -10,8 +10,15 @@ export * from "./panel-resize-handle";
 export * from "./page-surface";
 export { GlassSurface } from "./leibox/glass-surface";
 export { GlassTabMenu, GlassSelection } from "./leibox/glass-tab-menu";
+export {
+  ReasoningEffortSlider,
+  THINKING_DEPTH_OPTIONS,
+  THINKING_DEPTH_TO_EFFORT,
+  effortToThinkingDepth,
+  type ThinkingDepth,
+} from "./leibox/reasoning-effort-slider";
 export { DeepAgentComposer } from "./leibox/deep-agent-composer";
 export { Glass } from "./leibox/glass/Glass";
-export { GlassFolder, type GlassFolderItem } from "./leibox/glass-folder";
+export { GlassFolder, type GlassFolderItem, type GlassFolderMenuItem } from "./leibox/glass-folder";
 export { ShaderFlood, type ShaderFloodItem } from "./leibox/shader-flood/ShaderFlood";
 export { FluidRailTooltip } from "./leibox/fluid-tooltip";

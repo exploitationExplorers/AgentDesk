@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { AlertTriangle, ArrowDown, Menu, PanelRight, Files, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { chatMessageContent, type AgentName } from "@agentdesk/shared";
+import { chatMessageContent, type AgentName, type ModelSelection } from "@agentdesk/shared";
 import { http } from "../../lib/http";
 import { BrowserLivePanel } from "../../components/BrowserLivePanel";
 import { Markdown } from "../../components/Markdown";
@@ -223,7 +223,7 @@ export function ChatPage() {
     }
   };
 
-  const handleSend = (text: string, forced?: AgentName) => {
+  const handleSend = (text: string, forced?: AgentName, modelSelection?: ModelSelection) => {
     scroll.toBottom(false);
     setPrefill(undefined);
     setArtifactSelection(null);
@@ -232,12 +232,13 @@ export function ChatPage() {
       conversationId,
       (forced ?? agent) === "orchestrator" ? undefined : (forced ?? agent),
       conversationId ? undefined : (draftProject?.path ?? undefined),
+      modelSelection,
     );
   };
 
   const composer = (
     <Composer
-      onSend={(t) => handleSend(t)}
+      onSend={(t, options) => handleSend(t, undefined, options?.modelSelection)}
       onStop={() => {
         if (streaming) void stop();
         else if (automation) cancelAutomation.mutate(automation.id);

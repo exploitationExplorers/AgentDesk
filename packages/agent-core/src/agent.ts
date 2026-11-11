@@ -1,5 +1,5 @@
 import {
-  stream,
+  streamSimple,
   validateToolArguments,
   type AssistantMessage,
   type AssistantMessageEvent,
@@ -111,7 +111,7 @@ const MODEL_IDLE_TIMEOUT_MS = 30_000;
 /** SDK 可能忽略 AbortSignal，因此本层也必须结束等待，并隔离迟到的输出。 */
 async function readModelAttempt(
   candidate: ResolvedModel,
-  context: Parameters<typeof stream>[1],
+  context: Parameters<typeof streamSimple>[1],
   onEvent: (event: AssistantMessageEvent) => void,
   onSlow: () => void,
   remainingMs: number,
@@ -144,10 +144,11 @@ async function readModelAttempt(
   };
   refresh();
   const consume = async () => {
-    const events = stream(candidate.model, context, {
+    const events = streamSimple(candidate.model, context, {
       apiKey: candidate.apiKey,
       signal: controller.signal,
       maxTokens: candidate.model.maxTokens,
+      ...(candidate.reasoningEffort ? { reasoning: candidate.reasoningEffort } : {}),
     });
     for await (const event of events) {
       if (stopped) throw new Error("模型响应超时");
@@ -170,7 +171,7 @@ async function readModelAttempt(
 
 async function callModel(
   models: ResolvedModel[],
-  context: Parameters<typeof stream>[1],
+  context: Parameters<typeof streamSimple>[1],
   agent: AgentName,
   emit: RunAgentOptions["emit"],
   signal?: AbortSignal,

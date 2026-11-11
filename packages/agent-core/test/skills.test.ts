@@ -46,6 +46,37 @@ describe("技能兼容与模型调用边界", () => {
     ).rejects.toThrow("不适用于");
   });
 
+  it("@提及可显式激活用户可调用的技能，包括禁止模型主动加载的技能", () => {
+    const registry = new SkillRegistry();
+    registry.add(
+      parseSkill(
+        source("disable-model-invocation: true\nuser-invocable: true\nagents: [code]"),
+        "/skills",
+      ),
+    );
+    registry.add(
+      parseSkill(
+        "---\nname: qa-regression\ndescription: E2E\nuser-invocable: true\nagents: [code]\n---\nRun QA.",
+        "/skills",
+      ),
+    );
+    registry.add(
+      parseSkill(
+        "---\nname: hidden-ops\ndescription: Hidden\nuser-invocable: false\nagents: [code]\n---\nSecret.",
+        "/hidden",
+      ),
+    );
+    expect(registry.matchMentions("code", "请用 @qa-regression 跑一轮").map((s) => s.name)).toEqual(
+      ["qa-regression"],
+    );
+    expect(registry.matchActivated("code", "请用 @release 发布").map((s) => s.name)).toEqual([
+      "release",
+    ]);
+    expect(registry.matchMentions("code", "忽略 @release-extra")).toEqual([]);
+    expect(registry.promptFor("code", "@release 开始")).toContain("本轮已激活的技能");
+    expect(registry.matchMentions("code", "不可点选 @hidden-ops").map((s) => s.name)).toEqual([]);
+  });
+
   it("declareTools().restrictsToolsTo 按技能的 allowed-tools 收紧，空数组不收紧", async () => {
     const registry = new SkillRegistry();
     registry.add(parseSkill(source("allowed-tools: [Read, shell.run]"), "/skills"));
