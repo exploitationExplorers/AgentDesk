@@ -46,7 +46,7 @@ export class DeviceRelay {
       !!entry &&
       entry.ws.readyState === WebSocket.OPEN &&
       Date.now() - entry.seen < 45_000 &&
-      this.store.get(hostId).state === "active"
+      entry.device.state === "active"
     );
   }
   epoch(hostId: string) {
@@ -78,7 +78,7 @@ export class DeviceRelay {
     });
     let count = 0,
       window = Date.now();
-    ws.on("message", (data, binary) => {
+    ws.on("message", async (data, binary) => {
       try {
         if (Date.now() - window >= 1000) {
           window = Date.now();
@@ -94,7 +94,9 @@ export class DeviceRelay {
           throw new Error("Invalid device message");
         const message = DeviceWire.parse(JSON.parse(data.toString()));
         if (message.type === "heartbeat") {
-          if (!this.store.heartbeat(device.id, device.epoch)) throw new Error("Stale device");
+          if (!(await this.store.heartbeat(device.id, device.epoch)))
+            throw new Error("Stale device");
+          if (this.connections.get(device.id) !== entry) return;
           entry.seen = Date.now();
           this.send(entry, { type: "heartbeat" });
           return;
@@ -170,11 +172,15 @@ export class DeviceRelay {
     body?: unknown,
     options: { method?: string; signal?: AbortSignal; stream?: boolean } = {},
   ) {
+    const device = await this.store.get(hostId);
+    if (device.state !== "active") throw new AppError(ErrorCode.HostOffline, "设备已撤销");
     this.epoch(hostId);
     const method = options.method ?? (body === undefined ? "GET" : "POST");
     if (!allowedDeviceRoute(method, path))
       throw new AppError(ErrorCode.Forbidden, "设备接口未授权");
     const entry = this.connections.get(hostId)!;
+    if (entry.device.epoch !== device.epoch)
+      throw new AppError(ErrorCode.HostOffline, "设备连接已更新，请重试");
     if (entry.pending.size >= 16)
       throw new AppError(ErrorCode.RateLimited, "设备请求过多，请稍后重试");
     options.signal?.throwIfAborted();
@@ -263,7 +269,7 @@ export function attachDeviceChannel(server: Server, config: GatewayConfig, relay
         !/^[A-Za-z0-9_-]{43}$/.test(protocols[1]!)
       )
         throw new Error();
-      const device = relay.store.consumeToken(protocols[1]!);
+      const device = await relay.store.consumeToken(protocols[1]!);
       wss.handleUpgrade(request, socket, head, (ws) => relay.attach(ws, device));
     } catch {
       socket.end("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");

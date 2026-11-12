@@ -27,7 +27,6 @@ import { inspectEnvironment } from "./environment";
 import { registerReachTools } from "./reach-tools";
 import type { ReachService } from "../services/reach";
 export { shellRisk } from "./shell-policy";
-
 export interface ToolDeps {
   projects: ProjectService;
   feed: FeedService;
@@ -41,7 +40,6 @@ export interface ToolDeps {
   /** 工作流服务依赖工具注册表，这里延迟获取以打破循环依赖 */
   workflows: () => WorkflowService;
 }
-
 function htmlToText(html: string): string {
   const root = parse(html);
   root.querySelectorAll("script,style,nav,footer,svg,noscript").forEach((n) => n.remove());
@@ -50,14 +48,11 @@ function htmlToText(html: string): string {
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
-
 export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
   const { projects, feed, memory, disk, deploy, browser, settings, hub } = deps;
   const registry = new ToolRegistry();
   registerReachTools(registry, deps.reach);
-
-  const projectRoot = (ref: string) => projects.find(ref).path;
-
+  const projectRoot = async (ref: string) => (await projects.find(ref)).path;
   registry.register(
     defineTool({
       name: "projects.list",
@@ -68,8 +63,7 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
       }),
       risk: "safe",
       execute: async ({ keyword }) =>
-        projects
-          .list()
+        (await projects.list())
           .filter((p) => !keyword || p.name.toLowerCase().includes(keyword.toLowerCase()))
           .map((p) => ({
             id: p.id,
@@ -97,7 +91,7 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
       description: "获取项目在 GitHub/Gitee/GitLab 上的开放 PR/MR 和 Issue",
       parameters: Type.Object({ project: Type.String({ description: "项目 ID、名称或路径" }) }),
       risk: "safe",
-      execute: async ({ project }) => projects.activity(projects.find(project).id),
+      execute: async ({ project }) => projects.activity((await projects.find(project)).id),
     }),
     defineTool({
       name: "projects.open",
@@ -113,7 +107,7 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
       }),
       risk: "safe",
       execute: async ({ project, target }) => {
-        const p = projects.launch(project, target);
+        const p = await projects.launch(project, target);
         return `已在 ${target} 中打开 ${p.name}`;
       },
     }),
@@ -142,7 +136,7 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
       parameters: Type.Object({ project: Type.Optional(Type.String()) }),
       risk: "safe",
       execute: async ({ project }) =>
-        projects.claudeSessions(project ? projects.find(project).id : undefined),
+        projects.claudeSessions(project ? (await projects.find(project)).id : undefined),
     }),
     defineTool({
       name: "claude.run",
@@ -157,15 +151,15 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
         ),
       }),
       risk: "dangerous",
-      describeApproval: ({ project, prompt }) => {
-        const p = projects.find(project);
+      describeApproval: async ({ project, prompt }) => {
+        const p = await projects.find(project);
         return {
           title: `Claude Code 改代码：${p.name}`,
           detail: `仓库：${p.path}\n\n${prompt.slice(0, 1200)}${prompt.length > 1200 ? "…" : ""}`,
         };
       },
       execute: async ({ project, prompt, timeoutMin, requireChanges }, ctx) => {
-        const p = projects.find(project);
+        const p = await projects.find(project);
         const minutes = Math.min(90, Math.max(5, timeoutMin ?? 30));
         const needChanges = requireChanges !== false;
         let buffer = "";
@@ -177,7 +171,6 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
           buffer = "";
           ctx.emit({ type: "text_delta", agent: ctx.agent, delta: chunk });
         };
-
         hub.publish(GLOBAL_CHANNEL, {
           type: "notification",
           title: `Claude Code 开始：${p.name}`,
@@ -188,12 +181,11 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
           agent: ctx.agent,
           delta: `[claude.run] 仓库 ${p.path}\n[claude.run] 超时 ${minutes} 分钟；日志会出现 [Claude] 工具调用与 [git] 已改动\n`,
         });
-
         const result = await runClaudePrint({
           cwd: p.path,
           prompt,
           claudeCommand: settings.get().claudeCommand,
-          timeoutMs: minutes * 60_000,
+          timeoutMs: minutes * 60000,
           signal: ctx.signal,
           permissionMode: "acceptEdits",
           onOutput: (chunk) => {
@@ -202,7 +194,6 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
           },
         });
         flushLog(true);
-
         if (result.exitCode !== 0) {
           hub.publish(GLOBAL_CHANNEL, {
             type: "notification",
@@ -213,7 +204,6 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
             `Claude Code 退出码 ${result.exitCode}：${(result.text || result.raw).slice(0, 800)}`,
           );
         }
-
         const changedFiles = await gitChangedFiles(p.path, ctx.signal);
         if (needChanges && changedFiles.length === 0) {
           hub.publish(GLOBAL_CHANNEL, {
@@ -225,7 +215,6 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
             "Claude Code 未产生文件改动（git status 干净）。请检查任务说明或权限后重试。",
           );
         }
-
         const text = (result.text || "").trim() || "(Claude 无文本结论)";
         hub.publish(GLOBAL_CHANNEL, {
           type: "notification",
@@ -235,7 +224,6 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
               ? `改动 ${changedFiles.length} 个文件：${changedFiles.slice(0, 8).join(", ")}`
               : text.slice(0, 200),
         } satisfies GlobalEvent);
-
         return {
           text,
           changedFiles,
@@ -247,7 +235,6 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
         };
       },
     }),
-
     defineTool({
       name: "deploy.list",
       isConcurrencySafe: true,
@@ -311,7 +298,6 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
         };
       },
     }),
-
     defineTool({
       name: "feed.today",
       isConcurrencySafe: true,
@@ -383,7 +369,7 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
           ? `${url.replace(/\/$/, "").replace("github.com", "raw.githubusercontent.com")}/HEAD/README.md`
           : url;
         const response = await fetch(target, {
-          signal: ctx.signal ?? AbortSignal.timeout(20_000),
+          signal: ctx.signal ?? AbortSignal.timeout(20000),
           headers: { "User-Agent": "AgentDesk" },
         });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -391,10 +377,9 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
         const text = (response.headers.get("content-type") ?? "").includes("html")
           ? htmlToText(body)
           : body;
-        return text.slice(0, 12_000);
+        return text.slice(0, 12000);
       },
     }),
-
     defineTool({
       name: "workflow.list",
       isConcurrencySafe: true,
@@ -430,7 +415,6 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
         return { runId: final.id, status: final.status, output: final.output, error: final.error };
       },
     }),
-
     defineTool({
       name: "environment.inspect",
       description:
@@ -474,7 +458,7 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
         let dir = cwd;
         if (cwd) {
           try {
-            dir = projects.find(cwd).path;
+            dir = (await projects.find(cwd)).path;
           } catch {
             dir = cwd;
           }
@@ -484,18 +468,17 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
             type: "tool_output",
             agent: ctx.agent,
             toolCallId: ctx.toolCallId ?? "shell",
-            delta: delta.slice(-16_000),
+            delta: delta.slice(-16000),
           });
         const result = await runCheckedShell(command, {
           cwd: dir,
-          timeoutMs: 5 * 60_000,
+          timeoutMs: 5 * 60000,
           signal: ctx.signal,
           onOutput,
         });
         return { exitCode: result.code, output: (result.stdout + result.stderr).slice(-8000) };
       },
     }),
-
     defineTool({
       name: "browser.open",
       description:
@@ -572,7 +555,6 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
         return { ok: true, sessionId };
       },
     }),
-
     defineTool({
       name: "fs.read",
       isConcurrencySafe: true,
@@ -582,7 +564,7 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
         path: Type.String(),
       }),
       risk: "safe",
-      execute: async ({ project, path }) => fsRead(projectRoot(project), path),
+      execute: async ({ project, path }) => fsRead(await projectRoot(project), path),
     }),
     defineTool({
       name: "fs.write",
@@ -600,7 +582,7 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
       describeApproval: async ({ project, path, content }) => {
         let before: string | null = null;
         try {
-          before = (await fsRead(projectRoot(project), path)).content;
+          before = (await fsRead(await projectRoot(project), path)).content;
         } catch (error) {
           if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
             return {
@@ -612,7 +594,7 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
         return { title: `写入文件 ${path}`, detail: fileChange(path, before, content).diff };
       },
       execute: async ({ project, path, content, expectedHash }, ctx) => {
-        const result = await fsWrite(projectRoot(project), path, content, {
+        const result = await fsWrite(await projectRoot(project), path, content, {
           expectedHash,
           signal: ctx.signal,
         });
@@ -655,7 +637,7 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
         detail: fileChange(path, oldText, newText).diff,
       }),
       execute: async ({ project, path, oldText, newText, expectedHash, replaceAll }, ctx) => {
-        const result = await fsPatch(projectRoot(project), path, oldText, newText, {
+        const result = await fsPatch(await projectRoot(project), path, oldText, newText, {
           expectedHash,
           replaceAll,
           signal: ctx.signal,
@@ -680,7 +662,7 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
       }),
       risk: "safe",
       execute: async ({ project, pattern, max }) => ({
-        files: await fsGlob(projectRoot(project), pattern, max ?? 80),
+        files: await fsGlob(await projectRoot(project), pattern, max ?? 80),
       }),
     }),
     defineTool({
@@ -694,11 +676,10 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
       }),
       risk: "safe",
       execute: async ({ project, query, glob }) => ({
-        hits: await fsSearch(projectRoot(project), query, glob),
+        hits: await fsSearch(await projectRoot(project), query, glob),
       }),
     }),
   );
-
   registry.register(
     defineTool({
       name: "memory.store",
@@ -746,7 +727,6 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
       execute: async ({ id }) => memory.forget(id),
     }),
   );
-
   registry.register(
     defineTool({
       name: "disk.status",
@@ -807,7 +787,6 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
       execute: async ({ ids }) => disk.cleanLatest(ids),
     }),
   );
-
   registry.register(
     defineTool({
       name: "tasks.ask_user",
@@ -866,7 +845,7 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
       execute: async ({ summary, steps }, ctx) => {
         if (!ctx.recordArtifact) throw new Error("当前上下文不支持提交方案");
         const content = [summary, "", ...steps.map((step, i) => `${i + 1}. ${step}`)].join("\n");
-        const artifact = ctx.recordArtifact({
+        const artifact = await ctx.recordArtifact({
           kind: "plan",
           title: summary.slice(0, 60) || "方案",
           content,

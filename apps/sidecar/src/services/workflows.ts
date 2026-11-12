@@ -22,11 +22,11 @@ import type { ApprovalService } from "./approvals";
 import type { DeployService } from "./deploy";
 import type { ProjectService } from "./projects";
 import type { ProviderService } from "./providers";
-
 export const workflowChannel = (runId: string) => `workflow:${runId}`;
-
-type ScheduleDoc = { id: string; lastRunDate: string };
-
+type ScheduleDoc = {
+  id: string;
+  lastRunDate: string;
+};
 export interface WorkflowServiceDeps {
   db: Db;
   hub: EventHub;
@@ -37,18 +37,24 @@ export interface WorkflowServiceDeps {
   projects: ProjectService;
   deploy: DeployService;
 }
-
 export class WorkflowService {
   private readonly workflows: Collection<Workflow>;
-  private readonly runs: Collection<WorkflowRun & { id: string }>;
+  private readonly runs: Collection<
+    WorkflowRun & {
+      id: string;
+    }
+  >;
   private readonly schedules: Collection<ScheduleDoc>;
   private readonly live = new Map<string, WorkflowRun>();
   private readonly controllers = new Map<string, AbortController>();
   private readonly completions = new Map<string, Promise<WorkflowRun>>();
-
   constructor(private readonly deps: WorkflowServiceDeps) {
     this.workflows = new Collection<Workflow>(deps.db, "workflows");
-    this.runs = new Collection<WorkflowRun & { id: string }>(deps.db, "workflowRuns");
+    this.runs = new Collection<
+      WorkflowRun & {
+        id: string;
+      }
+    >(deps.db, "workflowRuns");
     this.schedules = new Collection<ScheduleDoc>(deps.db, "workflowSchedules");
     for (const run of this.runs.list()) {
       if (run.status === "running")
@@ -60,17 +66,14 @@ export class WorkflowService {
         });
     }
   }
-
   list(): Workflow[] {
     return this.workflows.list();
   }
-
   get(id: string): Workflow {
     const w = this.workflows.get(id);
     if (!w) throw new AppError(ErrorCode.NotFound, "工作流不存在");
     return w;
   }
-
   save(input: unknown, id?: string): Workflow {
     const data = WorkflowInput.parse(input);
     try {
@@ -86,42 +89,34 @@ export class WorkflowService {
       updatedAt: nowIso(),
     });
   }
-
   delete(id: string): void {
     this.workflows.delete(id);
   }
-
   templates() {
     return WORKFLOW_TEMPLATES.map(({ key, name, description }) => ({ key, name, description }));
   }
-
   createFromTemplate(key: string): Workflow {
     const template = WORKFLOW_TEMPLATES.find((t) => t.key === key);
     if (!template) throw new AppError(ErrorCode.NotFound, "模板不存在");
     return this.save(template.build());
   }
-
   listRuns(workflowId?: string): WorkflowRun[] {
     const all = this.runs.list();
     return (workflowId ? all.filter((r) => r.workflowId === workflowId) : all)
       .slice(0, 30)
       .map((r) => this.live.get(r.id) ?? r);
   }
-
   getRun(id: string): WorkflowRun {
     const run = this.live.get(id) ?? this.runs.get(id);
     if (!run) throw new AppError(ErrorCode.NotFound, "运行记录不存在");
     return run;
   }
-
   cancel(id: string): void {
     this.controllers.get(id)?.abort();
   }
-
   wait(id: string): Promise<WorkflowRun> {
     return this.completions.get(id) ?? Promise.resolve(this.getRun(id));
   }
-
   run(workflowId: string, inputs: Record<string, string>): WorkflowRun {
     const workflow = this.get(workflowId);
     // 同工作流只保留一个进行中的实例，避免未点完的审批在全局页面堆叠
@@ -149,11 +144,9 @@ export class WorkflowService {
     this.runs.put(run);
     const channel = workflowChannel(run.id);
     this.deps.hub.retain(channel);
-
     const controller = new AbortController();
     this.controllers.set(run.id, controller);
     const ctx = { approved: false, workflowName: workflow.name, runId: run.id };
-
     const onEvent = (event: WorkflowRunEvent) => {
       const current = this.live.get(run.id);
       if (!current) return;
@@ -174,7 +167,6 @@ export class WorkflowService {
       }
       this.deps.hub.publish(channel, event);
     };
-
     const completion = executeWorkflow(workflow, {
       runId: run.id,
       inputs: run.inputs,
@@ -210,7 +202,6 @@ export class WorkflowService {
     void completion.finally(() => this.completions.delete(run.id));
     return run;
   }
-
   /** 宿主侧节点执行器：把工作流节点接到 Agent、工具、Git、部署和审批能力上 */
   private handlers(ctx: { approved: boolean; workflowName: string; runId: string }): NodeHandlers {
     const { approvals, providers, orchestrator, registry, projects, deploy, hub } = this.deps;
@@ -229,7 +220,6 @@ export class WorkflowService {
       if (!ok) throw new Error("审批被拒绝");
       ctx.approved = true;
     };
-
     return {
       http: httpHandler,
       llm: async ({ config, signal }) =>
@@ -247,13 +237,13 @@ export class WorkflowService {
           // claude.run 等工具的流式输出 → 工作流 node_log
           if (e.type === "text_delta" && e.delta?.trim()) log(e.delta.trimEnd());
         };
-        const requestApproval = (r: {
+        const requestApproval = async (r: {
           title: string;
           detail: string;
           risk: "safe" | "confirm" | "dangerous";
           payload: unknown;
         }) =>
-          approvals.request(
+          await approvals.request(
             {
               kind: "workflow",
               ...r,
@@ -306,7 +296,7 @@ export class WorkflowService {
           agent: "orchestrator",
           signal,
           emit: () => {},
-          requestApproval: (r) => approvals.request({ kind: "workflow", ...r }, signal),
+          requestApproval: async (r) => await approvals.request({ kind: "workflow", ...r }, signal),
         });
       },
       shell: async ({ config, signal, log }) => {
@@ -323,7 +313,7 @@ export class WorkflowService {
         return result.stdout.trim();
       },
       git: async ({ config }) => {
-        const project = projects.find(String(config.projectId ?? ""));
+        const project = await projects.find(String(config.projectId ?? ""));
         switch (config.action) {
           case "pull":
             return projects.pull(project.id);
@@ -341,7 +331,7 @@ export class WorkflowService {
           await approve(`部署「${recipe.name}」`, `${recipe.steps.length} 个步骤`, signal);
         const run = deploy.start(recipeId, { skipApproval: true });
         log(`部署任务 ${run.id} 已启动`);
-        signal.addEventListener("abort", () => deploy.cancel(run.id));
+        signal.addEventListener("abort", async () => await deploy.cancel(run.id));
         const final = await deploy.wait(run.id);
         if (final.status !== "succeeded")
           throw new Error(final.error ?? `部署状态：${final.status}`);
@@ -359,7 +349,6 @@ export class WorkflowService {
       },
     };
   }
-
   /** 调度器每分钟调用：到点的定时工作流每天只触发一次 */
   tickSchedules(now: string, today = localDate()): string[] {
     const started: string[] = [];

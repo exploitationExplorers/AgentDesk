@@ -1,11 +1,9 @@
 import type { TaskStreamEvent, ToolCallRecord } from "@agentdesk/shared";
 import type { TaskService } from "./tasks";
-
 /** 只从工具开始与最终结果还原操作，流式文本、token 用量和中间输出不代表执行完成。 */
 export class RunToolHistory {
   private readonly calls: ToolCallRecord[] = [];
   private readonly pending = new Map<string, ToolCallRecord>();
-
   append(event: TaskStreamEvent): void {
     if (event.type === "tool_call") {
       const call: ToolCallRecord = {
@@ -25,27 +23,24 @@ export class RunToolHistory {
       this.pending.delete(key);
     }
   }
-
   list(): ToolCallRecord[] {
     return this.calls.map((call) => ({ ...call }));
   }
 }
-
 /** 按 Run 分页恢复完整操作历史，避免输出事件过多时漏掉最后的工具结果。 */
-export function readRunToolHistory(
+export async function readRunToolHistory(
   tasks: Pick<TaskService, "eventsAfter">,
   runId: string,
-): ToolCallRecord[] {
+): Promise<ToolCallRecord[]> {
   const history = new RunToolHistory();
   let after = 0;
   for (;;) {
-    const events = tasks.eventsAfter({ runId, after, limit: 500 });
+    const events = await tasks.eventsAfter({ runId, after, limit: 500 });
     for (const record of events) history.append(record.event);
     if (events.length < 500) return history.list();
     after = events.at(-1)!.seq;
   }
 }
-
 export function summarizeToolCalls(records: ToolCallRecord[]): string {
   return records
     .map((call) => {

@@ -11,6 +11,8 @@ export interface GatewayConfig {
   /** When true, any valid email can request OTP and first verify creates the user. */
   authMultiUser: boolean;
   dataDir: string;
+  databaseUrl?: string;
+  databaseSchema?: string;
   host: string;
   port: number;
   sessionSecret: string;
@@ -69,6 +71,7 @@ export function parseTrustedProxies(value: string): BlockList {
 }
 
 export function loadGatewayConfig(env: NodeJS.ProcessEnv = process.env): GatewayConfig {
+  const database = loadDatabaseConfig(env);
   const origin = new URL(required(env, "PUBLIC_ORIGIN"));
   if (
     origin.protocol !== "https:" ||
@@ -114,6 +117,7 @@ export function loadGatewayConfig(env: NodeJS.ProcessEnv = process.env): Gateway
     ...(env.CLOUD_OWNER_USER_ID ? { ownerUserId: RemoteId.parse(env.CLOUD_OWNER_USER_ID) } : {}),
     authMultiUser: authMultiUser === "true",
     dataDir: resolve(required(env, "GATEWAY_DATA_DIR")),
+    ...database,
     host: env.GATEWAY_HOST ?? "127.0.0.1",
     port: z.coerce
       .number()
@@ -140,4 +144,27 @@ export function loadGatewayConfig(env: NodeJS.ProcessEnv = process.env): Gateway
       from: OwnerEmail.parse(required(env, "SMTP_FROM")),
     },
   };
+}
+
+export function loadDatabaseConfig(env: NodeJS.ProcessEnv = process.env) {
+  const databaseSchema = env.DATABASE_SCHEMA ?? "gateway";
+  if (!/^[a-z][a-z0-9_]{0,62}$/.test(databaseSchema)) throw new Error("Invalid DATABASE_SCHEMA");
+  if (env.DATABASE_URL_FILE === undefined) return { databaseSchema };
+  let databaseUrl: string;
+  try {
+    databaseUrl = readFileSync(required(env, "DATABASE_URL_FILE"), "utf8").trim();
+    const url = new URL(databaseUrl);
+    if (
+      !["postgres:", "postgresql:"].includes(url.protocol) ||
+      !url.hostname ||
+      url.pathname.length < 2 ||
+      url.hash
+    )
+      throw new Error();
+  } catch {
+    throw new Error(
+      "Invalid DATABASE_URL_FILE; PostgreSQL configuration cannot fall back to SQLite",
+    );
+  }
+  return { databaseSchema, databaseUrl };
 }

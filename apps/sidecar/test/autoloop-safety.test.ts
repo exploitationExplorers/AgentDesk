@@ -15,11 +15,11 @@ import {
   type DurableCheckpoint,
 } from "@agentdesk/agent-core";
 import { afterEach, expect, it, vi } from "vitest";
+import { AppError, ErrorCode } from "@agentdesk/shared";
 import { createContainer, type Container } from "../src/container";
 import { loadConfig } from "../src/config";
 import { openDatabase } from "../src/db/client";
 import { AutoloopStore } from "../src/services/autoloop/store";
-
 let container: Container | undefined;
 let faux: FauxProviderRegistration | undefined;
 const roots: string[] = [];
@@ -31,17 +31,15 @@ afterEach(async () => {
   vi.restoreAllMocks();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
-
-async function waitFor(predicate: () => boolean, description: string) {
-  const end = Date.now() + 20_000;
-  while (!predicate()) {
+async function waitFor(predicate: () => boolean | Promise<boolean>, description: string) {
+  const end = Date.now() + 20000;
+  while (!(await predicate())) {
     if (Date.now() > end)
-      throw new Error(`等待超时：${description}; ${JSON.stringify(container?.tasks.list())}`);
+      throw new Error(`等待超时：${description}; ${JSON.stringify(await container?.tasks.list())}`);
     await container?.autoloop.tick();
     await new Promise((resolveDelay) => setTimeout(resolveDelay, 25));
   }
 }
-
 async function setup() {
   const root = mkdtempSync(join(tmpdir(), "agentdesk-autoloop-safety-"));
   roots.push(root);
@@ -50,7 +48,7 @@ async function setup() {
   execFileSync("git", ["init", workspace], { stdio: "ignore" });
   const config = loadConfig({ AGENTDESK_DATA_DIR: join(root, "data") });
   container = await createContainer(config);
-  faux = registerFauxProvider({ tokensPerSecond: 100_000 });
+  faux = registerFauxProvider({ tokensPerSecond: 100000 });
   const connect = () => {
     container!.providers.resolve = async () => [
       { providerId: "faux", providerName: "faux", model: faux!.getModel(), apiKey: "test" },
@@ -70,7 +68,73 @@ async function setup() {
 }
 const tool = (name: string, args: Record<string, unknown>) =>
   fauxAssistantMessage(fauxToolCall(toWireName(name), args), { stopReason: "toolUse" });
-
+it("真实 Hub：空间不足时保留任务并停止模型与工具执行", async () => {
+  const { workspace, binding, project } = await setup();
+  const check = vi
+    .spyOn(container!.storage, "assertWritable")
+    .mockRejectedValue(new AppError(ErrorCode.StorageFull, "磁盘可用空间低于预留值"));
+  const execute = vi.spyOn(
+    container!.registry.list().find((item) => item.name === "fs.write")!,
+    "execute",
+  );
+  faux!.setResponses([
+    tool("fs.write", { project: project.id, path: "blocked.txt", content: "不得写入" }),
+  ]);
+  await container!.autoloop.trigger(binding.id, { eventId: "storage-full" });
+  await waitFor(
+    async () =>
+      (await container!.tasks.list()).some((task) => task.automationStatus === "needs_attention"),
+    "磁盘准入失败",
+  );
+  expect(check).toHaveBeenCalledWith(workspace);
+  expect(faux!.state.callCount).toBe(0);
+  expect(execute).not.toHaveBeenCalled();
+  expect(existsSync(join(workspace, "blocked.txt"))).toBe(false);
+  const task = (await container!.tasks.list())[0]!;
+  expect((await container!.tasks.listRuns(task.id))[0]?.resultError).toContain("预留值");
+});
+it("真实 Hub：授权恢复遇到低空间时保留检查点，恢复容量后继续一次", async () => {
+  const { workspace, binding, project } = await setup();
+  const execute = vi.spyOn(
+    container!.registry.list().find((item) => item.name === "fs.write")!,
+    "execute",
+  );
+  faux!.setResponses([
+    tool("fs.write", { project: project.id, path: "after-recovery.txt", content: "恢复后写入" }),
+    fauxAssistantMessage(fauxText("完成")),
+  ]);
+  await container!.autoloop.trigger(binding.id, { eventId: "storage-recovery" });
+  await waitFor(
+    () => container!.autoloop.listInteractions().some((card) => card.state === "open"),
+    "请求授权",
+  );
+  const card = container!.autoloop.listInteractions().find((card) => card.state === "open")!;
+  const store = new AutoloopStore(container!.dbHandle.db);
+  const checkpoint = store.checkpoints.get(card.taskId!)!.checkpoint;
+  const check = vi
+    .spyOn(container!.storage, "assertWritable")
+    .mockRejectedValue(new AppError(ErrorCode.StorageFull, "磁盘可用空间低于预留值"));
+  await container!.autoloop.answerInteraction(card.id, {
+    cardVersion: card.version,
+    answerId: "approved",
+    choice: 0,
+  });
+  await waitFor(
+    async () => (await container!.tasks.get(card.taskId!))?.automationStatus === "needs_attention",
+    "磁盘阻止续跑",
+  );
+  expect(store.checkpoints.get(card.taskId!)!.checkpoint).toEqual(checkpoint);
+  expect(execute).not.toHaveBeenCalled();
+  expect(faux!.state.callCount).toBe(1);
+  check.mockRestore();
+  await container!.autoloop.resumeTask(card.taskId!);
+  await waitFor(
+    async () => (await container!.tasks.get(card.taskId!))?.automationStatus === "completed",
+    "磁盘恢复后续跑",
+  );
+  expect(readFileSync(join(workspace, "after-recovery.txt"), "utf8")).toBe("恢复后写入");
+  expect(execute).toHaveBeenCalledOnce();
+}, 40000);
 it("真实 Hub：授权等待期间新增拒绝规则，恢复前阻止写入", async () => {
   const { workspace, binding, project } = await setup();
   const execute = vi.spyOn(
@@ -88,7 +152,9 @@ it("真实 Hub：授权等待期间新增拒绝规则，恢复前阻止写入", 
   );
   const card = container!.autoloop.listInteractions().find((item) => item.state === "open")!;
   expect(card.interactionKind).toBe("authorization");
-  expect(container!.tasks.get(card.taskId!)?.automationStatus).toBe("waiting_authorization");
+  expect((await container!.tasks.get(card.taskId!))?.automationStatus).toBe(
+    "waiting_authorization",
+  );
   container!.permissionRules.add("fs.write", "restricted.txt", "deny");
   await container!.autoloop.answerInteraction(card.id, {
     cardVersion: card.version,
@@ -96,14 +162,13 @@ it("真实 Hub：授权等待期间新增拒绝规则，恢复前阻止写入", 
     choice: 0,
   });
   await waitFor(
-    () => container!.tasks.get(card.taskId!)?.automationStatus === "needs_attention",
+    async () => (await container!.tasks.get(card.taskId!))?.automationStatus === "needs_attention",
     "重新校验拒绝规则",
   );
   expect(execute).not.toHaveBeenCalled();
   expect(existsSync(join(workspace, "restricted.txt"))).toBe(false);
   expect(faux!.state.callCount).toBe(1);
-}, 40_000);
-
+}, 40000);
 it("真实 Hub：写入后异常保留不明结果，重启与手动恢复都不重做", async () => {
   const { workspace, config, connect, project, binding } = await setup();
   container!.permissionRules.add("fs.write", "written-once.txt");
@@ -119,13 +184,13 @@ it("真实 Hub：写入后异常保留不明结果，重启与手动恢复都不
   ]);
   await container!.autoloop.trigger(binding.id, { eventId: "unknown-result" });
   await waitFor(
-    () =>
-      container!.autoloop
-        .listTasks(binding.id)
-        .some((task) => task.automationStatus === "needs_attention"),
+    async () =>
+      (await container!.autoloop.listTasks(binding.id)).some(
+        (task) => task.automationStatus === "needs_attention",
+      ),
     "不明执行结果",
   );
-  const task = container!.autoloop.listTasks(binding.id)[0]!;
+  const task = (await container!.autoloop.listTasks(binding.id))[0]!;
   const store = new AutoloopStore(container!.dbHandle.db);
   expect(store.checkpoints.get(task.id)?.checkpoint.phase).toBe("unknown");
   expect(readFileSync(join(workspace, "written-once.txt"), "utf8")).toBe("已经落盘");
@@ -142,9 +207,8 @@ it("真实 Hub：写入后异常保留不明结果，重启与手动恢复都不
   await expect(container.autoloop.resumeTask(task.id)).rejects.toThrow(/不能自动重做/);
   expect(afterRestart).not.toHaveBeenCalled();
   expect(faux!.state.callCount).toBe(1);
-  expect(container.tasks.listRuns(task.id)).toHaveLength(1);
-}, 40_000);
-
+  expect(await container.tasks.listRuns(task.id)).toHaveLength(1);
+}, 40000);
 it("真实 Hub：停止等待事项关闭卡片并拒绝旧回答", async () => {
   const { binding } = await setup();
   faux!.setResponses([
@@ -162,7 +226,7 @@ it("真实 Hub：停止等待事项关闭卡片并拒绝旧回答", async () => 
     () => container!.autoloop.listInteractions().every((item) => item.state !== "open"),
     "关闭旧卡片",
   );
-  expect(container!.tasks.get(card.taskId!)?.automationStatus).toBe("cancelled");
+  expect((await container!.tasks.get(card.taskId!))?.automationStatus).toBe("cancelled");
   expect(container!.autoloop.getBinding(binding.id)?.enabled).toBe(false);
   await expect(
     container!.autoloop.answerInteraction(card.id, {
@@ -173,9 +237,8 @@ it("真实 Hub：停止等待事项关闭卡片并拒绝旧回答", async () => 
   ).rejects.toThrow();
   await expect(container!.autoloop.resumeTask(card.taskId!)).rejects.toThrow(/已停止/);
   expect(faux!.state.callCount).toBe(1);
-  expect(container!.tasks.listRuns(card.taskId!)).toHaveLength(1);
-}, 40_000);
-
+  expect(await container!.tasks.listRuns(card.taskId!)).toHaveLength(1);
+}, 40000);
 it("SQLite：旧宿主 epoch、过期 revision 和停止后的检查点都不能覆盖新状态", () => {
   const root = mkdtempSync(join(tmpdir(), "agentdesk-autoloop-cas-"));
   roots.push(root);

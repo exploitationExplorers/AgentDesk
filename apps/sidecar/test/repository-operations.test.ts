@@ -18,19 +18,22 @@ import {
   type RepositoryPreview,
   type RepositoryExecuteInput,
 } from "../src/services/remote/repository-operations";
-
 const scope = { userId: "owner", hostId: "cloud", projectId: "project", workspaceId: "workspace" };
 const directories: string[] = [];
 const databases: DbHandle[] = [];
-vi.setConfig({ testTimeout: 60_000 });
+vi.setConfig({ testTimeout: 60000 });
 afterEach(async () => {
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
   for (const db of databases.splice(0)) db.close();
   for (const dir of directories.splice(0)) await rm(dir, { recursive: true, force: true });
 });
-
-function command(action: RemoteCapability, input: { clientRequestId: string }): RemoteCommand {
+function command(
+  action: RemoteCapability,
+  input: {
+    clientRequestId: string;
+  },
+): RemoteCommand {
   return {
     ...scope,
     protocolVersion: 1,
@@ -41,10 +44,9 @@ function command(action: RemoteCapability, input: { clientRequestId: string }): 
     action,
     payloadHash: payloadDigest(input),
     issuedAt: new Date().toISOString(),
-    expiresAt: new Date(Date.now() + 59_000).toISOString(),
+    expiresAt: new Date(Date.now() + 59000).toISOString(),
   };
 }
-
 async function fixture() {
   const dir = await mkdtemp(join(tmpdir(), "agentdesk-git-"));
   directories.push(dir);
@@ -66,12 +68,12 @@ async function fixture() {
   const handle = openDatabase(":memory:");
   databases.push(handle);
   const grants = new RemoteGrantStore(handle.raw, "cloud");
-  grants.put({
+  await grants.put({
     ...scope,
     capabilities: ["project.read", "git.preview", "git.commit", "git.push", "approval.resolve"],
     connectionEpoch: 1,
     revokedAt: null,
-    expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+    expiresAt: new Date(Date.now() + 86400000).toISOString(),
   });
   const operations = new RemoteOperationStore(handle.raw);
   const approvals = new ApprovalService(handle.db, new EventHub());
@@ -106,8 +108,8 @@ async function fixture() {
     return (await service.preview(command("git.preview", input), input)).operation
       .result as RepositoryPreview;
   }
-  function approve(preview: RepositoryPreview): RepositoryExecuteInput {
-    remoteApprovals.resolve(scope, preview.approvalId, {
+  async function approve(preview: RepositoryPreview): Promise<RepositoryExecuteInput> {
+    await remoteApprovals.resolve(scope, preview.approvalId, {
       clientRequestId: randomUUID(),
       version: preview.version,
       actionDigest: preview.actionDigest,
@@ -135,7 +137,6 @@ async function fixture() {
     handle,
   };
 }
-
 describe("scoped repository operations", () => {
   it("commits selected changes once, preserves unrelated work and requires a separate push approval", async () => {
     const f = await fixture();
@@ -146,7 +147,7 @@ describe("scoped repository operations", () => {
     expect(preview.diff).toContain("selected change");
     expect(preview.diff).not.toContain("unrelated work");
     expect(await readFile(join(f.workspace, ".git/index"))).toEqual(indexBefore);
-    const input = f.approve(preview);
+    const input = await f.approve(preview);
     const result = await f.service.commit(command("git.commit", input), input);
     expect(result.operation.status).toBe("succeeded");
     const sha = await gitValue(f.workspace, ["rev-parse", "HEAD"]);
@@ -166,7 +167,7 @@ describe("scoped repository operations", () => {
     const pushPreview = await f.previewPush();
     expect(pushPreview.approvalId).not.toBe(preview.approvalId);
     expect(pushPreview.commits).toEqual([{ sha, subject: "fix: selected change" }]);
-    const pushInput = f.approve(pushPreview);
+    const pushInput = await f.approve(pushPreview);
     expect((await f.service.push(command("git.push", pushInput), pushInput)).operation.status).toBe(
       "succeeded",
     );
@@ -179,7 +180,6 @@ describe("scoped repository operations", () => {
       ).code,
     ).not.toBe(0);
   });
-
   it("refuses unselected staged files without modifying the original index", async () => {
     const f = await fixture();
     await writeFile(join(f.workspace, "selected.txt"), "new\n");
@@ -190,7 +190,6 @@ describe("scoped repository operations", () => {
     expect(await readFile(join(f.workspace, ".git/index"))).toEqual(index);
     expect(await gitValue(f.workspace, ["diff", "--cached", "--name-only"])).toBe("other.txt");
   });
-
   it("lists staged, unstaged, untracked, deleted and renamed paths for file selection", async () => {
     const f = await fixture();
     await writeFile(join(f.workspace, "selected.txt"), "staged version\n");
@@ -210,7 +209,6 @@ describe("scoped repository operations", () => {
       expect.objectContaining({ path: "other.txt", kind: "deleted" }),
     );
   });
-
   it("preserves rename source names and validates the complete routed status payload", async () => {
     const f = await fixture();
     await repositoryGit(f.workspace, ["mv", "--", "selected.txt", "renamed file.txt"]);
@@ -229,75 +227,72 @@ describe("scoped repository operations", () => {
       code: "BAD_REQUEST",
     });
   });
-
   it("keeps simultaneous retries attached to a single running commit", async () => {
     const f = await fixture();
     await writeFile(join(f.workspace, "selected.txt"), "new\n");
-    const input = f.approve(await f.previewCommit());
+    const input = await f.approve(await f.previewCommit());
     const results = await Promise.all([
-      f.service.commit(command("git.commit", input), input),
-      f.service.commit(command("git.commit", input), input),
+      await f.service.commit(command("git.commit", input), input),
+      await f.service.commit(command("git.commit", input), input),
     ]);
     expect(results.filter((result) => !result.replayed)).toHaveLength(1);
-    expect(f.operations.get(scope, results[0]!.operation.operationId)?.status).toBe("succeeded");
+    expect((await f.operations.get(scope, results[0]!.operation.operationId))?.status).toBe(
+      "succeeded",
+    );
     expect(await gitValue(f.workspace, ["rev-list", "--count", "HEAD"])).toBe("2");
   });
-
   it("rejects changes after approval, expired grants and mismatched approval identities", async () => {
     const f = await fixture();
     await writeFile(join(f.workspace, "selected.txt"), "reviewed\n");
     const preview = await f.previewCommit();
-    const input = f.approve(preview);
+    const input = await f.approve(preview);
     await writeFile(join(f.workspace, "selected.txt"), "changed after approval\n");
     await expect(f.service.commit(command("git.commit", input), input)).rejects.toMatchObject({
       code: "STALE_PREVIEW",
     });
     const next = await f.previewCommit();
-    const wrong = { ...f.approve(next), approvalId: preview.approvalId };
+    const wrong = { ...(await f.approve(next)), approvalId: preview.approvalId };
     await expect(f.service.commit(command("git.commit", wrong), wrong)).rejects.toMatchObject({
       code: "FORBIDDEN",
     });
-    f.grants.revoke(scope);
+    await f.grants.revoke(scope);
     const retry = { ...input, clientRequestId: randomUUID() };
     await expect(f.service.commit(command("git.commit", retry), retry)).rejects.toMatchObject({
       code: "FORBIDDEN",
     });
   });
-
   it("detects remote target changes and rejects stale recent authentication for push", async () => {
     const f = await fixture();
     await writeFile(join(f.workspace, "selected.txt"), "new\n");
-    const commit = f.approve(await f.previewCommit());
+    const commit = await f.approve(await f.previewCommit());
     await f.service.commit(command("git.commit", commit), commit);
-    const push = f.approve(await f.previewPush());
+    const push = await f.approve(await f.previewPush());
     const oldAuth = command("git.push", push);
-    oldAuth.actor.recentAuthAt = new Date(Date.now() - 16 * 60_000).toISOString();
+    oldAuth.actor.recentAuthAt = new Date(Date.now() - 16 * 60000).toISOString();
     await expect(f.service.push(oldAuth, push)).rejects.toMatchObject({ code: "UNAUTHORIZED" });
     await repositoryGit(f.workspace, ["remote", "set-url", "origin", join(f.dir, "other.git")]);
     await expect(f.service.push(command("git.push", push), push)).rejects.toMatchObject({
       code: "STALE_PREVIEW",
     });
   });
-
   it("refuses push when the reviewed remote branch moves", async () => {
     const f = await fixture();
     await writeFile(join(f.workspace, "selected.txt"), "new\n");
-    const commit = f.approve(await f.previewCommit());
+    const commit = await f.approve(await f.previewCommit());
     await f.service.commit(command("git.commit", commit), commit);
-    const push = f.approve(await f.previewPush());
+    const push = await f.approve(await f.previewPush());
     await repositoryGit(f.workspace, ["push", "origin", "HEAD:refs/heads/main"]);
     await expect(f.service.push(command("git.push", push), push)).rejects.toMatchObject({
       code: "STALE_PREVIEW",
     });
   });
-
   it("supports literal leading-dash file names, deletions and binary changes", async () => {
     const f = await fixture();
     await writeFile(join(f.workspace, "-leading.bin"), Buffer.from([0, 1, 255, 0]));
     await rm(join(f.workspace, "selected.txt"));
     const preview = await f.previewCommit(["-leading.bin", "selected.txt"]);
     expect(preview.diff).toContain("GIT binary patch");
-    const input = f.approve(preview);
+    const input = await f.approve(preview);
     expect((await f.service.commit(command("git.commit", input), input)).operation.status).toBe(
       "succeeded",
     );
@@ -308,13 +303,12 @@ describe("scoped repository operations", () => {
       "selected.txt",
     );
   });
-
   it("preserves failed hooks and reconciles without repeating commit", async () => {
     const f = await fixture();
     await writeFile(join(f.workspace, "selected.txt"), "new\n");
     const hookPath = join(f.workspace, ".git/hooks/pre-commit");
     await writeFile(hookPath, "#!/bin/sh\nexit 1\n", { mode: 0o755 });
-    const input = f.approve(await f.previewCommit());
+    const input = await f.approve(await f.previewCommit());
     const before = await gitValue(f.workspace, ["rev-parse", "HEAD"]);
     const index = await readFile(join(f.workspace, ".git/index"));
     const result = await f.service.commit(command("git.commit", input), input);
@@ -324,7 +318,6 @@ describe("scoped repository operations", () => {
     expect((await f.service.reconcile(scope, result.operation.operationId)).status).toBe("failed");
     expect((await f.service.commit(command("git.commit", input), input)).replayed).toBe(true);
   });
-
   it("honors host global hooks and configured commit signing", async () => {
     const f = await fixture();
     await writeFile(join(f.workspace, "selected.txt"), "new\n");
@@ -338,7 +331,7 @@ describe("scoped repository operations", () => {
     );
     vi.stubEnv("GIT_CONFIG_GLOBAL", globalConfig);
     const before = await gitValue(f.workspace, ["rev-parse", "HEAD"]);
-    const input = f.approve(await f.previewCommit());
+    const input = await f.approve(await f.previewCommit());
     expect((await f.service.commit(command("git.commit", input), input)).operation.status).toBe(
       "needs_reconciliation",
     );
@@ -350,13 +343,12 @@ describe("scoped repository operations", () => {
       "gpg.program",
       join(f.dir, "missing-signing-program"),
     ]);
-    const signed = f.approve(await f.previewCommit());
+    const signed = await f.approve(await f.previewCommit());
     expect((await f.service.commit(command("git.commit", signed), signed)).operation.status).toBe(
       "needs_reconciliation",
     );
     expect(await gitValue(f.workspace, ["rev-parse", "HEAD"])).toBe(before);
   });
-
   it("keeps hook-modified commits uncertain until the actual tree is reviewed", async () => {
     const f = await fixture();
     await writeFile(join(f.workspace, "selected.txt"), "reviewed\n");
@@ -366,7 +358,7 @@ describe("scoped repository operations", () => {
       "#!/bin/sh\nprintf 'hook modification\\n' > other.txt\ngit add -- other.txt\n",
       { mode: 0o755 },
     );
-    const input = f.approve(await f.previewCommit());
+    const input = await f.approve(await f.previewCommit());
     const result = await f.service.commit(command("git.commit", input), input);
     expect(result.operation.status).toBe("needs_reconciliation");
     expect(await gitValue(f.workspace, ["show", "HEAD:other.txt"])).toBe("hook modification");
@@ -376,7 +368,6 @@ describe("scoped repository operations", () => {
     );
     expect((await f.service.commit(command("git.commit", input), input)).replayed).toBe(true);
   });
-
   it("terminates the hook process tree before returning a Git timeout", async () => {
     const f = await fixture();
     await writeFile(join(f.workspace, "selected.txt"), "new\n");
@@ -407,11 +398,10 @@ describe("scoped repository operations", () => {
     for (const pid of pids) expect(() => process.kill(pid, 0)).toThrow();
     expect(await gitValue(f.workspace, ["rev-list", "--count", "HEAD"])).toBe("1");
   });
-
   it("reconciles completed Git side effects after result persistence fails without replaying them", async () => {
     const f = await fixture();
     await writeFile(join(f.workspace, "selected.txt"), "new\n");
-    const input = f.approve(await f.previewCommit());
+    const input = await f.approve(await f.previewCommit());
     const transition = f.operations.transition.bind(f.operations);
     let dropResult = true;
     const spy = vi
@@ -432,7 +422,7 @@ describe("scoped repository operations", () => {
     expect((await f.service.commit(command("git.commit", input), input)).replayed).toBe(true);
     expect(await gitValue(f.workspace, ["rev-parse", "HEAD"])).toBe(sha);
     spy.mockRestore();
-    const pushInput = f.approve(await f.previewPush());
+    const pushInput = await f.approve(await f.previewPush());
     dropResult = true;
     vi.spyOn(f.operations, "transition").mockImplementation((scope, id, status, result) => {
       if (dropResult && status === "succeeded") {
@@ -447,7 +437,6 @@ describe("scoped repository operations", () => {
     expect((await f.service.reconcile(scope, push.operation.operationId)).status).toBe("succeeded");
     expect((await f.service.push(command("git.push", pushInput), pushInput)).replayed).toBe(true);
   });
-
   it("serializes shared repository writes across independent service instances", async () => {
     const f = await fixture();
     const another = new RepositoryLockManager();

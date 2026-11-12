@@ -15,14 +15,13 @@ import { createContainer, type Container } from "../src/container";
 import { loadConfig } from "../src/config";
 import { createApp } from "../src/http/app";
 import { createPresentation } from "../src/services/presentations";
-
 let container: Container;
 let faux: FauxProviderRegistration;
 let root: string;
 beforeAll(async () => {
   root = mkdtempSync(join(tmpdir(), "agentdesk-presentation-"));
   container = await createContainer(loadConfig({ AGENTDESK_DATA_DIR: root }), { inMemory: true });
-  faux = registerFauxProvider({ tokensPerSecond: 100_000 });
+  faux = registerFauxProvider({ tokensPerSecond: 100000 });
   container.providers.resolve = async () => [
     { providerId: "faux", providerName: "faux", model: faux.getModel(), apiKey: "x" },
   ];
@@ -37,14 +36,13 @@ const request = (path: string, body?: unknown) =>
     headers: { "Content-Type": "application/json" },
     body: body ? JSON.stringify(body) : undefined,
   });
-async function waitFor(predicate: () => boolean) {
+async function waitFor(predicate: () => boolean | Promise<boolean>) {
   const deadline = Date.now() + 5000;
-  while (!predicate()) {
+  while (!(await predicate())) {
     if (Date.now() > deadline) throw new Error("等待任务超时");
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
 }
-
 it("聊天断开后问题仍可回答，继续生成真实 PPT、预览和可下载成果", async () => {
   faux.setResponses([
     fauxAssistantMessage(
@@ -77,18 +75,26 @@ it("聊天断开后问题仍可回答，继续生成真实 PPT、预览和可下
   const reader = response.body!.getReader();
   const first = new TextDecoder().decode((await reader.read()).value);
   const conversationId = JSON.parse(first.split("data: ")[1]!.trim()).conversationId as string;
-  await waitFor(() => container.approvals.list("pending").some((a) => a.kind === "question"));
-  const question = container.approvals.list("pending").find((a) => a.kind === "question")!;
+  await waitFor(async () =>
+    (await container.approvals.list("pending")).some((a) => a.kind === "question"),
+  );
+  const question = (await container.approvals.list("pending")).find((a) => a.kind === "question")!;
   await reader.cancel();
-  const task = container.tasks.findByConversation(conversationId)!;
-  expect(container.tasks.getRun(task.currentRunId!)?.status).toBe("running");
+  const task = (await container.tasks.findByConversation(conversationId))!;
+  expect((await container.tasks.getRun(task.currentRunId!))?.status).toBe("running");
   expect((await request(`/approvals/${question.id}/answer`, { text: "商务蓝" })).status).toBe(200);
-  await waitFor(() => container.tasks.getRun(task.currentRunId!)?.status === "succeeded");
-  expect(container.approvals.list().filter((a) => a.kind === "tool")).toHaveLength(0);
-  const artifacts = container.tasks.listArtifacts(task.id);
+  await waitFor(
+    async () => (await container.tasks.getRun(task.currentRunId!))?.status === "succeeded",
+  );
+  expect((await container.approvals.list()).filter((a) => a.kind === "tool")).toHaveLength(0);
+  const artifacts = await container.tasks.listArtifacts(task.id);
   const file = artifacts.find((item) => item.title.endsWith(".pptx"))!;
   expect(file).toBeDefined();
-  const previewId = (file.metadata as { previewArtifactId: string }).previewArtifactId;
+  const previewId = (
+    file.metadata as {
+      previewArtifactId: string;
+    }
+  ).previewArtifactId;
   const preview = await container.tasks.readArtifact(task.id, previewId);
   expect(preview.content).toContain('data-slide="2"');
   expect(preview.content).toContain("执行路线");
@@ -99,13 +105,15 @@ it("聊天断开后问题仍可回答，继续生成真实 PPT、预览和可下
   expect(bytes.subarray(0, 2).toString()).toBe("PK");
   expect(bytes.includes(Buffer.from("ppt/slides/slide2.xml"))).toBe(true);
   expect(
-    container.tasks
-      .eventsAfter({ runId: task.currentRunId!, after: 0, limit: 500 })
-      .some(
-        (record) => record.event.type === "artifact_ready" && record.event.artifactId === file.id,
-      ),
+    (await container.tasks.eventsAfter({ runId: task.currentRunId!, after: 0, limit: 500 })).some(
+      (record) => record.event.type === "artifact_ready" && record.event.artifactId === file.id,
+    ),
   ).toBe(true);
-  const events = container.tasks.eventsAfter({ runId: task.currentRunId!, after: 0, limit: 500 });
+  const events = await container.tasks.eventsAfter({
+    runId: task.currentRunId!,
+    after: 0,
+    limit: 500,
+  });
   const slides = events.filter((record) => record.event.type === "presentation_slide");
   expect(slides).toHaveLength(2);
   expect(
@@ -120,14 +128,13 @@ it("聊天断开后问题仍可回答，继续生成真实 PPT、预览和可下
       (record) => record.event.type === "artifact_ready" && record.event.artifactId === file.id,
     ),
   );
-  expect(container.chat.messages(conversationId).at(-1)?.content).toContain("右侧预览");
-  const persisted = container.chat.messages(conversationId).at(-1)!;
+  expect((await container.chat.messages(conversationId)).at(-1)?.content).toContain("右侧预览");
+  const persisted = (await container.chat.messages(conversationId)).at(-1)!;
   expect(
     persisted.display?.some((block) => block.kind === "text" && block.text.includes("右侧预览")),
   ).toBe(true);
   expect(JSON.stringify(persisted.display)).not.toContain('"args"');
 });
-
 it("明确停止会取消运行，但不会把工具参数写进失败消息", async () => {
   faux.setResponses([
     fauxAssistantMessage(fauxToolCall(toWireName("tasks.ask_user"), { question: "需要几页？" }), {
@@ -138,17 +145,20 @@ it("明确停止会取消运行，但不会把工具参数写进失败消息", a
   const reader = response.body!.getReader();
   const first = new TextDecoder().decode((await reader.read()).value);
   const conversationId = JSON.parse(first.split("data: ")[1]!.trim()).conversationId as string;
-  await waitFor(() => container.approvals.list("pending").some((a) => a.kind === "question"));
+  await waitFor(async () =>
+    (await container.approvals.list("pending")).some((a) => a.kind === "question"),
+  );
   expect((await request(`/conversations/${conversationId}/stop`, {})).status).toBe(204);
-  const task = container.tasks.findByConversation(conversationId)!;
-  await waitFor(() => container.tasks.getRun(task.currentRunId!)?.status === "cancelled");
-  const message = container.chat.messages(conversationId).at(-1)!;
+  const task = (await container.tasks.findByConversation(conversationId))!;
+  await waitFor(
+    async () => (await container.tasks.getRun(task.currentRunId!))?.status === "cancelled",
+  );
+  const message = (await container.chat.messages(conversationId)).at(-1)!;
   expect(message.content).toContain("任务已停止");
   expect(message.content).not.toContain("tasks.ask_user");
   expect(message.toolCalls).not.toHaveLength(0);
   await reader.cancel();
 });
-
 it("旧中断记录只显示用户提示，普通正文与代码示例保持完整", () => {
   const legacy =
     '出错了：This operation was aborted\n\n本轮已记录的操作（续跑时跳过已确认完成的操作）：agents.delegate({"task":"secret"})';
@@ -156,7 +166,6 @@ it("旧中断记录只显示用户提示，普通正文与代码示例保持完�
   expect(chatMessageContent("下面是示例：`agents.delegate()`")).toContain("agents.delegate");
   expect(runFailureMessage("Bearer private-token stack trace")).not.toContain("private-token");
 });
-
 it("生成前校验页数与内容上限，取消后不发布成果", async () => {
   const controller = new AbortController();
   controller.abort();

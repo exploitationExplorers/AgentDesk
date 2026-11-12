@@ -15,7 +15,6 @@ import { createContainer, type Container } from "../src/container";
 import { loadConfig } from "../src/config";
 import { AutoloopStore } from "../src/services/autoloop/store";
 import { createApp } from "../src/http/app";
-
 let container: Container | undefined;
 let faux: FauxProviderRegistration | undefined;
 afterEach(async () => {
@@ -25,11 +24,11 @@ afterEach(async () => {
   faux = undefined;
   vi.restoreAllMocks();
 });
-async function waitFor(predicate: () => boolean, description: string) {
+async function waitFor(predicate: () => boolean | Promise<boolean>, description: string) {
   const end = Date.now() + 20000;
-  while (!predicate()) {
+  while (!(await predicate())) {
     if (Date.now() > end)
-      throw new Error(`等待超时：${description}; ${JSON.stringify(container?.tasks.list())}`);
+      throw new Error(`等待超时：${description}; ${JSON.stringify(await container?.tasks.list())}`);
     await container?.autoloop.tick();
     await new Promise((resolve) => setTimeout(resolve, 30));
   }
@@ -61,7 +60,6 @@ async function setup(fetchImpl?: typeof fetch) {
 }
 const tool = (name: string, args: Record<string, unknown>) =>
   fauxAssistantMessage(fauxToolCall(toWireName(name), args), { stopReason: "toolUse" });
-
 it("真实 Hub：定时绑定执行与重启续办均向模型传入已生效计划和项目，直接读取代码", async () => {
   const { workspace, project, config, connect } = await setup();
   writeFileSync(
@@ -97,10 +95,10 @@ it("真实 Hub：定时绑定执行与重启续办均向模型传入已生效计
     () => container!.autoloop.listInteractions().some((c) => c.state === "open"),
     "检查代码后询问业务边界",
   );
-  const task = container!.autoloop.listTasks(scheduled.id)[0]!;
+  const task = (await container!.autoloop.listTasks(scheduled.id))[0]!;
   const card = container!.autoloop.listInteractions(task.id).find((c) => c.state === "open")!;
   expect(card.description).toBe("total 是否允许为 0？");
-  expect(container!.tasks.getRun(task.currentRunId!)?.toolCalls).toEqual(
+  expect((await container!.tasks.getRun(task.currentRunId!))?.toolCalls).toEqual(
     expect.arrayContaining([
       expect.objectContaining({ name: "fs.search", isError: false }),
       expect.objectContaining({ name: "fs.read", isError: false }),
@@ -124,19 +122,18 @@ it("真实 Hub：定时绑定执行与重启续办均向模型传入已生效计
     choice: 0,
   });
   await waitFor(
-    () => container!.tasks.get(task.id)?.automationStatus === "completed",
+    async () => (await container!.tasks.get(task.id))?.automationStatus === "completed",
     "续办并报告检查结果",
   );
   expect(prompts[1]).toContain(scheduled.schedule!.cron);
   expect(prompts[1]).toContain(project.id);
   expect(prompts[1]).toContain("用户回答后续办");
-  expect(container.tasks.listRuns(task.id)).toHaveLength(2);
+  expect(await container.tasks.listRuns(task.id)).toHaveLength(2);
   expect(container.autoloop.getBinding(scheduled.id)?.schedule).toEqual(scheduled.schedule);
   expect(readFileSync(join(workspace, "review.ts"), "utf8")).toBe(
     "export const ratio = (total: number) => 100 / total;\n",
   );
 }, 60000);
-
 it("真实 Hub：写文件后等待释放额度，重启回答续办同一 Task，已完成写入不重跑", async () => {
   const { workspace, config, connect, project, binding } = await setup();
   container!.permissionRules.add("fs.write", "progress.txt");
@@ -159,14 +156,14 @@ it("真实 Hub：写文件后等待释放额度，重启回答续办同一 Task�
     () => container!.autoloop.listInteractions().some((c) => c.state === "open"),
     "出现持久问题",
   );
-  const task = container!.autoloop.listTasks(binding.id)[0]!;
-  expect(container!.tasks.get(task.id)?.automationStatus).toBe("waiting_input");
+  const task = (await container!.autoloop.listTasks(binding.id))[0]!;
+  expect((await container!.tasks.get(task.id))?.automationStatus).toBe("waiting_input");
   expect(write).toHaveBeenCalledTimes(1);
   expect(readFileSync(join(workspace, "progress.txt"), "utf8")).toBe("已完成首阶段");
   const slot = container!.tasks.reserveExternalSlot();
   expect(slot).toBeTypeOf("function");
   slot?.();
-  expect(() => container!.tasks.enqueue(task.currentRunId!)).toThrow(/托管/);
+  await expect(container!.tasks.enqueue(task.currentRunId!)).rejects.toThrow(/托管/);
   const ordinaryChat = await createApp(container!).request("/api/chat", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -188,18 +185,19 @@ it("真实 Hub：写文件后等待释放额度，重启回答续办同一 Task�
     choice: 0,
   });
   await waitFor(
-    () => container!.tasks.get(task.id)?.automationStatus === "completed",
+    async () => (await container!.tasks.get(task.id))?.automationStatus === "completed",
     "回答后完成",
   );
   expect(writeAfter).not.toHaveBeenCalled();
-  expect(container.tasks.listRuns(task.id)).toHaveLength(2);
-  expect(container.tasks.listArtifacts(task.id).some((a) => a.title.endsWith(".pptx"))).toBe(true);
+  expect(await container.tasks.listRuns(task.id)).toHaveLength(2);
+  expect(
+    (await container.tasks.listArtifacts(task.id)).some((a) => a.title.endsWith(".pptx")),
+  ).toBe(true);
   expect(container.autoloop.listInteractions(task.id).filter((c) => c.kind === "ask")).toHaveLength(
     1,
   );
-  expect(container.chat.messages(task.conversationId)[0]?.role).toBe("user");
+  expect((await container.chat.messages(task.conversationId))[0]?.role).toBe("user");
 }, 60000);
-
 it("真实 Hub：模型临时故障通过持久回执退避，等待期间不重新调用模型", async () => {
   const { binding } = await setup();
   faux!.setResponses(
@@ -213,22 +211,22 @@ it("真实 Hub：模型临时故障通过持久回执退避，等待期间不重
   const models = vi.spyOn(container!.providers, "resolve");
   await container!.autoloop.trigger(binding.id, { eventId: "retry" });
   await waitFor(
-    () => container!.autoloop.listTasks(binding.id)[0]?.automationStatus === "retry_scheduled",
+    async () =>
+      (await container!.autoloop.listTasks(binding.id))[0]?.automationStatus === "retry_scheduled",
     "退避等待",
   );
-  const task = container!.autoloop.listTasks(binding.id)[0]!;
+  const task = (await container!.autoloop.listTasks(binding.id))[0]!;
   const count = models.mock.calls.length;
   await container!.autoloop.tick();
   await container!.autoloop.tick();
   expect(models.mock.calls.length).toBe(count);
-  expect(container!.tasks.getRun(task.currentRunId!)?.status).toBe("failed");
+  expect((await container!.tasks.getRun(task.currentRunId!))?.status).toBe("failed");
   const store = new AutoloopStore(container!.dbHandle.db);
   expect(store.checkpoints.get(task.id)?.checkpoint.phase).toBe("model");
   expect(store.outbox.list().find((c) => c.operation === "result")?.status).toBe("delivered");
   await container!.autoloop.cancelTask(task.id);
-  expect(container!.tasks.get(task.id)?.automationStatus).toBe("cancelled");
+  expect((await container!.tasks.get(task.id))?.automationStatus).toBe("cancelled");
 }, 60000);
-
 it("真实 Hub：事件、回答和回执在服务端成功后丢失响应，只重放原文", async () => {
   const lost = new Set<string>();
   const bodies = new Map<string, string[]>();
@@ -268,10 +266,10 @@ it("真实 Hub：事件、回答和回执在服务端成功后丢失响应，只
     }),
   ).rejects.toThrow(/保留记录/);
   await waitFor(
-    () => container!.tasks.get(card.taskId!)?.automationStatus === "completed",
+    async () => (await container!.tasks.get(card.taskId!))?.automationStatus === "completed",
     "重试回答和最终回执",
   );
-  expect(container!.autoloop.listTasks(binding.id)).toHaveLength(1);
+  expect(await container!.autoloop.listTasks(binding.id)).toHaveLength(1);
   for (const attempts of bodies.values()) {
     expect(attempts.length).toBeGreaterThanOrEqual(2);
     expect(new Set(attempts).size).toBe(1);
@@ -279,7 +277,6 @@ it("真实 Hub：事件、回答和回执在服务端成功后丢失响应，只
   const store = new AutoloopStore(container!.dbHandle.db);
   expect(store.outbox.list().every((c) => c.status === "delivered")).toBe(true);
 }, 60000);
-
 it("真实 Hub：完成后在同一事项追加修改，重复请求只创建一个新 Run", async () => {
   const { binding } = await setup();
   faux!.setResponses([
@@ -288,27 +285,26 @@ it("真实 Hub：完成后在同一事项追加修改，重复请求只创建一
   ]);
   await container!.autoloop.trigger(binding.id, { eventId: "initial" });
   await waitFor(
-    () => container!.autoloop.listTasks(binding.id)[0]?.automationStatus === "completed",
+    async () =>
+      (await container!.autoloop.listTasks(binding.id))[0]?.automationStatus === "completed",
     "完成第一版",
   );
-  const task = container!.autoloop.listTasks(binding.id)[0]!;
+  const task = (await container!.autoloop.listTasks(binding.id))[0]!;
   await container!.autoloop.followupTask(task.id, { message: "补充风险", eventId: "followup" });
   await container!.autoloop.followupTask(task.id, { message: "补充风险", eventId: "followup" });
   await waitFor(
-    () =>
-      container!.tasks.listRuns(task.id).length === 2 &&
-      container!.tasks.get(task.id)?.automationStatus === "completed",
+    async () =>
+      (await container!.tasks.listRuns(task.id)).length === 2 &&
+      (await container!.tasks.get(task.id))?.automationStatus === "completed",
     "完成修改",
   );
   expect(
-    container!.chat
-      .messages(task.conversationId)
+    (await container!.chat.messages(task.conversationId))
       .filter((m) => m.role === "user")
       .map((m) => m.content),
   ).toContain("补充风险");
-  expect(container!.autoloop.listTasks(binding.id)).toHaveLength(1);
+  expect(await container!.autoloop.listTasks(binding.id)).toHaveLength(1);
 }, 60000);
-
 it("真实 Hub：等待时间时释放执行额度，时间到后续办同一事项", async () => {
   const { binding } = await setup();
   faux!.setResponses([
@@ -320,20 +316,20 @@ it("真实 Hub：等待时间时释放执行额度，时间到后续办同一事
   ]);
   await container!.autoloop.trigger(binding.id, { eventId: "timer" });
   await waitFor(
-    () => container!.autoloop.listTasks(binding.id)[0]?.automationStatus === "waiting_timer",
+    async () =>
+      (await container!.autoloop.listTasks(binding.id))[0]?.automationStatus === "waiting_timer",
     "定时等待",
   );
-  const task = container!.autoloop.listTasks(binding.id)[0]!;
+  const task = (await container!.autoloop.listTasks(binding.id))[0]!;
   const slot = container!.tasks.reserveExternalSlot();
   expect(slot).toBeTypeOf("function");
   slot?.();
   await waitFor(
-    () => container!.tasks.get(task.id)?.automationStatus === "completed",
+    async () => (await container!.tasks.get(task.id))?.automationStatus === "completed",
     "时间到后续办",
   );
-  expect(container!.tasks.listRuns(task.id)).toHaveLength(2);
+  expect(await container!.tasks.listRuns(task.id)).toHaveLength(2);
 }, 60000);
-
 it("真实 Hub：停用后续触发仍可回答；停止整个事项关闭卡片且不再执行", async () => {
   const { binding } = await setup();
   faux!.setResponses([
@@ -364,12 +360,11 @@ it("真实 Hub：停用后续触发仍可回答；停止整个事项关闭卡片
     () => container!.autoloop.listInteractions().every((c) => c.state !== "open"),
     "停止后关闭问题",
   );
-  expect(container!.tasks.get(card.taskId!)?.automationStatus).toBe("cancelled");
+  expect((await container!.tasks.get(card.taskId!))?.automationStatus).toBe("cancelled");
   await expect(container!.autoloop.trigger(binding.id, { eventId: "after-stop" })).rejects.toThrow(
     /停用/,
   );
 }, 60000);
-
 it("真实 Hub：旧业务回答不能在重启后批准新出现的文件授权", async () => {
   let rejectResult = false;
   const transport: typeof fetch = async (input, init) => {
@@ -433,12 +428,11 @@ it("真实 Hub：旧业务回答不能在重启后批准新出现的文件授权
     choice: 0,
   });
   await waitFor(
-    () => container!.tasks.get(card.taskId!)?.automationStatus === "completed",
+    async () => (await container!.tasks.get(card.taskId!))?.automationStatus === "completed",
     "文件授权后继续",
   );
   expect(readFileSync(join(workspace, "authorization.txt"), "utf8")).toBe("必须单独授权");
 }, 60000);
-
 it("真实 Hub：未知用量按未知处理，Token 预算阻止未执行写入", async () => {
   const { binding, project, workspace } = await setup();
   const budgeted = await container!.autoloop.createBinding({
@@ -457,10 +451,11 @@ it("真实 Hub：未知用量按未知处理，Token 预算阻止未执行写入
   ]);
   await container!.autoloop.trigger(budgeted.id, { eventId: "budget" });
   await waitFor(
-    () => container!.autoloop.listTasks(budgeted.id)[0]?.automationStatus === "needs_attention",
+    async () =>
+      (await container!.autoloop.listTasks(budgeted.id))[0]?.automationStatus === "needs_attention",
     "预算停止",
   );
   expect(existsSync(join(workspace, "budget.txt"))).toBe(false);
-  const task = container!.autoloop.listTasks(budgeted.id)[0]!;
-  expect(container!.tasks.getRun(task.currentRunId!)?.resultError).toMatch(/用量|预算/);
+  const task = (await container!.autoloop.listTasks(budgeted.id))[0]!;
+  expect((await container!.tasks.getRun(task.currentRunId!))?.resultError).toMatch(/用量|预算/);
 }, 60000);

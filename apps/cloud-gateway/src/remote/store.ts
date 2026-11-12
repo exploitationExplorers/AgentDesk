@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
+import { gatewayDatabase, type GatewayDatabase } from "../db/database";
 import { AppError, ErrorCode, type RemoteActor, type RemoteScope } from "@agentdesk/shared";
 import { SESSION_ABSOLUTE_MS, SESSION_IDLE_MS } from "../auth/session-policy";
-
 export interface RemoteSubmission {
   scope: RemoteScope;
   actor: RemoteActor;
@@ -13,41 +13,49 @@ export interface RemoteSubmission {
   accepted?: boolean;
   createdAt?: number;
 }
-
 /** 这里只保留路由和授权元数据；任务和事件的权威内容始终在执行宿主。 */
 export class RemoteRoutingStore {
-  constructor(readonly db: Database.Database) {
-    db.exec(`
+  readonly db: GatewayDatabase;
+  readonly ready: Promise<void>;
+  constructor(database: Database.Database | GatewayDatabase) {
+    this.db = gatewayDatabase(database);
+    this.ready = this.initialize();
+  }
+  private async initialize() {
+    await this.db.exec(`
       CREATE TABLE IF NOT EXISTS gateway_remote_requests (
         user_id TEXT NOT NULL, host_id TEXT NOT NULL, project_id TEXT NOT NULL,
         request_id TEXT NOT NULL, payload_hash TEXT NOT NULL, scope_json TEXT NOT NULL,
         actor_json TEXT NOT NULL, task_id TEXT, active INTEGER NOT NULL DEFAULT 1,
-        action TEXT NOT NULL, accepted INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL,
+        action TEXT NOT NULL, accepted INTEGER NOT NULL DEFAULT 0, created_at BIGINT NOT NULL,
         PRIMARY KEY (user_id,host_id,project_id,action,request_id)
       );
       CREATE INDEX IF NOT EXISTS gateway_remote_request_tasks ON gateway_remote_requests(user_id,host_id,task_id);
     `);
     // 旧开发版本的记录只用于查原操作；不依赖旧记录里的 actor 自动重放请求。
     if (
-      db
+      this.db.dialect === "sqlite" &&
+      (await this.db
         .prepare(
           "SELECT 1 FROM sqlite_master WHERE type='table' AND name='gateway_remote_submissions'",
         )
-        .get()
+        .get())
     ) {
-      db.transaction(() => {
-        db.exec(`INSERT OR IGNORE INTO gateway_remote_requests
+      await this.db
+        .transaction(async () => {
+          await this.db.exec(`INSERT OR IGNORE INTO gateway_remote_requests
           SELECT user_id,host_id,project_id,request_id,payload_hash,scope_json,actor_json,task_id,active,
           'task.create',CASE WHEN task_id IS NULL THEN 0 ELSE 1 END,0 FROM gateway_remote_submissions;
           DROP TABLE gateway_remote_submissions;`);
-      }).immediate();
+        })
+        .immediate();
     }
   }
-
-  claim(input: RemoteSubmission): RemoteSubmission {
-    return this.db
-      .transaction(() => {
-        const existing = this.db
+  async claim(input: RemoteSubmission) {
+    await this.ready;
+    return await this.db
+      .transaction(async () => {
+        const existing = await this.db
           .prepare(
             `SELECT * FROM gateway_remote_requests
         WHERE user_id=? AND host_id=? AND project_id=? AND action=? AND request_id=?`,
@@ -71,7 +79,7 @@ export class RemoteRoutingStore {
           return previous;
         }
         const createdAt = input.createdAt ?? Date.now();
-        this.db
+        await this.db
           .prepare(
             `INSERT INTO gateway_remote_requests
         (user_id,host_id,project_id,request_id,payload_hash,scope_json,actor_json,task_id,active,action,accepted,created_at)
@@ -100,7 +108,6 @@ export class RemoteRoutingStore {
       })
       .immediate();
   }
-
   private decode(value: unknown): RemoteSubmission {
     const row = value as {
       scope_json: string;
@@ -125,16 +132,15 @@ export class RemoteRoutingStore {
       createdAt: row.created_at,
     };
   }
-
-  active(): RemoteSubmission[] {
-    return this.db
-      .prepare("SELECT * FROM gateway_remote_requests WHERE active=1")
-      .all()
-      .map((row) => this.decode(row));
+  async active() {
+    await this.ready;
+    return (
+      await this.db.prepare("SELECT * FROM gateway_remote_requests WHERE active=1").all()
+    ).map((row) => this.decode(row));
   }
-
-  save(input: RemoteSubmission): void {
-    this.db
+  async save(input: RemoteSubmission) {
+    await this.ready;
+    await this.db
       .prepare(
         `UPDATE gateway_remote_requests SET task_id=?,active=?,accepted=?
       WHERE user_id=? AND host_id=? AND project_id=? AND action=? AND request_id=?`,
@@ -150,17 +156,17 @@ export class RemoteRoutingStore {
         input.requestId,
       );
   }
-
-  accept(input: RemoteSubmission, taskId: string): void {
+  async accept(input: RemoteSubmission, taskId: string) {
+    await this.ready;
     if (input.accepted || !input.active) {
       input.taskId = taskId;
-      this.save(input);
+      await this.save(input);
       return;
     }
-    this.db
-      .transaction(() => {
+    await this.db
+      .transaction(async () => {
         // 只让最后获宿主接受的请求续租；原请求主体保持不变，不能因续跑篡改其身份。
-        this.db
+        await this.db
           .prepare(
             `UPDATE gateway_remote_requests SET active=0 WHERE task_id=? AND user_id=? AND host_id=?
         AND NOT (project_id=? AND action=? AND request_id=?)`,
@@ -175,17 +181,23 @@ export class RemoteRoutingStore {
           );
         input.taskId = taskId;
         input.accepted = true;
-        this.save(input);
+        await this.save(input);
       })
       .immediate();
   }
-
   /** 后台续租不可刷新 last activity，否则手机退出后会话永远不会空闲过期。 */
-  sessionAlive(actor: RemoteActor, now = Date.now()): boolean {
-    const row = this.db
+  async sessionAlive(actor: RemoteActor, now = Date.now()) {
+    await this.ready;
+    const row = (await this.db
       .prepare('SELECT "userId","createdAt","updatedAt","expiresAt" FROM "session" WHERE id=?')
-      .get(actor.sessionId) as
-      { userId: string; createdAt: string; updatedAt: string; expiresAt: string } | undefined;
+      .get(actor.sessionId)) as
+      | {
+          userId: string;
+          createdAt: string;
+          updatedAt: string;
+          expiresAt: string;
+        }
+      | undefined;
     if (!row || row.userId !== actor.userId) return false;
     const created = Date.parse(row.createdAt);
     const updated = Date.parse(row.updatedAt);

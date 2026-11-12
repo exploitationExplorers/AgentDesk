@@ -89,7 +89,7 @@ export function registerDocumentTools(registry: ToolRegistry, root: string): voi
         if (sections.length > draft.total) throw new Error("章节数超过计划范围");
         const content = `# ${draft.title}\n\n${sections.map((section) => `## ${section.heading}\n\n${section.paragraphs.join("\n\n")}`).join("\n\n")}`;
         if (content.length > 80_000) throw new Error("文档过长，请拆分为多份文档");
-        const artifact = ctx.recordArtifact!({
+        const artifact = await ctx.recordArtifact!({
           kind: "file",
           title: draft.title,
           artifactKey: `document:${draft.title}`,
@@ -158,7 +158,7 @@ export function registerDocumentTools(registry: ToolRegistry, root: string): voi
         const filePath = join(folder, `${title}.docx`);
         await writeFile(join(root, filePath), bytes, { flag: "wx" });
         ctx.signal?.throwIfAborted();
-        const artifact = ctx.recordArtifact!({
+        const artifact = await ctx.recordArtifact!({
           kind: "file",
           title: `${title}.docx`,
           artifactKey: `document:${draft.title}`,

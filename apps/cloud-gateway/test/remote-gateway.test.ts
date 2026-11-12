@@ -4,7 +4,6 @@ import type { RemoteActor, RemoteScope } from "@agentdesk/shared";
 import { commandDigest, RunnerClient } from "../src/remote/client";
 import { RemoteRoutingStore } from "../src/remote/store";
 import { SESSION_IDLE_MS } from "../src/auth/session-policy";
-
 let db: Database.Database;
 let store: RemoteRoutingStore;
 const scope: RemoteScope = {
@@ -18,7 +17,6 @@ const actor: RemoteActor = {
   sessionId: "session-id",
   recentAuthAt: "2026-11-08T00:00:00.000Z",
 };
-
 beforeEach(() => {
   db = new Database(":memory:");
   db.exec(`CREATE TABLE session (
@@ -31,15 +29,13 @@ beforeEach(() => {
     actor.userId,
     now,
     now,
-    new Date(Date.now() + 60_000).toISOString(),
+    new Date(Date.now() + 60000).toISOString(),
   );
   store = new RemoteRoutingStore(db);
 });
-
 afterEach(() => db.close());
-
 describe("Gateway 远程任务路由记录", () => {
-  it("任务提交幂等并在同一请求键绑定不同内容时冲突", () => {
+  it("任务提交幂等并在同一请求键绑定不同内容时冲突", async () => {
     const submission = {
       scope,
       actor,
@@ -48,20 +44,19 @@ describe("Gateway 远程任务路由记录", () => {
       taskId: null,
       active: true,
     };
-    const claimed = store.claim(submission);
+    const claimed = await store.claim(submission);
     expect(claimed).toMatchObject({ ...submission, action: "task.create", accepted: false });
     expect(claimed.createdAt).toEqual(expect.any(Number));
-    expect(store.claim(submission)).toEqual(claimed);
-    expect(store.active()).toEqual([claimed]);
-    expect(() => store.claim({ ...submission, payloadHash: "b".repeat(64) })).toThrow(
+    expect(await store.claim(submission)).toEqual(claimed);
+    expect(await store.active()).toEqual([claimed]);
+    await expect(store.claim({ ...submission, payloadHash: "b".repeat(64) })).rejects.toThrow(
       "该请求已用于其他任务内容",
     );
   });
-
-  it("只续有效会话且后台读取不会延长用户空闲期限", () => {
-    expect(store.sessionAlive(actor)).toBe(true);
+  it("只续有效会话且后台读取不会延长用户空闲期限", async () => {
+    expect(await store.sessionAlive(actor)).toBe(true);
     const before = db.prepare('SELECT "updatedAt" FROM session WHERE id=?').get(actor.sessionId);
-    expect(store.sessionAlive(actor)).toBe(true);
+    expect(await store.sessionAlive(actor)).toBe(true);
     expect(db.prepare('SELECT "updatedAt" FROM session WHERE id=?').get(actor.sessionId)).toEqual(
       before,
     );
@@ -69,9 +64,8 @@ describe("Gateway 远程任务路由记录", () => {
       new Date(Date.now() - SESSION_IDLE_MS - 1).toISOString(),
       actor.sessionId,
     );
-    expect(store.sessionAlive(actor)).toBe(false);
+    expect(await store.sessionAlive(actor)).toBe(false);
   });
-
   it("命令绑定规范化负载摘要，内部客户端拒绝路径逃逸并隐藏上游响应", async () => {
     let captured: RequestInit | undefined;
     const client = new RunnerClient(

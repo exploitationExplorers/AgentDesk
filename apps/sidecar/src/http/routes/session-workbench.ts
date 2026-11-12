@@ -12,7 +12,6 @@ import type { Container } from "../../container";
 import { runEvents, traces } from "../../db/schema";
 import { acquireConversation, conversationActivity } from "../../services/conversation-activity";
 import { errorMessage, nowIso, toJsonSafe } from "../../util";
-
 export function sessionWorkbenchRoutes(container: Container) {
   const app = new Hono();
   const { chat, tasks, context, approvals, dbHandle } = container;
@@ -28,11 +27,10 @@ export function sessionWorkbenchRoutes(container: Container) {
           .reverse()
           .map((row) => row.event as TaskStreamEvent)
       : chat.traces(id).map((row) => row.event as AgentStreamEvent);
-
   app.get("/conversations/:id/workbench", async (c) => {
     const id = c.req.param("id");
     const conversation = chat.getConversation(id);
-    const task = tasks.findByConversation(id) ?? null;
+    const task = (await tasks.findByConversation(id)) ?? null;
     const events = history(id, task?.id);
     const latestUsage = events.filter((event) => event.type === "model_usage").at(-1) ?? null;
     const lastCompaction =
@@ -52,19 +50,22 @@ export function sessionWorkbenchRoutes(container: Container) {
     } catch (error) {
       contextError = errorMessage(error);
     }
-    const pending = approvals
-      .list("pending")
-      .filter(
-        (approval) =>
-          approvalIds.has(approval.id) ||
-          (task && (approval.payload as { taskId?: string } | null)?.taskId === task.id),
-      );
+    const pending = (await approvals.list("pending")).filter(
+      (approval) =>
+        approvalIds.has(approval.id) ||
+        (task &&
+          (
+            approval.payload as {
+              taskId?: string;
+            } | null
+          )?.taskId === task.id),
+    );
     const result: SessionWorkbench = {
       conversation,
-      workspace: chat.conversationWorkspace(id) ?? null,
+      workspace: (await chat.conversationWorkspace(id)) ?? null,
       task,
-      runs: task ? tasks.listRuns(task.id) : [],
-      artifacts: task ? tasks.listArtifacts(task.id) : [],
+      runs: task ? await tasks.listRuns(task.id) : [],
+      artifacts: task ? await tasks.listArtifacts(task.id) : [],
       usedTools: [
         ...new Set(events.filter((event) => event.type === "tool_call").map((event) => event.name)),
       ],
@@ -80,11 +81,10 @@ export function sessionWorkbenchRoutes(container: Container) {
     };
     return c.json(result);
   });
-
   app.post("/conversations/:id/compact", async (c) => {
     const id = c.req.param("id");
     chat.getConversation(id);
-    const task = tasks.findByConversation(id);
+    const task = await tasks.findByConversation(id);
     if (task && ["running", "queued"].includes(task.status))
       throw new AppError(ErrorCode.Conflict, "请等待当前任务结束后再压缩");
     const release = acquireConversation(id, "compacting");
@@ -96,13 +96,13 @@ export function sessionWorkbenchRoutes(container: Container) {
             ? AgentName.parse(c.req.query("agent"))
             : (task?.agent ?? undefined),
           signal: c.req.raw.signal,
-          emit: (event) => {
+          emit: async (event) => {
             dbHandle.db
               .insert(traces)
               .values({ scope: `chat:${id}`, event: toJsonSafe(event), createdAt: nowIso() })
               .run();
             if (task?.currentRunId)
-              tasks.appendEvent({ taskId: task.id, runId: task.currentRunId, event });
+              await tasks.appendEvent({ taskId: task.id, runId: task.currentRunId, event });
           },
         }),
       );

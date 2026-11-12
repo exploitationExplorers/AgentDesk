@@ -1,0 +1,38 @@
+# 与 compose.yaml 叠加：docker compose -f compose.yaml -f compose.postgres.yaml up -d
+services:
+  postgres:
+    image: postgres:17-bookworm@sha256:665dc7b37ac52a17e298511414c21d23ffa4e6a6ef6225b3e5d59c7afb35e994
+    container_name: agentdesk-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: agentdesk_admin
+      POSTGRES_DB: agentdesk
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    volumes:
+      - ${DEPLOY_ROOT}/data/postgres17:/var/lib/postgresql/data
+      - ${DEPLOY_ROOT}/secrets/postgres/admin-password:/run/secrets/postgres_password:ro
+    command: [postgres, -c, shared_buffers=64MB, -c, max_connections=30, -c, work_mem=2MB]
+    healthcheck:
+      test: [CMD, pg_isready, -U, agentdesk_admin, -d, agentdesk]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    mem_limit: 384m
+    cpus: 1
+    pids_limit: 128
+    logging: { driver: json-file, options: { max-size: "10m", max-file: "3" } }
+    networks: [agentdesk]
+  gateway:
+    image: agentdesk-gateway:${GATEWAY_POSTGRES_RELEASE:?Set a validated immutable Gateway release}
+    environment:
+      DATABASE_URL_FILE: /run/secrets/gateway/database-url
+      DATABASE_SCHEMA: gateway
+    depends_on:
+      postgres: { condition: service_healthy }
+  runner:
+    image: agentdesk-runner:${RUNNER_POSTGRES_RELEASE:?Set a validated immutable Runner release}
+    environment:
+      DATABASE_URL_FILE: /run/secrets/runner/database-url
+      DATABASE_SCHEMA: runner
+    depends_on:
+      postgres: { condition: service_healthy }

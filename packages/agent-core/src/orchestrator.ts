@@ -33,7 +33,7 @@ export interface OrchestratorRunOptions {
   /** 用户显式指定 Agent 时跳过路由 */
   agent?: AgentName;
   modelSelection?: ModelSelection;
-  emit: (event: AgentStreamEvent) => void;
+  emit: (event: AgentStreamEvent) => unknown;
   requestApproval: (request: ApprovalRequest) => Promise<boolean>;
   /** 可选：向用户追问并拿到回答文本的能力，透传给 tasks.ask_user 等工具的 ToolContext。 */
   requestAnswer?: (request: ApprovalRequest) => Promise<string>;
@@ -49,7 +49,7 @@ export interface OrchestratorRunOptions {
    */
   allowedTools?: string[];
   /** 可选：记录任务产物的能力，透传给 ToolContext，供 tasks.submit_plan 等工具使用。 */
-  recordArtifact?: (input: RecordArtifactInput) => RecordedArtifact;
+  recordArtifact?: (input: RecordArtifactInput) => RecordedArtifact | Promise<RecordedArtifact>;
   /** 可选：审批前先问一次能不能自动放行（规则匹配/分类器等）。不传时行为与现状完全一致。 */
   autoApprove?: AutoApprove;
   /** 可选：发给模型前脱敏、拿到回复后换回真实值，整次对话（含所有委派 Agent）共用同一个 store。 */
@@ -60,11 +60,16 @@ export interface OrchestratorRunOptions {
    * 事件/审批直接走 opts.emit/opts.requestApproval，不做任何额外路由。
    * 并发委派场景下每次调用都会拿到各自独立的 handle，互不串台。
    */
-  onDelegate?: (info: { agent: AgentName; task: string }) => {
-    emit: (event: AgentStreamEvent) => void;
-    requestApproval: (request: ApprovalRequest) => Promise<boolean>;
-    done: (result: { text: string; toolCalls: ToolCallRecord[] } | { error: string }) => void;
-  };
+  onDelegate?: (info: {
+    agent: AgentName;
+    task: string;
+  }) => DelegateHandle | Promise<DelegateHandle>;
+}
+
+export interface DelegateHandle {
+  emit: (event: AgentStreamEvent) => unknown;
+  requestApproval: (request: ApprovalRequest) => Promise<boolean>;
+  done: (result: { text: string; toolCalls: ToolCallRecord[] } | { error: string }) => unknown;
 }
 
 export type OrchestratorResult = AgentExecutionOutcome & {
@@ -195,7 +200,7 @@ export class Orchestrator {
     const messages = [...opts.history, userMsg];
 
     if (opts.agent && opts.agent !== "orchestrator") {
-      opts.emit({ type: "route", agent: opts.agent, reason: "用户指定" });
+      await opts.emit({ type: "route", agent: opts.agent, reason: "用户指定" });
       const result = await this.runSpecialist(opts.agent, messages, opts.userMessage, opts);
       return {
         ...(result.status === "suspended"
@@ -220,8 +225,8 @@ export class Orchestrator {
       }),
       risk: "safe",
       execute: async ({ agent, task }) => {
-        opts.emit({ type: "route", agent, reason: task });
-        const handle = opts.onDelegate?.({ agent, task });
+        await opts.emit({ type: "route", agent, reason: task });
+        const handle = await opts.onDelegate?.({ agent, task });
         const subEmit = handle?.emit ?? opts.emit;
         const subApproval = handle?.requestApproval ?? opts.requestApproval;
         try {
@@ -241,10 +246,10 @@ export class Orchestrator {
             },
           );
           delegated.push(...sub.toolCalls);
-          handle?.done({ text: sub.text, toolCalls: sub.toolCalls });
+          await handle?.done({ text: sub.text, toolCalls: sub.toolCalls });
           return { agent, answer: sub.text, toolCalls: sub.toolCalls.map((c) => c.name) };
         } catch (error) {
-          handle?.done({ error: error instanceof Error ? error.message : String(error) });
+          await handle?.done({ error: error instanceof Error ? error.message : String(error) });
           throw error;
         }
       },

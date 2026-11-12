@@ -7,7 +7,6 @@ import {
   HardDrive,
   MessageSquare,
   Menu,
-  Moon,
   Newspaper,
   PanelLeftClose,
   PanelLeftOpen,
@@ -17,7 +16,6 @@ import {
   Settings,
   ShieldAlert,
   Sparkles,
-  Sun,
   Workflow,
   type LucideIcon,
 } from "lucide-react";
@@ -32,18 +30,18 @@ import {
   useReducedMotion,
   GlassSurface,
   GlassSelection,
-  Button,
 } from "@agentdesk/ui";
 import { useGlobalEvents } from "../hooks/useGlobalEvents";
 import { api } from "../lib/api";
 import { saveAvatar } from "../lib/avatar";
 import { toast } from "../lib/toast";
-import { applyTheme, isDarkTheme, toggleThemeWithTransition, useUi } from "../stores/ui";
+import { applyTheme, useUi } from "../stores/ui";
 import { AppMark, useAppAvatar } from "./AppMark";
 import { LowDiskDialog } from "../features/disk/LowDiskDialog";
 import { ApprovalToasts } from "./ApprovalToasts";
 import { CommandPalette } from "./CommandPalette";
 import { Toasts } from "./Toasts";
+import { ThemeToggle } from "./ThemeToggle";
 
 const NAV: Array<{ to: string; label: string; icon: LucideIcon }> = [
   { to: "/", label: "Bot", icon: MessageSquare },
@@ -148,31 +146,24 @@ export function AppShell() {
     onError: (error: Error) => toast(error.message || "头像更新失败", { tone: "danger" }),
   });
 
-  useEffect(() => applyTheme(theme), [theme]);
+  useEffect(() => {
+    applyTheme(theme);
+    if (theme !== "system") return;
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const sync = () => applyTheme("system");
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, [theme]);
   useEffect(() => setMobileNavOpen(false), [routeSection]);
 
   const navCollapsed = (collapsed || routeSection === "home") && !mobileNavOpen;
-  const dark = isDarkTheme(theme);
-
-  const themeToggle = (
-    <Tooltip content={dark ? "切换到浅色" : "切换到深色"}>
-      <Button
-        size="icon"
-        variant="ghost"
-        type="button"
-        className="h-10 w-10 shrink-0 rounded-xl text-muted"
-        onClick={(event) => toggleThemeWithTransition(event.nativeEvent)}
-        aria-label="切换主题"
-      >
-        {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-      </Button>
-    </Tooltip>
-  );
 
   return (
     <TooltipProvider>
       <div className="lb-app relative flex h-full min-w-0 flex-col lg:flex-row lg:gap-3 lg:p-3">
-        <div className="absolute right-6 top-6 z-40 hidden lg:block">{themeToggle}</div>
+        <div className="pointer-events-none absolute right-3 top-0 z-40 lg:right-5 lg:top-4">
+          <ThemeToggle />
+        </div>
         <div className="lb-glass flex h-12 shrink-0 items-center gap-2 border-b px-3 lg:hidden">
           <button
             type="button"
@@ -185,7 +176,6 @@ export function AppShell() {
           </button>
           <AppMark src={avatar} className="h-6 w-6" />
           <span className="text-sm font-semibold">AgentDesk</span>
-          <div className="ml-auto">{themeToggle}</div>
         </div>
         {mobileNavOpen ? (
           <button

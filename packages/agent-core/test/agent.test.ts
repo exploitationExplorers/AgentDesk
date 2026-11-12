@@ -38,6 +38,33 @@ const projectAgent: AgentDefinition = {
 };
 
 describe("runAgent", () => {
+  it("持久化工具调用失败时不执行工具副作用", async () => {
+    const models = setup();
+    let executions = 0;
+    const tool = defineTool({
+      name: "projects.write",
+      description: "write",
+      parameters: Type.Object({}),
+      risk: "safe",
+      execute: async () => ++executions,
+    });
+    faux!.setResponses([
+      fauxAssistantMessage(fauxToolCall(toWireName(tool.name), {}), { stopReason: "toolUse" }),
+    ]);
+    await expect(
+      runAgent({
+        definition: projectAgent,
+        tools: [tool],
+        models,
+        messages: [],
+        emit: async (event) => {
+          if (event.type === "tool_call") throw new Error("database commit failed");
+        },
+        requestApproval: async () => true,
+      }),
+    ).rejects.toThrow("database commit failed");
+    expect(executions).toBe(0);
+  });
   it("用尽轮次仍在调用工具时明确失败，保留工具事件且不执行超限轮次", async () => {
     const models = setup();
     let executions = 0;

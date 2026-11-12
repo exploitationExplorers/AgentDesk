@@ -1,23 +1,10 @@
 @import "@agentdesk/ui/styles.css";
 @import "@xyflow/react/dist/style.css";
 
-/* 主题圆形扩散：由 toggleThemeWithTransition 驱动 clip-path */
-::view-transition-old(root),
-::view-transition-new(root) {
-  animation: none;
-  mix-blend-mode: normal;
-}
-::view-transition-old(root) {
-  z-index: 1;
-}
-::view-transition-new(root) {
-  z-index: 2;
-}
-@media (prefers-reduced-motion: reduce) {
-  ::view-transition-group(*),
-  ::view-transition-old(*),
-  ::view-transition-new(*) {
-    animation: none !important;
+/* 为桌面顶部的像素开关留出操作空间。 */
+@media (min-width: 1024px) {
+  .ad-page-header {
+    padding-right: 96px;
   }
 }
 

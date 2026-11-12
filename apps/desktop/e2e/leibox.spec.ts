@@ -66,7 +66,7 @@ test("首页卡片有绘制预算，离开后停止，切换主题复用卡片",
   expect(rate).toBeGreaterThan(0);
   expect(rate).toBeLessThanOrEqual(65);
   const card = await cards.first().elementHandle();
-  await page.getByRole("button", { name: "切换主题" }).first().click();
+  await page.getByRole("switch", { name: "浅色主题" }).first().click();
   await expect(scene).toHaveAttribute("data-theme", "dark");
   expect(await card!.evaluate((node) => node.isConnected)).toBe(true);
   await page.mouse.move(1, 1);
@@ -257,7 +257,7 @@ test("Glass 透镜真实截图渲染，路由切换与减少动画释放渲染�
   await page.mouse.move(heading.x + 190, point.y);
   await expect(canvas).toHaveAttribute("data-motion-state", "settled");
   await page.screenshot({ path: info.outputPath("glass-lens.png") });
-  await page.getByRole("button", { name: "切换主题" }).first().click();
+  await page.getByRole("switch", { name: "浅色主题" }).first().click();
   await expect(page.locator("html")).toHaveClass(/dark/);
   await page.evaluate(() =>
     Promise.all(
@@ -303,7 +303,7 @@ test("无 WebGL 时保留正常界面，原生按压按钮可用键盘操作", a
   await expect(send).toBeDisabled();
   await page.getByRole("textbox", { name: "发送消息" }).fill("保留正常输入");
   await expect(send).toBeEnabled();
-  const theme = page.getByRole("button", { name: "切换主题" }).first();
+  const theme = page.getByRole("switch", { name: "浅色主题" }).first();
   await theme.focus();
   await theme.press("Space");
   await expect(page.locator("html")).toHaveClass(/dark/);

@@ -6,9 +6,13 @@ import { fsRead } from "@agentdesk/integrations";
 import { AppError, ErrorCode } from "@agentdesk/shared";
 import type { ProjectService } from "../projects";
 import { fetchPublicSource } from "../public-fetch";
-
 export type ReadingSource =
-  | { kind: "local"; projectId: string; root: string; name: string }
+  | {
+      kind: "local";
+      projectId: string;
+      root: string;
+      name: string;
+    }
   | {
       kind: "github";
       owner: string;
@@ -18,7 +22,6 @@ export type ReadingSource =
       files: string[];
       truncated: boolean;
     };
-
 const OMIT = new Set([
   "node_modules",
   "vendor",
@@ -31,8 +34,7 @@ const OMIT = new Set([
 const TEXT =
   /\.(?:[cm]?[jt]sx?|vue|svelte|py|go|rs|java|kt|swift|c|h|cpp|hpp|cs|rb|php|sh|bash|json|ya?ml|toml|xml|md|txt|css|scss|html|sql|proto)$/i;
 const MAX_FILES = 3000;
-const MAX_BYTES = 512_000;
-
+const MAX_BYTES = 512000;
 export function readingPath(input: string): string {
   const path = input.replaceAll("\\", "/");
   if (
@@ -47,7 +49,6 @@ export function readingPath(input: string): string {
   }
   return path;
 }
-
 function readable(path: string): boolean {
   const parts = path.split("/");
   const name = parts.at(-1)!;
@@ -63,7 +64,6 @@ function readable(path: string): boolean {
     (TEXT.test(name) || /^(?:Dockerfile|Makefile|LICENSE|\.gitignore)$/i.test(name))
   );
 }
-
 export interface SourceFile {
   path: string;
   content: string;
@@ -71,7 +71,6 @@ export interface SourceFile {
   totalLines: number;
   url?: string;
 }
-
 export function sourceWindow(file: SourceFile, startLine = 1, endLine = startLine + 119) {
   if (
     !Number.isSafeInteger(startLine) ||
@@ -90,9 +89,9 @@ export function sourceWindow(file: SourceFile, startLine = 1, endLine = startLin
   let partialLine = false;
   for (; line <= stop; line++) {
     const value = `${line}: ${lines[line - 1]!}`;
-    if (chars + value.length > 10_000) {
+    if (chars + value.length > 10000) {
       if (!selected.length) {
-        selected.push(value.slice(0, 10_000));
+        selected.push(value.slice(0, 10000));
         partialLine = true;
         line++;
       }
@@ -115,13 +114,13 @@ export function sourceWindow(file: SourceFile, startLine = 1, endLine = startLin
     url: file.url ? `${file.url}#L${startLine}-L${last}` : undefined,
   };
 }
-
 export class RepositorySource {
   constructor(
-    private readonly projects: Pick<ProjectService, "list">,
+    private readonly projects: {
+      list: () => Awaited<ReturnType<ProjectService["list"]>> | ReturnType<ProjectService["list"]>;
+    },
     private readonly fetchSource: typeof fetchPublicSource = fetchPublicSource,
   ) {}
-
   private async json(url: string, signal?: AbortSignal): Promise<unknown> {
     const response = await this.fetchSource(url, {
       signal,
@@ -134,7 +133,6 @@ export class RepositorySource {
       );
     return JSON.parse(response.text);
   }
-
   async open(target: string, signal?: AbortSignal): Promise<ReadingSource> {
     signal?.throwIfAborted();
     if (/^https?:/i.test(target)) {
@@ -184,7 +182,7 @@ export class RepositorySource {
         truncated: tree.truncated || files.length > MAX_FILES,
       };
     }
-    const all = this.projects.list();
+    const all = await this.projects.list();
     const matches = all.filter(
       (p) =>
         p.id === target ||
@@ -207,32 +205,40 @@ export class RepositorySource {
       name: project.name,
     };
   }
-
-  private localRoot(source: Extract<ReadingSource, { kind: "local" }>): string {
-    const project = this.projects.list().find((p) => p.id === source.projectId);
+  private async localRoot(
+    source: Extract<
+      ReadingSource,
+      {
+        kind: "local";
+      }
+    >,
+  ): Promise<string> {
+    const project = (await this.projects.list()).find((p) => p.id === source.projectId);
     if (!project) throw new AppError(ErrorCode.NotFound, "导读关联的项目已移除，请重新导入项目");
     return project.path;
   }
-
   async files(
     source: ReadingSource,
     signal?: AbortSignal,
-  ): Promise<{ files: string[]; truncated: boolean }> {
+  ): Promise<{
+    files: string[];
+    truncated: boolean;
+  }> {
     if (source.kind === "github") return { files: source.files, truncated: source.truncated };
-    const root = await realpath(this.localRoot(source));
+    const root = await realpath(await this.localRoot(source));
     if (root !== source.root)
       throw new AppError(ErrorCode.Conflict, "项目根目录已变化，请重新创建导读");
     const queue = [{ path: root, depth: 0 }];
     const files: string[] = [];
     let visited = 0;
     let truncated = false;
-    while (queue.length && files.length < MAX_FILES && visited < 15_000) {
+    while (queue.length && files.length < MAX_FILES && visited < 15000) {
       signal?.throwIfAborted();
       const dir = queue.shift()!;
       const entries = await readdir(dir.path, { withFileTypes: true });
       entries.sort((a, b) => a.name.localeCompare(b.name));
       for (const entry of entries) {
-        if (++visited > 15_000 || files.length >= MAX_FILES) {
+        if (++visited > 15000 || files.length >= MAX_FILES) {
           truncated = true;
           break;
         }
@@ -255,7 +261,6 @@ export class RepositorySource {
     }
     return { files: files.sort(), truncated: truncated || queue.length > 0 };
   }
-
   async read(source: ReadingSource, input: string, signal?: AbortSignal): Promise<SourceFile> {
     signal?.throwIfAborted();
     const path = readingPath(input);
@@ -267,7 +272,7 @@ export class RepositorySource {
     let content: string;
     let url: string | undefined;
     if (source.kind === "local") {
-      const root = await realpath(this.localRoot(source));
+      const root = await realpath(await this.localRoot(source));
       if (root !== source.root)
         throw new AppError(ErrorCode.Conflict, "项目根目录已变化，请重新创建导读");
       const actual = await realpath(join(root, path));
@@ -299,7 +304,6 @@ export class RepositorySource {
       url,
     };
   }
-
   async search(
     source: ReadingSource,
     query: string,
@@ -310,7 +314,11 @@ export class RepositorySource {
     const listing = await this.files(source, signal);
     const files = listing.files.filter((p) => p.startsWith(prefix));
     const batch = files.slice(offset, offset + (source.kind === "github" ? 12 : 60));
-    const hits: Array<{ path: string; line: number; text: string }> = [];
+    const hits: Array<{
+      path: string;
+      line: number;
+      text: string;
+    }> = [];
     const skipped: string[] = [];
     let limited = false;
     for (const path of batch) {

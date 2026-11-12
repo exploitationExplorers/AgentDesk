@@ -5,12 +5,10 @@ import { GLOBAL_CHANNEL } from "../../events";
 import { applyProxy, resolveProxy } from "../../proxy";
 import { defaultPatternFor } from "../../services/permission-rules";
 import { channelToSse } from "../sse";
-
 export function systemRoutes(container: Container) {
   const { config, settings, approvals, permissionRules, skills, registry, hub, providers } =
     container;
   const app = new Hono();
-
   app.get("/health", (c) =>
     c.json({
       ok: true,
@@ -21,40 +19,47 @@ export function systemRoutes(container: Container) {
       proxy: resolveProxy(settings.get().proxy),
     } satisfies HealthInfo),
   );
-
   app.get("/settings", (c) => c.json(settings.get()));
   app.put("/settings", async (c) => {
     const next = settings.update(AppSettings.partial().parse(await c.req.json()));
     applyProxy(resolveProxy(next.proxy));
     return c.json(next);
   });
-
-  app.get("/approvals", (c) => {
+  app.get("/approvals", async (c) => {
     const status = c.req.query("status") as "pending" | undefined;
-    return c.json(approvals.list(status));
+    return c.json(await approvals.list(status));
   });
   app.post("/approvals/:id", async (c) => {
-    const body = (await c.req.json()) as { approved?: boolean; remember?: boolean };
+    const body = (await c.req.json()) as {
+      approved?: boolean;
+      remember?: boolean;
+    };
     const id = c.req.param("id");
     const approved = body.approved === true;
     if (body.remember === true) {
-      const pending = approvals.get(id);
-      const payload = pending?.payload as { tool?: string; args?: unknown } | undefined;
+      const pending = await approvals.get(id);
+      const payload = pending?.payload as
+        | {
+            tool?: string;
+            args?: unknown;
+          }
+        | undefined;
       const pattern = payload?.tool ? defaultPatternFor(payload.tool, payload.args) : undefined;
       if (payload?.tool && pattern !== undefined) {
         permissionRules.add(payload.tool, pattern, approved ? "allow" : "deny");
       }
     }
-    return c.json(approvals.resolve(id, approved));
+    return c.json(await approvals.resolve(id, approved));
   });
   app.post("/approvals/:id/answer", async (c) => {
-    const body = (await c.req.json()) as { text?: string };
+    const body = (await c.req.json()) as {
+      text?: string;
+    };
     if (typeof body.text !== "string" || body.text.trim().length === 0) {
       throw new AppError(ErrorCode.BadRequest, "text 不能为空");
     }
-    return c.json(approvals.answer(c.req.param("id"), body.text));
+    return c.json(await approvals.answer(c.req.param("id"), body.text));
   });
-
   app.get("/skills", (c) =>
     c.json(
       skills.list().map((s) => ({
@@ -70,14 +75,11 @@ export function systemRoutes(container: Container) {
       })),
     ),
   );
-
   app.get("/tools", (c) =>
     c.json(
       registry.list().map((t) => ({ name: t.name, description: t.description, risk: t.risk })),
     ),
   );
-
   app.get("/events", (c) => channelToSse(c, hub, GLOBAL_CHANNEL));
-
   return app;
 }

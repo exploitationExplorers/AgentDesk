@@ -23,7 +23,7 @@ import type { CloudConfig } from "../../cloud-config";
 import { RemoteOperationStore } from "../../services/remote/operations";
 import { RemoteTaskSubmissionService } from "../../services/remote/task-submissions";
 import { GitCredentialInput, RepositoryImportInput } from "../../services/remote/repository-setup";
-
+import { cloudStorageRoutes } from "./cloud-storage";
 const Envelope = z.strictObject({ command: RemoteCommand, payload: z.unknown() });
 const TaskReadPayload = z.strictObject({ taskId: z.string().optional() });
 const LookupPayload = z.strictObject({ action: z.string(), requestId: z.string() });
@@ -37,11 +37,11 @@ const CancelPayload = z.strictObject({ taskId: z.string(), clientRequestId: z.st
 const FollowupPayload = z.strictObject({
   taskId: z.string(),
   clientRequestId: z.string(),
-  message: z.string().trim().min(1).max(32_000),
+  message: z.string().trim().min(1).max(32000),
 });
-
-type Services = Container & { cloudConfig: CloudConfig };
-
+type Services = Container & {
+  cloudConfig: CloudConfig;
+};
 function assertScope(command: RemoteCommand): RemoteScopeType {
   return RemoteScope.parse({
     userId: command.userId,
@@ -50,37 +50,33 @@ function assertScope(command: RemoteCommand): RemoteScopeType {
     workspaceId: command.workspaceId,
   });
 }
-
 function publicApproval(approval: Approval, context: unknown) {
   return { approval, context };
 }
-
-function taskIdsForScope(container: Container, scope: RemoteScopeType): string[] {
+async function taskIdsForScope(container: Container, scope: RemoteScopeType): Promise<string[]> {
   return (
-    container.dbHandle.raw
+    (await container.business
       .prepare(
         `SELECT task_id FROM remote_task_contexts WHERE user_id=? AND host_id=? AND project_id=? AND workspace_id=? ORDER BY rowid DESC`,
       )
-      .all(scope.userId, scope.hostId, scope.projectId, scope.workspaceId) as Array<{
+      .all(scope.userId, scope.hostId, scope.projectId, scope.workspaceId)) as Array<{
       task_id: string;
     }>
   ).map((row) => row.task_id);
 }
-
-function getTaskContextIds(container: Container, scope: RemoteScopeType): string[] {
+async function getTaskContextIds(container: Container, scope: RemoteScopeType): Promise<string[]> {
   return (
-    container.dbHandle.raw
+    (await container.business
       .prepare(
         `SELECT approval_id FROM remote_approval_contexts WHERE user_id=? AND host_id=? AND project_id=? AND workspace_id=? ORDER BY rowid DESC`,
       )
-      .all(scope.userId, scope.hostId, scope.projectId, scope.workspaceId) as Array<{
+      .all(scope.userId, scope.hostId, scope.projectId, scope.workspaceId)) as Array<{
       approval_id: string;
     }>
   ).map((row) => row.approval_id);
 }
-
-function scopedTask(container: Container, command: RemoteCommand, taskId: string) {
-  const context = container.cloudRunner!.context(taskId);
+async function scopedTask(container: Container, command: RemoteCommand, taskId: string) {
+  const context = await container.cloudRunner!.context(taskId);
   if (
     context.userId !== command.userId ||
     context.hostId !== command.hostId ||
@@ -88,18 +84,17 @@ function scopedTask(container: Container, command: RemoteCommand, taskId: string
     context.workspaceId !== command.workspaceId
   )
     throw new AppError(ErrorCode.NotFound, "Task not found");
-  const task = container.tasks.get(taskId);
+  const task = await container.tasks.get(taskId);
   if (!task) throw new AppError(ErrorCode.NotFound, "Task not found");
   return { task, context };
 }
-
 export function remoteRoutes(container: Services) {
   const app = new Hono();
   const runner = container.cloudRunner;
   const grants = container.remoteGrants;
   const remoteApprovals = container.remoteApprovals;
   if (!runner || !grants || !remoteApprovals) throw new Error("Cloud remote services are required");
-  const operations = new RemoteOperationStore(container.dbHandle.raw);
+  const operations = new RemoteOperationStore(container.business);
   const transfers = container.workspaceTransfers!;
   const capabilities = [
     "project.read",
@@ -116,16 +111,17 @@ export function remoteRoutes(container: Services) {
     "git.push",
     "snapshot.create",
     "snapshot.read",
+    ...(container.cloudConfig.kind === "office" ? [] : ["storage.manage"]),
     ...(container.cloudConfig.kind === "office" ? [] : ["transfer.import"]),
   ];
   const executors = [
     { id: "native-bot", available: true },
     { id: "codex", available: false, reason: "Codex execution is not configured" },
   ];
-  const authorize = (command: RemoteCommand, payload: unknown) => {
+  const authorize = async (command: RemoteCommand, payload: unknown) => {
     if (command.userId !== container.cloudConfig.ownerUserId)
       throw new AppError(ErrorCode.Forbidden, "Resource owner does not match this runner");
-    return runner.authorize(command, payload);
+    return await runner.authorize(command, payload);
   };
   app.use(
     "*",
@@ -135,7 +131,6 @@ export function remoteRoutes(container: Services) {
         c.json(new AppError(ErrorCode.BadRequest, "Remote request is too large").toBody(), 413),
     }),
   );
-
   const providerInput = (raw: unknown) => {
     if (
       raw &&
@@ -162,10 +157,14 @@ export function remoteRoutes(container: Services) {
   };
   const assertOwnerAuth = (actor: { userId: string; recentAuthAt: string }) => {
     const age = Date.now() - Date.parse(actor.recentAuthAt);
-    if (actor.userId !== container.cloudConfig.ownerUserId || age > 15 * 60_000 || age < -5_000)
+    if (
+      actor.userId !== container.cloudConfig.ownerUserId ||
+      !Number.isFinite(age) ||
+      age > 15 * 60000 ||
+      age < -5000
+    )
       throw new AppError(ErrorCode.Unauthorized, "Recent owner authentication is required");
   };
-
   app.use("*", async (c, next) => {
     if (container.shutdownSignal.aborted)
       return c.json(new AppError(ErrorCode.Conflict, "Runner is shutting down").toBody(), 503);
@@ -179,7 +178,6 @@ export function remoteRoutes(container: Services) {
       throw new AppError(ErrorCode.BadRequest, "Remote request is too large");
     return next();
   });
-
   app.get("/health", (c) =>
     c.json({
       hostId: container.cloudConfig.hostId,
@@ -189,6 +187,14 @@ export function remoteRoutes(container: Services) {
       executors,
     }),
   );
+  app.get("/health/ready", async (c) => {
+    try {
+      await container.business.prepare("SELECT 1").get();
+      return c.json({ status: "ok", database: container.business.dialect });
+    } catch {
+      return c.json({ status: "unavailable" }, 503);
+    }
+  });
   app.get("/host", async (c) =>
     c.json({
       id: container.cloudConfig.hostId,
@@ -198,6 +204,7 @@ export function remoteRoutes(container: Services) {
       executors: [executors[0], await container.codex!.status()],
     }),
   );
+  app.route("/host/storage", cloudStorageRoutes(container.storage, container.cloudConfig));
   app.post("/host/executors/codex/login", async (c) => {
     const body = z.strictObject({ actor: RemoteActor }).parse(await c.req.json());
     assertOwnerAuth(body.actor);
@@ -213,7 +220,7 @@ export function remoteRoutes(container: Services) {
       hostId: container.cloudConfig.hostId,
       projects: (
         await Promise.all(
-          container.projects.list().map(async (project) => {
+          (await container.projects.list()).map(async (project) => {
             try {
               await runner.resolveWorkspace({
                 userId: container.cloudConfig.ownerUserId,
@@ -253,14 +260,16 @@ export function remoteRoutes(container: Services) {
       throw new AppError(ErrorCode.Forbidden, "仅云端实例支持创建仓库");
     return container.cloudRepositorySetup;
   };
-  app.get("/host/repository-imports", (c) => c.json({ imports: setup().list() }));
-  app.get("/host/repository-imports/:id", (c) => c.json(setup().get(c.req.param("id"))));
+  app.get("/host/repository-imports", async (c) => c.json({ imports: await setup().list() }));
+  app.get("/host/repository-imports/:id", async (c) =>
+    c.json(await setup().get(c.req.param("id"))),
+  );
   app.post("/host/repository-imports", async (c) => {
     const body = z
       .strictObject({ actor: RemoteActor, input: RepositoryImportInput })
       .parse(await c.req.json());
     assertOwnerAuth(body.actor);
-    return c.json(setup().begin(body.input), 202);
+    return c.json(await setup().begin(body.input), 202);
   });
   app.post("/host/git-credentials", async (c) => {
     const body = z
@@ -293,8 +302,10 @@ export function remoteRoutes(container: Services) {
       workspaceId: body.projectId,
     });
     return c.json(
-      await runner.locks.withLock(workspace, `fetch-${Date.now()}`, () =>
-        service.fetchBase(workspace, body.ref),
+      await runner.locks.withLock(
+        workspace,
+        `fetch-${Date.now()}`,
+        async () => await service.fetchBase(workspace, body.ref),
       ),
     );
   });
@@ -338,17 +349,16 @@ export function remoteRoutes(container: Services) {
     assertOwnerAuth(body.actor);
     return c.json(await container.providers.test(c.req.param("id")));
   });
-
   app.put("/grants", async (c) => {
     const grant = ProjectGrant.parse(await c.req.json());
     if (
       grant.userId !== container.cloudConfig.ownerUserId ||
-      Date.parse(grant.expiresAt) > Date.now() + 45_000 ||
+      Date.parse(grant.expiresAt) > Date.now() + 45000 ||
       Date.parse(grant.expiresAt) <= Date.now()
     )
       throw new AppError(ErrorCode.Forbidden, "Invalid cloud grant owner or lifetime");
     await runner.resolveWorkspace(grant);
-    grants.put(grant);
+    await grants.put(grant);
     return c.json({ ok: true });
   });
   app.post("/grants/revoke", async (c) => {
@@ -358,63 +368,62 @@ export function remoteRoutes(container: Services) {
       scope.hostId !== container.cloudConfig.hostId
     )
       throw new AppError(ErrorCode.Forbidden, "Grant owner mismatch");
-    grants.revoke(scope);
-    for (const taskId of taskIdsForScope(container, scope)) {
-      const task = container.tasks.get(taskId);
-      if (task?.currentRunId) container.tasks.requestCancel(task.currentRunId);
+    await grants.revoke(scope);
+    for (const taskId of await taskIdsForScope(container, scope)) {
+      const task = await container.tasks.get(taskId);
+      if (task?.currentRunId) await container.tasks.requestCancel(task.currentRunId);
     }
     return c.json({ ok: true });
   });
-
   app.post("/operations/lookup", async (c) => {
     const { command, payload } = Envelope.parse(await c.req.json());
-    authorize(command, payload);
+    await authorize(command, payload);
     if (command.action !== "task.read")
       throw new AppError(ErrorCode.Forbidden, "task.read is required");
     const body = LookupPayload.parse(payload);
     return c.json({
       operation:
-        operations.getByRequest(
+        (await operations.getByRequest(
           assertScope(command),
           body.action as RemoteCapability,
           body.requestId,
-        ) ?? null,
+        )) ?? null,
     });
   });
   app.post("/operations/:id", async (c) => {
     const { command, payload } = Envelope.parse(await c.req.json());
-    authorize(command, payload);
+    await authorize(command, payload);
     if (command.action !== "task.read")
       throw new AppError(ErrorCode.Forbidden, "task.read is required");
     const body = OperationPayload.parse(payload);
     if (body.operationId !== c.req.param("id"))
       throw new AppError(ErrorCode.BadRequest, "Operation ID mismatch");
-    return c.json({ operation: operations.get(assertScope(command), body.operationId) ?? null });
+    return c.json({
+      operation: (await operations.get(assertScope(command), body.operationId)) ?? null,
+    });
   });
-
   app.post("/tasks/:id/lease", async (c) => {
     const { command, payload } = Envelope.parse(await c.req.json());
-    authorize(command, payload);
+    await authorize(command, payload);
     if (command.action !== "task.read")
       throw new AppError(ErrorCode.Forbidden, "task.read is required");
     const body = LeasePayload.parse(payload);
     if (body.taskId !== c.req.param("id"))
       throw new AppError(ErrorCode.BadRequest, "Task ID mismatch");
-    return c.json({ context: runner.renewLease(command, body) });
+    return c.json({ context: await runner.renewLease(command, body) });
   });
-
   app.post("/tasks/:id/events", async (c) => {
     const { command, payload } = Envelope.parse(await c.req.json());
     const body = EventsPayload.parse(payload);
     if (command.action !== "task.read" || body.taskId !== c.req.param("id"))
       throw new AppError(ErrorCode.Forbidden, "Task event scope mismatch");
-    const scope = assertScope(authorize(command, payload));
-    runner.assertReadAccess(scope, body.taskId, command.connectionEpoch);
+    const scope = assertScope(await authorize(command, payload));
+    await runner.assertReadAccess(scope, body.taskId, command.connectionEpoch);
     const after = body.after ?? 0;
     return streamSSE(c, async (stream) => {
-      const release = container.tasks.pinEventHistory({ taskId: body.taskId });
+      const release = await container.tasks.pinEventHistory({ taskId: body.taskId });
       try {
-        const expired = container.tasks.expiredHistory({ taskId: body.taskId }, after);
+        const expired = await container.tasks.expiredHistory({ taskId: body.taskId }, after);
         if (expired) {
           await stream.writeSSE({ event: "history_expired", data: JSON.stringify(expired) });
           return;
@@ -423,7 +432,7 @@ export function remoteRoutes(container: Services) {
         let closed = false;
         let wake: (() => void) | undefined;
         const unsubscribe = container.hub.subscribe(`task:${body.taskId}`, () => wake?.());
-        const heartbeat = setInterval(() => wake?.(), 5_000);
+        const heartbeat = setInterval(() => wake?.(), 5000);
         const close = () => {
           closed = true;
           wake?.();
@@ -433,15 +442,15 @@ export function remoteRoutes(container: Services) {
         if (container.shutdownSignal.aborted) close();
         try {
           while (!closed) {
-            runner.assertReadAccess(scope, body.taskId, command.connectionEpoch);
-            const page = container.tasks.eventsAfter({
+            await runner.assertReadAccess(scope, body.taskId, command.connectionEpoch);
+            const page = await container.tasks.eventsAfter({
               taskId: body.taskId,
               after: last,
               limit: 100,
             });
             for (const event of page) {
               if (closed) return;
-              runner.assertReadAccess(scope, body.taskId, command.connectionEpoch);
+              await runner.assertReadAccess(scope, body.taskId, command.connectionEpoch);
               await stream.writeSSE({
                 id: String(event.seq),
                 event: "task",
@@ -450,9 +459,9 @@ export function remoteRoutes(container: Services) {
               last = event.seq;
             }
             if (page.length === 100) continue;
-            const task = container.tasks.get(body.taskId);
+            const task = await container.tasks.get(body.taskId);
             const currentRun = task?.currentRunId
-              ? container.tasks.getRun(task.currentRunId)
+              ? await container.tasks.getRun(task.currentRunId)
               : undefined;
             if (
               !task ||
@@ -479,24 +488,33 @@ export function remoteRoutes(container: Services) {
       }
     });
   });
-
   app.post("/commands", async (c) => {
     const { command, payload } = Envelope.parse(await c.req.json());
-    authorize(command, payload);
+    await authorize(command, payload);
     const scope = assertScope(command);
     switch (command.action) {
       case "snapshot.create": {
-        if ((payload as { clientRequestId?: string })?.clientRequestId !== command.requestId)
+        if (
+          (
+            payload as {
+              clientRequestId?: string;
+            }
+          )?.clientRequestId !== command.requestId
+        )
           throw new AppError(ErrorCode.BadRequest, "Snapshot request identity mismatch");
         return c.json(await transfers.capture(scope, payload), 201);
       }
       case "snapshot.read": {
-        const body = payload as { kind?: string; snapshotId?: string; transferId?: string };
+        const body = payload as {
+          kind?: string;
+          snapshotId?: string;
+          transferId?: string;
+        };
         if (body.kind === "chunk") return c.json(await transfers.chunk(scope, payload));
         if (body.kind === "transfer" && body.transferId)
-          return c.json(transfers.transfer(scope, body.transferId));
+          return c.json(await transfers.transfer(scope, body.transferId));
         if (body.kind === "describe" && body.snapshotId)
-          return c.json(transfers.describe(scope, body.snapshotId));
+          return c.json(await transfers.describe(scope, body.snapshotId));
         throw new AppError(ErrorCode.BadRequest, "Unknown snapshot query");
       }
       case "transfer.import": {
@@ -505,23 +523,39 @@ export function remoteRoutes(container: Services) {
             ErrorCode.Forbidden,
             "Transfers may only import into cloud workspaces",
           );
-        const kind = (payload as { kind?: string })?.kind;
+        const kind = (
+          payload as {
+            kind?: string;
+          }
+        )?.kind;
         if (kind === "begin") return c.json(await transfers.begin(scope, payload), 201);
         if (kind === "upload") return c.json(await transfers.upload(scope, payload));
         if (kind === "import") return c.json(await transfers.import(scope, payload));
         throw new AppError(ErrorCode.BadRequest, "Unknown transfer operation");
       }
       case "project.read": {
-        const project = container.projects.get(scope.projectId);
+        const project = await container.projects.get(scope.projectId);
         await runner.resolveWorkspace(scope);
         if (payload === undefined || payload === null || typeof payload !== "object")
           throw new AppError(ErrorCode.BadRequest, "Invalid project.read payload");
-        if ((payload as { kind?: string }).kind === "status")
+        if (
+          (
+            payload as {
+              kind?: string;
+            }
+          ).kind === "status"
+        )
           return c.json({
             project: { id: project.id, name: project.name },
             status: await container.projects.status(project.id),
           });
-        if ((payload as { kind?: string }).kind === "git-status") {
+        if (
+          (
+            payload as {
+              kind?: string;
+            }
+          ).kind === "git-status"
+        ) {
           const body = z
             .strictObject({ kind: z.literal("git-status"), clientRequestId: z.string() })
             .parse(payload);
@@ -532,29 +566,53 @@ export function remoteRoutes(container: Services) {
             throw new AppError(ErrorCode.ServiceUnavailable, "Repository status is unavailable");
           return c.json(await repositoryOperations.status(command, body));
         }
-        if ((payload as { kind?: string }).kind === "tasks")
+        if (
+          (
+            payload as {
+              kind?: string;
+            }
+          ).kind === "tasks"
+        )
           return c.json({
-            tasks: taskIdsForScope(container, scope)
-              .map((id) => container.tasks.get(id))
-              .filter(Boolean),
+            tasks: (
+              await Promise.all(
+                (await taskIdsForScope(container, scope)).map(
+                  async (id) => await container.tasks.get(id),
+                ),
+              )
+            ).filter(Boolean),
           });
-        if ((payload as { kind?: string }).kind === "approvals") {
-          const approvals = getTaskContextIds(container, scope)
-            .map((id) => ({
-              approval: container.approvals.get(id),
-              context: remoteApprovals.get(scope, id),
-            }))
-            .filter((row) => row.approval && row.context);
+        if (
+          (
+            payload as {
+              kind?: string;
+            }
+          ).kind === "approvals"
+        ) {
+          const approvals = (
+            await Promise.all(
+              (await getTaskContextIds(container, scope)).map(async (id) => ({
+                approval: await container.approvals.get(id),
+                context: await remoteApprovals.get(scope, id),
+              })),
+            )
+          ).filter((row) => row.approval && row.context);
           return c.json({
             approvals: approvals.map((row) => publicApproval(row.approval!, row.context)),
           });
         }
-        if ((payload as { kind?: string }).kind === "approval") {
+        if (
+          (
+            payload as {
+              kind?: string;
+            }
+          ).kind === "approval"
+        ) {
           const body = z
             .strictObject({ kind: z.literal("approval"), approvalId: RemoteId })
             .parse(payload);
-          const context = remoteApprovals.get(scope, body.approvalId);
-          const approval = context ? container.approvals.get(body.approvalId) : undefined;
+          const context = await remoteApprovals.get(scope, body.approvalId);
+          const approval = context ? await container.approvals.get(body.approvalId) : undefined;
           if (!context || !approval) throw new AppError(ErrorCode.NotFound, "Approval not found");
           return c.json(publicApproval(approval, context));
         }
@@ -570,29 +628,38 @@ export function remoteRoutes(container: Services) {
           const body = LookupPayload.parse(payload);
           return c.json({
             operation:
-              operations.getByRequest(scope, body.action as RemoteCapability, body.requestId) ??
-              null,
+              (await operations.getByRequest(
+                scope,
+                body.action as RemoteCapability,
+                body.requestId,
+              )) ?? null,
           });
         }
         const body = TaskReadPayload.parse(payload);
         if (!body.taskId) {
           return c.json({
-            tasks: taskIdsForScope(container, scope)
-              .map((id) => container.tasks.get(id))
-              .filter(Boolean),
+            tasks: (
+              await Promise.all(
+                (await taskIdsForScope(container, scope)).map(
+                  async (id) => await container.tasks.get(id),
+                ),
+              )
+            ).filter(Boolean),
           });
         }
-        const { task, context } = scopedTask(container, command, body.taskId);
-        const approvals = getTaskContextIds(container, scope)
-          .map((id) => ({
-            approval: container.approvals.get(id),
-            context: remoteApprovals.get(scope, id),
-          }))
-          .filter((item) => item.context?.taskId === task.id && item.approval);
+        const { task, context } = await scopedTask(container, command, body.taskId);
+        const approvals = (
+          await Promise.all(
+            (await getTaskContextIds(container, scope)).map(async (id) => ({
+              approval: await container.approvals.get(id),
+              context: await remoteApprovals.get(scope, id),
+            })),
+          )
+        ).filter((item) => item.context?.taskId === task.id && item.approval);
         return c.json({
           task,
           context,
-          runs: container.tasks.listRuns(task.id),
+          runs: await container.tasks.listRuns(task.id),
           approvals: approvals.map((row) => publicApproval(row.approval!, row.context)),
         });
       }
@@ -604,11 +671,11 @@ export function remoteRoutes(container: Services) {
           container.dbHandle,
           container.tasks,
           grants,
-          (s) => runner.resolveWorkspace(s),
+          async (s) => await runner.resolveWorkspace(s),
           async () => Boolean((await container.codex!.status()).available),
         );
         const accepted = await service.submit(command, input);
-        if (accepted.run.status === "queued") container.tasks.enqueue(accepted.run.id);
+        if (accepted.run.status === "queued") await container.tasks.enqueue(accepted.run.id);
         return c.json(
           {
             operation: accepted.operation,
@@ -623,16 +690,16 @@ export function remoteRoutes(container: Services) {
         const body = FollowupPayload.parse(payload);
         if (body.clientRequestId !== command.requestId)
           throw new AppError(ErrorCode.BadRequest, "Request ID mismatch");
-        const { task, context } = scopedTask(container, command, body.taskId);
+        const { task, context } = await scopedTask(container, command, body.taskId);
         const workspace = await runner.resolveWorkspace(scope);
-        authorize(command, payload);
-        const accepted = operations.accept(
+        await authorize(command, payload);
+        const accepted = await operations.acceptAsync(
           scope,
           "task.followup",
           body.clientRequestId,
           body,
-          (operationId) => {
-            const run = container.tasks.createRun({
+          async (operationId) => {
+            const run = await container.tasks.createRun({
               taskId: task.id,
               kind: "root",
               agent: task.agent ?? "orchestrator",
@@ -641,9 +708,9 @@ export function remoteRoutes(container: Services) {
               input: { userMessage: body.message, workspace },
             });
             const leaseExpiresAt = new Date(
-              Math.min(Date.now() + 45_000, Date.parse(grants.get(scope)!.expiresAt)),
+              Math.min(Date.now() + 45000, Date.parse((await grants.get(scope))!.expiresAt)),
             ).toISOString();
-            container.dbHandle.raw
+            await container.business
               .prepare(
                 `UPDATE remote_task_contexts SET session_id=?,recent_auth_at=?,lease_expires_at=?,connection_epoch=? WHERE task_id=? AND session_id=?`,
               )
@@ -655,25 +722,28 @@ export function remoteRoutes(container: Services) {
                 task.id,
                 context.actor.sessionId,
               );
-            for (const id of getTaskContextIds(container, scope)) {
-              const approval = container.approvals.get(id);
+            for (const id of await getTaskContextIds(container, scope)) {
+              const approval = await container.approvals.get(id);
               if (
-                remoteApprovals.get(scope, id)?.taskId === task.id &&
+                (await remoteApprovals.get(scope, id))?.taskId === task.id &&
                 approval?.status === "pending"
               )
-                container.approvals.resolve(id, false, "expired");
+                await container.approvals.resolve(id, false, "expired");
             }
             return { taskId: task.id, runId: run.id, followupOperationId: operationId };
           },
+          async (action) => await container.tasks.transaction(action),
         );
-        const result = accepted.operation.result as { runId?: string } | null;
-        const run = result?.runId ? container.tasks.getRun(result.runId) : undefined;
+        const result = accepted.operation.result as {
+          runId?: string;
+        } | null;
+        const run = result?.runId ? await container.tasks.getRun(result.runId) : undefined;
         if (!run) throw new AppError(ErrorCode.Conflict, "Followup run could not be recovered");
-        if (run.status === "queued") container.tasks.enqueue(run.id);
+        if (run.status === "queued") await container.tasks.enqueue(run.id);
         return c.json({
           operation: accepted.operation,
           replayed: accepted.replayed,
-          task: container.tasks.get(task.id),
+          task: await container.tasks.get(task.id),
           run,
         });
       }
@@ -681,19 +751,23 @@ export function remoteRoutes(container: Services) {
         const body = CancelPayload.parse(payload);
         if (body.clientRequestId !== command.requestId)
           throw new AppError(ErrorCode.BadRequest, "Request ID mismatch");
-        const { task } = scopedTask(container, command, body.taskId);
-        const accepted = operations.accept(
+        const { task } = await scopedTask(container, command, body.taskId);
+        const accepted = await operations.accept(
           scope,
           "task.cancel",
           body.clientRequestId,
           body,
           () => ({ taskId: task.id, runId: task.currentRunId }),
         );
-        const runId = (accepted.operation.result as { runId?: string } | null)?.runId;
+        const runId = (
+          accepted.operation.result as {
+            runId?: string;
+          } | null
+        )?.runId;
         const run = runId
           ? accepted.replayed
-            ? container.tasks.getRun(runId)
-            : container.tasks.requestCancel(runId)
+            ? await container.tasks.getRun(runId)
+            : await container.tasks.requestCancel(runId)
           : undefined;
         return c.json({
           operation: accepted.operation,
@@ -710,11 +784,11 @@ export function remoteRoutes(container: Services) {
         if (body.clientRequestId !== command.requestId)
           throw new AppError(ErrorCode.BadRequest, "Request ID mismatch");
         const { approvalId, ...decision } = body;
-        const approvalContext = remoteApprovals.get(scope, approvalId);
+        const approvalContext = await remoteApprovals.get(scope, approvalId);
         if (!approvalContext) throw new AppError(ErrorCode.NotFound, "Approval not found");
         if (approvalContext.taskId && approvalContext.decision === null)
-          runner.assertLease(scope, approvalContext.taskId, command.actor.sessionId);
-        const resolved = remoteApprovals.resolve(scope, approvalContext.approvalId, decision);
+          await runner.assertLease(scope, approvalContext.taskId, command.actor.sessionId);
+        const resolved = await remoteApprovals.resolve(scope, approvalContext.approvalId, decision);
         const approval = resolved.approval;
         if (
           approval.kind === "plan" &&
@@ -723,10 +797,10 @@ export function remoteRoutes(container: Services) {
           approvalContext.decision === null
         ) {
           await Promise.resolve();
-          const task = container.tasks.get(approvalContext.taskId)!;
+          const task = (await container.tasks.get(approvalContext.taskId))!;
           const workspace = await runner.resolveWorkspace(scope);
-          authorize(command, payload);
-          const run = container.tasks.createRun({
+          await authorize(command, payload);
+          const run = await container.tasks.createRun({
             taskId: task.id,
             kind: "root",
             agent: task.agent ?? "orchestrator",
@@ -737,12 +811,12 @@ export function remoteRoutes(container: Services) {
               workspace,
             },
           });
-          container.tasks.enqueue(run.id);
+          await container.tasks.enqueue(run.id);
         }
         if (approval.kind === "review" && approvalContext.taskId) {
-          const task = container.tasks.get(approvalContext.taskId);
+          const task = await container.tasks.get(approvalContext.taskId);
           if (task?.status === "awaiting_review")
-            container.tasks.transition(task.id, decision.approved ? "completed" : "failed");
+            await container.tasks.transition(task.id, decision.approved ? "completed" : "failed");
         }
         return c.json({ approval, context: resolved.context });
       }
@@ -762,6 +836,5 @@ export function remoteRoutes(container: Services) {
         throw new AppError(ErrorCode.Forbidden, "Capability is not available on the cloud runner");
     }
   });
-
   return app;
 }

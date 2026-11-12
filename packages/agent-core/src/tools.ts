@@ -67,7 +67,7 @@ export interface ToolContext {
    * 可选：记录一份任务产物（方案/变更/测试结果等），落库由调用方（TaskService）实现。
    * 只在方案关口等支持产物持久化的执行上下文中提供，例如 tasks.submit_plan 工具。
    */
-  recordArtifact?: (input: RecordArtifactInput) => RecordedArtifact;
+  recordArtifact?: (input: RecordArtifactInput) => RecordedArtifact | Promise<RecordedArtifact>;
   durableState?: DurableToolState;
 }
 

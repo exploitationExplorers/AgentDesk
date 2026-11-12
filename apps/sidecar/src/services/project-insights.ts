@@ -19,7 +19,6 @@ import type { TaskService } from "./tasks";
 import { ConversationStore } from "./conversation-store";
 import { publicSourceUrl, readPublicArticle } from "./insight-source";
 import { acquireConversation } from "./conversation-activity";
-
 const Analysis = z.object({
   summary: z.string().min(1).max(3000),
   suggestions: z.array(InsightSuggestion.omit({ id: true, taskId: true })).max(12),
@@ -52,7 +51,6 @@ const TEXT_EXTENSIONS = new Set([
   ".rs",
   ".java",
 ]);
-
 export async function projectEvidence(workspace: string, budget: number, signal: AbortSignal) {
   const root = await realpath(workspace);
   const queue = [{ path: root, depth: 0 }];
@@ -87,7 +85,10 @@ export async function projectEvidence(workspace: string, budget: number, signal:
         ? 1
         : 2;
   candidates.sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
-  const files: Array<{ path: string; content: string }> = [];
+  const files: Array<{
+    path: string;
+    content: string;
+  }> = [];
   for (const target of candidates) {
     signal.throwIfAborted();
     if (files.length >= 24 || budget <= 0) break;
@@ -102,16 +103,17 @@ export async function projectEvidence(workspace: string, budget: number, signal:
   }
   return files;
 }
-
 export class ProjectInsightService {
   private readonly records: Collection<ProjectInsight>;
   private readonly conversations: Collection<Conversation>;
   private readonly messages: ConversationStore;
   private readonly jobs = new Map<
     string,
-    { controller: AbortController; finished: Promise<void> }
+    {
+      controller: AbortController;
+      finished: Promise<void>;
+    }
   >();
-
   constructor(
     private readonly db: Db,
     private readonly projects: ProjectService,
@@ -133,20 +135,17 @@ export class ProjectInsightService {
         });
     }
   }
-
   list(projectId?: string): ProjectInsight[] {
     return this.records.list().filter((record) => !projectId || record.projectId === projectId);
   }
-
   get(id: string): ProjectInsight {
     const record = this.records.get(id);
     if (!record) throw new AppError(ErrorCode.NotFound, "资料分析不存在");
     return record;
   }
-
   async start(input: unknown, signal?: AbortSignal): Promise<ProjectInsight> {
     const request = ProjectInsightInput.parse(input);
-    const project = this.projects.get(request.projectId);
+    const project = await this.projects.get(request.projectId);
     if (request.sourceUrl) publicSourceUrl(request.sourceUrl);
     const sourceText = request.sourceText || (await this.readSource(request.sourceUrl!, signal));
     if (this.jobs.size >= 2)
@@ -164,7 +163,7 @@ export class ProjectInsightService {
       createdAt: nowIso(),
       updatedAt: nowIso(),
     });
-    const task = this.tasks.create({
+    const task = await this.tasks.create({
       title: conversation.title,
       goal: `只读分析资料对 ${project.name} 的启示`,
       agent: "research",
@@ -172,7 +171,7 @@ export class ProjectInsightService {
       requiresPlanApproval: false,
       purpose: "reference_analysis",
     });
-    const run = this.tasks.createRun({
+    const run = await this.tasks.createRun({
       taskId: task.id,
       kind: "root",
       agent: "research",
@@ -180,7 +179,7 @@ export class ProjectInsightService {
       input: { userMessage: task.goal, workspace: project.path },
     });
     const controller = new AbortController();
-    this.tasks.startRunDirect(run.id, controller);
+    await this.tasks.startRunDirect(run.id, controller);
     const record = this.records.put({
       id,
       projectId: project.id,
@@ -199,7 +198,7 @@ export class ProjectInsightService {
       createdAt: nowIso(),
       updatedAt: nowIso(),
     });
-    this.messages.insertMessage({
+    await this.messages.insertMessage({
       id: newId(),
       conversationId: conversation.id,
       role: "user",
@@ -218,7 +217,6 @@ export class ProjectInsightService {
     this.jobs.set(id, { controller, finished });
     return record;
   }
-
   private async analyze(
     record: ProjectInsight,
     conversationId: string,
@@ -229,14 +227,14 @@ export class ProjectInsightService {
       const contextWindow = Math.min(...models.map((model) => model.model.contextWindow));
       const files = await projectEvidence(
         record.workspace,
-        Math.min(24_000, Math.floor(contextWindow * 0.3)),
+        Math.min(24000, Math.floor(contextWindow * 0.3)),
         signal,
       );
       const sourceExcerpt = record.sourceText.slice(
         0,
-        Math.min(20_000, Math.floor(contextWindow * 0.25)),
+        Math.min(20000, Math.floor(contextWindow * 0.25)),
       );
-      this.tasks.appendEvent({
+      await this.tasks.appendEvent({
         taskId: record.analysisTaskId,
         runId: record.analysisRunId,
         event: {
@@ -251,8 +249,8 @@ export class ProjectInsightService {
         maxTokens: Math.min(4000, models[0]!.model.maxTokens),
         signal,
         mask: this.maskFactory(),
-        onUsage: (usage, model, estimatedInputTokens) =>
-          this.tasks.appendEvent({
+        onUsage: async (usage, model, estimatedInputTokens) =>
+          await this.tasks.appendEvent({
             taskId: record.analysisTaskId,
             runId: record.analysisRunId,
             event: {
@@ -302,7 +300,7 @@ export class ProjectInsightService {
         updatedAt: nowIso(),
       };
       const markdown = this.reportMarkdown(ready);
-      this.tasks.recordArtifact({
+      await this.tasks.recordArtifact({
         taskId: record.analysisTaskId,
         runId: record.analysisRunId,
         kind: "summary",
@@ -310,7 +308,7 @@ export class ProjectInsightService {
         content: markdown,
         metadata: { insightId: record.id, sourceUrl: record.sourceUrl },
       });
-      this.messages.insertMessage({
+      await this.messages.insertMessage({
         id: newId(),
         conversationId,
         role: "assistant",
@@ -320,12 +318,12 @@ export class ProjectInsightService {
         createdAt: nowIso(),
       });
       this.records.put(ready);
-      this.tasks.finalizeRunDirect(record.analysisRunId, {
+      await this.tasks.finalizeRunDirect(record.analysisRunId, {
         status: "succeeded",
         resultText: markdown,
         toolCalls: [],
       });
-      this.tasks.appendEvent({
+      await this.tasks.appendEvent({
         taskId: record.analysisTaskId,
         runId: record.analysisRunId,
         event: { type: "run_ended", runId: record.analysisRunId, status: "succeeded" },
@@ -334,19 +332,18 @@ export class ProjectInsightService {
       const message = signal.aborted ? "分析已取消，可重新提交资料" : errorMessage(error);
       this.records.put({ ...record, status: "failed", error: message, updatedAt: nowIso() });
       const status = signal.aborted ? "cancelled" : "failed";
-      this.tasks.finalizeRunDirect(record.analysisRunId, { status, resultError: message });
-      this.tasks.appendEvent({
+      await this.tasks.finalizeRunDirect(record.analysisRunId, { status, resultError: message });
+      await this.tasks.appendEvent({
         taskId: record.analysisTaskId,
         runId: record.analysisRunId,
         event: { type: "run_ended", runId: record.analysisRunId, status, error: message },
       });
     }
   }
-
-  createTasks(id: string, suggestionIds: string[]): Task[] {
+  async createTasks(id: string, suggestionIds: string[]): Promise<Task[]> {
     const record = this.get(id);
     if (record.status !== "ready") throw new AppError(ErrorCode.Conflict, "请等待分析完成");
-    const project = this.projects.get(record.projectId);
+    const project = await this.projects.get(record.projectId);
     const chosen = [...new Set(suggestionIds)].map((id) => {
       const suggestion = record.suggestions.find((item) => item.id === id);
       if (!suggestion) throw new AppError(ErrorCode.BadRequest, "建议不属于本次分析");
@@ -354,10 +351,10 @@ export class ProjectInsightService {
     });
     const created: Task[] = [];
     const queued: string[] = [];
-    this.db.transaction(() => {
+    await this.tasks.transaction(async () => {
       for (const suggestion of chosen) {
         if (suggestion.taskId) {
-          const existing = this.tasks.get(suggestion.taskId);
+          const existing = await this.tasks.get(suggestion.taskId);
           if (existing) {
             created.push(existing);
             continue;
@@ -371,14 +368,14 @@ export class ProjectInsightService {
           createdAt: nowIso(),
           updatedAt: nowIso(),
         });
-        const task = this.tasks.create({
+        const task = await this.tasks.create({
           title: suggestion.title,
           goal,
           agent: "code",
           conversationId: conversation.id,
           requiresPlanApproval: false,
         });
-        const run = this.tasks.createRun({
+        const run = await this.tasks.createRun({
           taskId: task.id,
           kind: "root",
           agent: "code",
@@ -388,15 +385,14 @@ export class ProjectInsightService {
         });
         suggestion.taskId = task.id;
         this.records.put({ ...record, updatedAt: nowIso() });
-        this.tasks.transition(task.id, "queued");
+        await this.tasks.transition(task.id, "queued");
         queued.push(run.id);
-        created.push(this.tasks.get(task.id)!);
+        created.push((await this.tasks.get(task.id))!);
       }
     });
-    for (const runId of queued) this.tasks.enqueue(runId);
+    for (const runId of queued) await this.tasks.enqueue(runId);
     return created;
   }
-
   private reportMarkdown(record: ProjectInsight): string {
     return (
       `# ${record.title}\n\n来源：${record.sourceUrl ?? "用户粘贴资料"}\n\n${record.summary}\n\n本次只读检查了 ${record.reviewedFiles.length} 个文件片段，结论以这些片段为依据。\n\n` +
@@ -408,7 +404,6 @@ export class ProjectInsightService {
         .join("\n\n")
     );
   }
-
   async dispose(): Promise<void> {
     for (const job of this.jobs.values()) job.controller.abort();
     await Promise.allSettled([...this.jobs.values()].map((job) => job.finished));

@@ -15,6 +15,11 @@ import { RepositorySource } from "./services/repo-reading/source";
 import { RepoReadingService } from "./services/repo-reading/service";
 import type { SidecarConfig } from "./config";
 import { openDatabase, type DbHandle } from "./db/client";
+import type { BusinessDatabase } from "./db/business-database";
+import type { TaskPersistence } from "./services/storage/async-ports";
+import type { MessageRepository } from "./services/conversation-store";
+import type { RetentionStore } from "./services/storage/ports";
+import { SqliteTaskPersistence } from "./services/storage/sqlite-task-persistence";
 import { EventHub } from "./events";
 import { SecretStore } from "./secrets";
 import { ApprovalService } from "./services/approvals";
@@ -59,8 +64,8 @@ import { WorkspaceTransferService } from "./services/workspace-transfer/service"
 import type { RunExecutor } from "./services/tasks";
 import { WechatReportService } from "./services/wechat-report";
 import { WorkflowService } from "./services/workflows";
-
 export interface Container {
+  business: BusinessDatabase;
   config: SidecarConfig;
   dbHandle: DbHandle;
   hub: EventHub;
@@ -106,23 +111,40 @@ export interface Container {
   beginShutdown: () => void;
   dispose: () => Promise<void>;
 }
-
 export async function createContainer(
   config: SidecarConfig,
   options: {
+    persistence?: TaskPersistence;
+    messages?: MessageRepository;
+    retention?: RetentionStore;
+    closeBusiness?: () => Promise<void>;
     inMemory?: boolean;
     autoloopFetch?: typeof fetch;
-    cloud?: { hostId: string; workspaceRoot: string; taskTimeoutMs: number };
-    office?: { hostId: string; projects: Record<string, string>; taskTimeoutMs: number };
+    cloud?: {
+      hostId: string;
+      workspaceRoot: string;
+      taskTimeoutMs: number;
+    };
+    office?: {
+      hostId: string;
+      projects: Record<string, string>;
+      taskTimeoutMs: number;
+    };
   } = {},
 ): Promise<Container> {
   const dbHandle = openDatabase(options.inMemory ? ":memory:" : config.dataDir);
   const db = dbHandle.db;
+  const persistence = options.persistence ?? new SqliteTaskPersistence(dbHandle);
+  const business = persistence.business;
   const hub = new EventHub();
   const shutdown = new AbortController();
   const secrets = new SecretStore(db, config.masterKey, config.dataDir);
   const settings = new SettingsService(db);
-  const approvals = new ApprovalService(db, hub);
+  const approvals = new ApprovalService(db, hub, {
+    store: persistence.documents("approvals"),
+    business,
+  });
+  await approvals.ready;
   const permissionRules = new PermissionRuleService(db);
   const providers = new ProviderService(db, secrets, settings);
   const autoApprove = options.cloud
@@ -136,18 +158,21 @@ export async function createContainer(
     maskFactory,
     shutdownSignal: shutdown.signal,
   });
-  const projects = new ProjectService(db, secrets, settings, providers, config.dataDir, hub);
+  const projects = new ProjectService(db, secrets, settings, providers, config.dataDir, hub, {
+    projects: persistence.documents("projects"),
+    accounts: persistence.documents("gitAccounts"),
+  });
   const projectInstructions = new ProjectInstructionService(projects);
-  const lazyTasks: { current?: TaskService } = {};
+  const lazyTasks: {
+    current?: TaskService;
+  } = {};
   const remoteOptions =
     options.cloud ??
     (options.office ? { ...options.office, workspaceRoot: config.dataDir } : undefined);
-  const remoteGrants = remoteOptions
-    ? new RemoteGrantStore(dbHandle.raw, remoteOptions.hostId)
-    : null;
+  const remoteGrants = remoteOptions ? new RemoteGrantStore(business, remoteOptions.hostId) : null;
   const cloudRunner = remoteOptions
     ? new CloudRunnerService(
-        dbHandle.raw,
+        business,
         remoteOptions.hostId,
         remoteOptions.workspaceRoot,
         remoteOptions.taskTimeoutMs,
@@ -159,21 +184,21 @@ export async function createContainer(
         options.office?.projects,
       )
     : null;
-  const remoteApprovals = remoteOptions ? new RemoteApprovalService(dbHandle.raw, approvals) : null;
+  const remoteApprovals = remoteOptions ? new RemoteApprovalService(business, approvals) : null;
   const workspaceTransfers = cloudRunner
     ? new WorkspaceTransferService(
-        dbHandle.raw,
+        business,
         join(config.dataDir, "workspace-transfer"),
-        (scope) => cloudRunner.resolveWorkspace(scope),
+        async (scope) => await cloudRunner.resolveWorkspace(scope),
         cloudRunner.locks,
         projects,
         remoteOptions!.workspaceRoot,
       )
     : null;
-  workspaceTransfers?.startCleanup();
+  await workspaceTransfers?.startCleanup();
   const codex = cloudRunner
     ? new CodexExecutorService(
-        dbHandle.raw,
+        business,
         config.dataDir,
         cloudRunner,
         approvals,
@@ -182,7 +207,7 @@ export async function createContainer(
     : null;
   const cloudRepositorySetup = options.cloud
     ? new CloudRepositorySetup(
-        dbHandle.raw,
+        business,
         secrets,
         projects,
         config.dataDir,
@@ -192,10 +217,10 @@ export async function createContainer(
   const repositoryOperations = cloudRunner
     ? new RepositoryOperationService({
         grants: remoteGrants!,
-        operations: new RemoteOperationStore(dbHandle.raw),
+        operations: new RemoteOperationStore(business),
         approvals,
         remoteApprovals: remoteApprovals!,
-        resolveWorkspace: (scope) => cloudRunner.resolveWorkspace(scope),
+        resolveWorkspace: async (scope) => await cloudRunner.resolveWorkspace(scope),
         locks: cloudRunner.locks,
         gitConfig: (url) => cloudRepositorySetup?.gitConfig(url) ?? {},
       })
@@ -223,7 +248,9 @@ export async function createContainer(
     config.dataDir,
     browserManager,
   );
-  const storageRef: { current?: StorageService } = {};
+  const storageRef: {
+    current?: StorageService;
+  } = {};
   const browser = new BrowserService(browserManager, hub, config.dataDir, async () => {
     try {
       await storageRef.current?.assertWritable();
@@ -232,7 +259,6 @@ export async function createContainer(
       return false;
     }
   });
-
   const skills = new SkillRegistry();
   await skills.loadFrom(config.skillDirs, {
     exclude: config.wechatReportEnabled ? [] : ["wechat-daily-report"],
@@ -240,9 +266,10 @@ export async function createContainer(
   const wechat = config.wechatReportEnabled
     ? new WechatReportService(skills, providers, config.dataDir)
     : null;
-
   // 工具注册表与工作流服务互相引用：工作流可调用工具，工具也可触发工作流
-  const lazy: { workflows?: WorkflowService } = {};
+  const lazy: {
+    workflows?: WorkflowService;
+  } = {};
   const registry = buildToolRegistry({
     projects,
     feed,
@@ -284,12 +311,16 @@ export async function createContainer(
     deploy,
   });
   lazy.workflows = workflows;
-
   // TaskService 的真实 executor 需要引用 TaskService 自身（委派产生子 Run、写 run_events），
   // 而 TaskService 的构造又需要先拿到 executor：用 lazyTasks 打破这个循环依赖，
   // executor 内部让出一次微任务后才会用到它，构造完成时机已经晚于下面的赋值。
-  const conversationStore = new ConversationStore(db);
-  const context = new ConversationContextService(db, providers, { maskFactory });
+  const conversationStore = new ConversationStore(db, options.messages);
+  const context = new ConversationContextService(db, providers, {
+    maskFactory,
+    business,
+    store: conversationStore,
+    summaries: persistence.documents("conversationContexts"),
+  });
   const baseExecutor = createOrchestratorExecutor({
     getTasks: () => lazyTasks.current!,
     orchestrator,
@@ -324,15 +355,15 @@ export async function createContainer(
         maskFactory,
         cloudPolicy: {
           allowedTools: remoteRegistry!.list().map((tool) => tool.name),
-          approvalCreated: (approval, task) => cloudRunner.bindApproval(approval, task),
-          requiresPlan: (task) => cloudRunner.requiresPlan(task),
+          approvalCreated: async (approval, task) => await cloudRunner.bindApproval(approval, task),
+          requiresPlan: async (task) => await cloudRunner.requiresPlan(task),
         },
       })
     : undefined;
-  const executor: RunExecutor = (run, task, signal) => {
-    if (cloudRunner && readRemoteTask(dbHandle.raw, task.id))
-      return cloudRunner.withRun(run, task, signal, (executionSignal) =>
-        cloudRunner.context(task.id).executor === "codex"
+  const executor: RunExecutor = async (run, task, signal) => {
+    if (cloudRunner && (await readRemoteTask(business, task.id)))
+      return await cloudRunner.withRun(run, task, signal, async (executionSignal) =>
+        (await cloudRunner.context(task.id)).executor === "codex"
           ? codex!.execute(run, task, executionSignal)
           : remoteExecutor!(run, task, executionSignal),
       );
@@ -340,24 +371,32 @@ export async function createContainer(
     return baseExecutor(run, task, signal);
   };
   const tasks = new TaskService(db, hub, {
-    beforeRun: (run) =>
-      storageRef.current?.assertWritable(run.input.workspace) ?? Promise.resolve(),
+    persistence,
+    beforeRun: async (run) =>
+      (await storageRef.current?.assertWritable(run.input.workspace)) ?? Promise.resolve(),
     executor,
     artifactRoot,
     maxConcurrentRuns: cloudRunner ? 1 : undefined,
-    authorizeRemoteRun: cloudRunner ? (run) => cloudRunner.authorizeRun(run) : undefined,
+    authorizeRemoteRun: cloudRunner
+      ? async (run) => await cloudRunner.authorizeRun(run)
+      : undefined,
   });
   const storageService = new StorageService(
     db,
     config.dataDir,
     tasks,
-    new SqliteRetentionStore(dbHandle.raw),
+    options.retention ?? new SqliteRetentionStore(dbHandle.raw),
     () => browser.list().length > 0,
   );
   storageRef.current = storageService;
-  tasks.setStorageAdmission((workspace) => storageService.assertWritable(workspace));
+  tasks.setStorageAdmission(async (workspace) => await storageService.assertWritable(workspace));
   storageService.start();
   lazyTasks.current = tasks;
+  await tasks.ready;
+  await cloudRunner?.ready;
+  await cloudRepositorySetup?.ready;
+  await workspaceTransfers?.ready;
+  await codex?.ready;
   const autoloop = new AutoloopService({
     store: new AutoloopStore(db),
     secrets,
@@ -387,8 +426,8 @@ export async function createContainer(
   if (!remoteOptions) chat.setEvolutionService(evolution);
   const insights = new ProjectInsightService(db, projects, tasks, providers, maskFactory);
   const scheduler = new Scheduler(db, settings, feed, workflows);
-
   return {
+    business,
     config,
     dbHandle,
     hub,
@@ -431,7 +470,7 @@ export async function createContainer(
     cloudRepositorySetup,
     workspaceTransfers,
     shutdownSignal: shutdown.signal,
-    beginShutdown: () => {
+    beginShutdown: async () => {
       shutdown.abort();
       cloudRepositorySetup?.stop();
       void tasks.shutdown();
@@ -441,7 +480,7 @@ export async function createContainer(
       cloudRepositorySetup?.stop();
       scheduler.stop();
       await storageService.dispose();
-      const draining = tasks.shutdown();
+      const draining = await tasks.shutdown();
       await cloudRepositorySetup?.dispose();
       await codex?.dispose();
       await autoloop.dispose();
@@ -453,6 +492,7 @@ export async function createContainer(
       await workspaceTransfers?.dispose();
       await browserManager.closeAll();
       dbHandle.close();
+      await options.closeBusiness?.();
     },
   };
 }

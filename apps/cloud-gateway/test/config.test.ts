@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { loadGatewayConfig, parseTrustedProxies } from "../src/config";
+import { loadGatewayConfig, loadDatabaseConfig, parseTrustedProxies } from "../src/config";
 
 let directory: string;
 let env: NodeJS.ProcessEnv;
@@ -27,6 +27,19 @@ beforeEach(() => {
     SMTP_PASSWORD_FILE: key,
     SMTP_FROM: "owner@example.test",
   };
+});
+
+it("数据库配置错误拒绝启动，不能静默回退到 SQLite", () => {
+  const file = join(directory, "database-url");
+  for (const value of ["", "sqlite:/tmp/db", "https://example.test", "postgres://host/"]) {
+    writeFileSync(file, value);
+    expect(() => loadDatabaseConfig({ DATABASE_URL_FILE: file })).toThrow(/DATABASE_URL_FILE/);
+  }
+  writeFileSync(file, "postgresql://test:secret@postgres:5432/agentdesk");
+  expect(loadDatabaseConfig({ DATABASE_URL_FILE: file }).databaseUrl).toBeTruthy();
+  expect(() =>
+    loadDatabaseConfig({ DATABASE_URL_FILE: file, DATABASE_SCHEMA: "gateway;DROP TABLE" }),
+  ).toThrow(/DATABASE_SCHEMA/);
 });
 afterEach(() => rmSync(directory, { recursive: true, force: true }));
 

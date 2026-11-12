@@ -18,7 +18,6 @@ import { createContainer, type Container } from "../src/container";
 import { loadConfig } from "../src/config";
 import { runs } from "../src/db/schema";
 import { createApp } from "../src/http/app";
-
 let container: Container;
 let faux: FauxProviderRegistration;
 let model: ResolvedModel["model"];
@@ -36,28 +35,26 @@ beforeAll(async () => {
   project = mkdtempSync(join(tmpdir(), "agentdesk-budget-project-"));
   execFileSync("git", ["init", project], { windowsHide: true, stdio: "ignore" });
   await container.projects.add(project);
-  faux = registerFauxProvider({ tokensPerSecond: 100_000 });
-  model = { ...faux.getModel(), contextWindow: 64_000, maxTokens: 1024 };
+  faux = registerFauxProvider({ tokensPerSecond: 100000 });
+  model = { ...faux.getModel(), contextWindow: 64000, maxTokens: 1024 };
   container.providers.resolve = async () => [
     { providerId: "faux", providerName: "faux", model, apiKey: "x" },
   ];
 });
 afterEach(() => {
   vi.restoreAllMocks();
-  model.contextWindow = 64_000;
+  model.contextWindow = 64000;
 });
 afterAll(async () => {
   faux.unregister();
   await container.dispose();
 });
-
 const request = (path: string, body: unknown) =>
   createApp(container).request(`/api${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-AgentDesk-Token": "test-token" },
     body: JSON.stringify(body),
   });
-
 for (const source of ["task", "chat"] as const) {
   it(`${source} 写入成功后触发真实预算中断，失败记录与续跑上下文保留已完成操作`, async () => {
     const path = `budget-${source}.txt`;
@@ -84,13 +81,19 @@ for (const source of ["task", "chat"] as const) {
     );
     const stream = source === "chat" ? response.text() : undefined;
     const taskResponse = source === "task" ? ((await response.json()) as Task) : undefined;
-    await vi.waitFor(() => expect(container.approvals.list("pending").length).toBeGreaterThan(0));
-    await request(`/approvals/${container.approvals.list("pending")[0]!.id}`, { approved: true });
+    await vi.waitFor(async () =>
+      expect((await container.approvals.list("pending")).length).toBeGreaterThan(0),
+    );
+    await request(`/approvals/${(await container.approvals.list("pending"))[0]!.id}`, {
+      approved: true,
+    });
     if (stream) await stream;
     const task =
-      taskResponse ?? container.tasks.list().find((item) => item.goal === `创建 ${path}`)!;
-    await vi.waitFor(() => expect(container.tasks.get(task.id)?.status).toBe("failed"));
-    const first = container.tasks.listRuns(task.id)[0]!;
+      taskResponse ?? (await container.tasks.list()).find((item) => item.goal === `创建 ${path}`)!;
+    await vi.waitFor(async () =>
+      expect((await container.tasks.get(task.id))?.status).toBe("failed"),
+    );
+    const first = (await container.tasks.listRuns(task.id))[0]!;
     expect(first.resultError).toContain("输入预算");
     expect(first.toolCalls).toEqual([
       expect.objectContaining({
@@ -100,13 +103,12 @@ for (const source of ["task", "chat"] as const) {
       }),
     ]);
     expect((first.toolCalls as ToolCallRecord[])[0]?.result).toBeDefined();
-    const failed = container.chat.messages(task.conversationId).at(-1)!;
+    const failed = (await container.chat.messages(task.conversationId)).at(-1)!;
     expect(failed.toolCalls).toEqual(first.toolCalls);
     expect(failed.content).toContain("成果会保留");
     expect(failed.toolCalls[0]?.args).toMatchObject({ path, content });
     expect(readFileSync(join(project, path), "utf8")).toBe(content);
-
-    model.contextWindow = 64_000;
+    model.contextWindow = 64000;
     let captured = "";
     faux.setResponses([
       (context: Context) => {
@@ -127,13 +129,14 @@ for (const source of ["task", "chat"] as const) {
         message: "继续验证",
       });
       expect(resumed.status).toBe(201);
-      await vi.waitFor(() =>
+      await vi.waitFor(async () =>
         expect(
-          container.tasks.get(task.id)?.status,
+          (await container.tasks.get(task.id))?.status,
           JSON.stringify(
-            container.tasks
-              .listRuns(task.id)
-              .map(({ status, resultError }) => ({ status, resultError })),
+            (await container.tasks.listRuns(task.id)).map(({ status, resultError }) => ({
+              status,
+              resultError,
+            })),
           ),
         ).toBe("awaiting_review"),
       );
@@ -144,7 +147,7 @@ for (const source of ["task", "chat"] as const) {
         agent: "code",
       });
       await resumed.text();
-      expect(container.tasks.get(task.id)?.status).toBe("awaiting_review");
+      expect((await container.tasks.get(task.id))?.status).toBe("awaiting_review");
     }
     expect(captured).toContain(path);
     expect(captured).toContain("fs.write");

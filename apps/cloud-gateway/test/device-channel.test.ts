@@ -17,15 +17,13 @@ import { startConnector } from "../../cli/src/connect/channel";
 import { signDevice } from "../../cli/src/connect/protocol";
 import { createContainer } from "../../sidecar/src/container";
 import { createCloudApp } from "../../sidecar/src/cloud-app";
-
 async function until(predicate: () => boolean) {
-  const deadline = Date.now() + 15_000;
+  const deadline = Date.now() + 15000;
   while (!predicate()) {
     if (Date.now() > deadline) throw new Error("Device channel timed out");
     await new Promise((r) => setTimeout(r, 20));
   }
 }
-
 it("uses the real socket and local runner for selected projects, streams and retries; rejects stale epochs and revoked devices", async () => {
   const root = mkdtempSync(join(tmpdir(), "agentdesk-device-test-"));
   const workspace = join(root, "project");
@@ -50,7 +48,7 @@ it("uses the real socket and local runner for selected projects, streams and ret
   const actor = { userId: "owner", sessionId: "session", recentAuthAt: new Date().toISOString() };
   const keys = generateKeyPairSync("ed25519");
   const secret = keys.privateKey.export({ format: "der", type: "pkcs8" }).toString("base64");
-  const pair = store.createPairing(actor);
+  const pair = await store.createPairing(actor);
   const identity = DeviceIdentity.parse({
     name: "Office",
     platform: "win32",
@@ -72,14 +70,14 @@ it("uses the real socket and local runner for selected projects, streams and ret
     allowedOrigins: [],
   };
   // 宿主 ID 可在配对之前分配；本测试将完成配对后创建唯一的本地容器。
-  const claim = store.claim(
+  const claim = await store.claim(
     pair.code,
     identity,
     signDevice(secret, devicePairProof(config.publicOrigin, pair.code, identity)),
   );
   const container = await createContainer(sidecarConfig, {
     inMemory: true,
-    office: { hostId: claim.hostId, projects: paths, taskTimeoutMs: 60_000 },
+    office: { hostId: claim.hostId, projects: paths, taskTimeoutMs: 60000 },
   });
   const project = await container.projects.add(workspace);
   paths[project.id] = realpathSync(workspace);
@@ -89,8 +87,8 @@ it("uses the real socket and local runner for selected projects, streams and ret
     JSON.stringify(identity),
     claim.hostId,
   );
-  store.confirmPairing(actor, pair.id, claim.fingerprint, [project.id]);
-  store.localConfirm(claim.hostId);
+  await store.confirmPairing(actor, pair.id, claim.fingerprint, [project.id]);
+  await store.localConfirm(claim.hostId);
   const credentials = {
     schemaVersion: 1 as const,
     server: config.publicOrigin,
@@ -110,13 +108,17 @@ it("uses the real socket and local runner for selected projects, streams and ret
     remoteToken: config.remoteToken,
     ownerUserId: actor.userId,
     allowedProviderHosts: [],
-    taskTimeoutMs: 60_000,
+    taskTimeoutMs: 60000,
   });
   const server = createServer((_req, res) => res.end());
   const closeChannel = attachDeviceChannel(server, config, relay);
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
-  const port = (server.address() as { port: number }).port;
+  const port = (
+    server.address() as {
+      port: number;
+    }
+  ).port;
   let connector: ReturnType<typeof startConnector> | undefined;
   const connect = () =>
     startConnector(
@@ -129,15 +131,15 @@ it("uses the real socket and local runner for selected projects, streams and ret
       },
       {
         authorize: async () => {
-          const challenge = store.challenge(claim.hostId, "connect");
-          store.authenticate(
+          const challenge = await store.challenge(claim.hostId, "connect");
+          await store.authenticate(
             challenge.id,
             signDevice(
               secret,
               deviceProof(config.publicOrigin, claim.hostId, "connect", challenge.nonce),
             ),
           );
-          return store.token(claim.hostId);
+          return await store.token(claim.hostId);
         },
         open: (token) =>
           new WebSocket(`ws://127.0.0.1:${port}/device-channel`, ["agentdesk-v1", token], {
@@ -150,7 +152,11 @@ it("uses the real socket and local runner for selected projects, streams and ret
     await until(() => connector!.status().state === "online");
     const client = new HostRunnerClient(config, relay),
       office = client.forHost(claim.hostId);
-    const projects = await office.json<{ projects: { id: string }[] }>("/host/projects");
+    const projects = await office.json<{
+      projects: {
+        id: string;
+      }[];
+    }>("/host/projects");
     expect(projects.projects.map((p) => p.id)).toEqual([project.id]);
     expect((await office.json("/health")).mode).toBe("office");
     const scope: RemoteScope = {
@@ -169,21 +175,24 @@ it("uses the real socket and local runner for selected projects, streams and ret
       workspaceId: project.id,
       requiresPlanApproval: true,
     };
-    const created = await client.execute<{ task: { id: string } }>(
-      scope,
-      actor,
-      "task.create",
-      taskInput,
-      taskInput.clientRequestId,
-    );
-    const replayed = await client.execute<{ task: { id: string } }>(
-      scope,
-      actor,
-      "task.create",
-      taskInput,
-      taskInput.clientRequestId,
-    );
+    const created = await client.execute<{
+      task: {
+        id: string;
+      };
+    }>(scope, actor, "task.create", taskInput, taskInput.clientRequestId);
+    const replayed = await client.execute<{
+      task: {
+        id: string;
+      };
+    }>(scope, actor, "task.create", taskInput, taskInput.clientRequestId);
     expect(replayed.task.id).toBe(created.task.id);
+    // 事件回放使用确定的持久记录，不依赖测试机是否配置了 native-bot 的模型凭据。
+    const runId = (await container.tasks.get(created.task.id))!.currentRunId!;
+    const recorded = await container.tasks.appendEvent({
+      taskId: created.task.id,
+      runId,
+      event: { type: "text_delta", agent: "code", delta: "device channel replay" },
+    });
     const streamPayload = { taskId: created.task.id, after: 0 };
     const response = await office.request(
       `/tasks/${created.task.id}/events`,
@@ -193,6 +202,7 @@ it("uses the real socket and local runner for selected projects, streams and ret
     const reader = response.body!.getReader();
     const first = await reader.read();
     expect(new TextDecoder().decode(first.value)).toMatch(/data:|event:|:/);
+    expect(new TextDecoder().decode(first.value)).toContain(String(recorded.seq));
     await reader.cancel();
     // 非白名单请求在网关处被拒绝，不会抵达本机完整 API。
     await expect(office.json("/api/cli/shutdown", {})).rejects.toThrow();
@@ -217,7 +227,7 @@ it("uses the real socket and local runner for selected projects, streams and ret
     await expect(
       office.json("/commands", { command: oldCommand, payload: { kind: "status" } }),
     ).rejects.toThrow();
-    store.revoke(claim.hostId, actor);
+    await store.revoke(claim.hostId, actor);
     relay.disconnect(claim.hostId);
     await expect(
       client.execute(scope, actor, "project.read", { kind: "status" }),
@@ -230,4 +240,4 @@ it("uses the real socket and local runner for selected projects, streams and ret
     db.close();
     rmSync(root, { recursive: true, force: true });
   }
-}, 30_000);
+}, 30000);

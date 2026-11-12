@@ -11,6 +11,7 @@ import {
   GitBranch,
   GitCommitHorizontal,
   GitCompareArrows,
+  HardDrive,
   Laptop,
   LogOut,
   Plus,
@@ -49,6 +50,7 @@ import { Back, Button, Empty, Notice, Refresh, Status } from "./components";
 import { TransfersView } from "./TransfersView";
 import { ConnectorsView } from "./ConnectorsView";
 import { ExecutorsView } from "./ExecutorsView";
+import { StorageView } from "./StorageView";
 import { RepositorySetupView } from "./RepositorySetupView";
 import { GlassNavigation } from "./GlassNavigation";
 import { displayTime, useCloudQuery, useOnline } from "./hooks";
@@ -65,6 +67,7 @@ type Page =
   | "providers"
   | "connectors"
   | "executors"
+  | "storage"
   | "repository-setup"
   | "transfers";
 type Collection<T> = { [key: string]: unknown } & {
@@ -362,6 +365,7 @@ export function MobileApp() {
       : page === "approvals"
         ? 2
         : page === "settings" ||
+            page === "storage" ||
             page === "providers" ||
             page === "connectors" ||
             page === "transfers"
@@ -380,6 +384,7 @@ export function MobileApp() {
       providers: "模型配置",
       connectors: "电脑连接",
       executors: "Codex 授权",
+      storage: "云宿主存储",
       "repository-setup": "添加仓库",
       transfers: "取回改动",
     } satisfies Record<Page, string>
@@ -580,6 +585,16 @@ export function MobileApp() {
           onBack={() => navigate("settings")}
         />
       );
+    if (page === "storage")
+      return (
+        <StorageView
+          key={actualHostId}
+          api={api}
+          host={selectedHost}
+          isOwner={session.user.role === "owner"}
+          onBack={() => navigate("settings")}
+        />
+      );
     if (page === "connectors")
       return (
         <ConnectorsView
@@ -634,6 +649,7 @@ export function MobileApp() {
         onProviders={() => navigate("providers")}
         onConnectors={() => navigate("connectors")}
         onExecutors={() => navigate("executors")}
+        onStorage={() => navigate("storage")}
         onTransfers={() => navigate("transfers")}
         onLogout={logout}
       />
@@ -1991,6 +2007,7 @@ function SettingsView({
   onProviders,
   onConnectors,
   onExecutors,
+  onStorage,
   onTransfers,
   onLogout,
 }: {
@@ -2001,6 +2018,7 @@ function SettingsView({
   onProviders: () => void;
   onConnectors: () => void;
   onExecutors: () => void;
+  onStorage: () => void;
   onTransfers: () => void;
   onLogout: () => void;
 }) {
@@ -2011,7 +2029,10 @@ function SettingsView({
         <span className="m-account-avatar">{session.user.email[0]?.toUpperCase() ?? "A"}</span>
         <div>
           <strong>{session.user.email}</strong>
-          <small>Owner 账户 · 会话到期 {displayTime(session.session.expiresAt)}</small>
+          <small>
+            {session.user.role === "owner" ? "Owner" : "Member"} 账户 · 会话到期{" "}
+            {displayTime(session.session.expiresAt)}
+          </small>
         </div>
       </section>
       <section className="m-settings-group">
@@ -2074,6 +2095,20 @@ function SettingsView({
       </section>
       <section className="m-settings-group">
         <span className="m-overline">SECURITY</span>
+        {session.user.role === "owner" &&
+          host?.kind === "cloud" &&
+          host.capabilities.includes("storage.manage") && (
+            <button className="m-settings-row" onClick={onStorage}>
+              <span className="settings-icon settings-blue">
+                <HardDrive size={18} />
+              </span>
+              <span>
+                <strong>云宿主存储</strong>
+                <small>服务器用量、留存与清理预览</small>
+              </span>
+              <ArrowRight size={17} />
+            </button>
+          )}
         <button className="m-settings-row" onClick={onLogout}>
           <span className="settings-icon settings-red">
             <LogOut size={18} />

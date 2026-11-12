@@ -7,6 +7,7 @@ import { getConnInfo } from "@hono/node-server/conninfo";
 import nodemailer from "nodemailer";
 import { loadGatewayConfig } from "./config";
 import { GatewayStore } from "./db/store";
+import { createPostgresDatabase, gatewayDatabase } from "./db/database";
 import { createGatewayAuth } from "./auth/service";
 import { createGatewayApp } from "./app";
 import { HostRunnerClient } from "./devices/client";
@@ -19,10 +20,15 @@ import { RemoteRoutingStore } from "./remote/store";
 
 const config = loadGatewayConfig();
 mkdirSync(config.dataDir, { recursive: true, mode: 0o700 });
-const db = new Database(join(config.dataDir, "gateway.db"));
-db.pragma("journal_mode=WAL");
-db.pragma("foreign_keys=ON");
-db.pragma("busy_timeout=5000");
+const db = config.databaseUrl
+  ? await createPostgresDatabase(config.databaseUrl, config.databaseSchema)
+  : (() => {
+      const raw = new Database(join(config.dataDir, "gateway.db"));
+      raw.pragma("journal_mode=WAL");
+      raw.pragma("foreign_keys=ON");
+      raw.pragma("busy_timeout=5000");
+      return gatewayDatabase(raw);
+    })();
 const smtp = nodemailer.createTransport({
   host: config.smtp.host,
   port: config.smtp.port,
@@ -41,6 +47,7 @@ const devices = new DeviceRelay(new DeviceStore(db, config.otpPepper, config.pub
 const runner = new HostRunnerClient(config, devices);
 const remote = new RemoteGatewayService(runner, routing);
 const transfers = new GatewayTransfers(db, remote, routing);
+await Promise.all([store.ready, routing.ready, devices.store.ready, transfers.ready]);
 const auth = await createGatewayAuth(config, db, async (email, otp) => {
   await smtp.sendMail({
     from: config.smtp.from,
@@ -66,7 +73,7 @@ const app = createGatewayApp({
   peerAddress: (c) => getConnInfo(c).remote.address ?? "unknown",
 });
 remote.start();
-transfers.start();
+await transfers.start();
 const server = serve({ fetch: app.fetch, port: config.port, hostname: config.host });
 const closeDevices = attachDeviceChannel(server as Server, config, devices);
 console.info(`[gateway] listening on ${config.host}:${config.port}`);
@@ -78,9 +85,9 @@ function stop() {
   closeDevices();
   const drained = Promise.all([transfers.stop(), remote.stop()]);
   server.close(() => {
-    void drained.then(() => {
+    void drained.then(async () => {
       smtp.close();
-      db.close();
+      await db.close();
     });
   });
 }

@@ -10,7 +10,6 @@ import {
   type RemoteScope,
 } from "@agentdesk/shared";
 import type { GatewayConfig } from "../config";
-
 export function commandDigest(value: unknown): string {
   const canonical = (item: z.infer<ReturnType<typeof z.json>>): string => {
     if (item === null || typeof item !== "object") return JSON.stringify(item);
@@ -24,32 +23,32 @@ export function commandDigest(value: unknown): string {
     .update(canonical(z.json().parse(value)))
     .digest("hex");
 }
-
 export class RunnerClient {
   constructor(
     private readonly config: Pick<GatewayConfig, "runnerUrl" | "remoteToken">,
     private readonly fetcher: typeof fetch = fetch,
   ) {}
-
   forHost(hostId: string): RunnerClient {
     if (hostId !== "cloud") throw new AppError(ErrorCode.NotFound, "执行宿主不存在或尚未配对");
     return this;
   }
-
   protected epoch(): number {
     return 1;
   }
-
   async request(
     path: string,
     body?: unknown,
-    options: { method?: string; signal?: AbortSignal; stream?: boolean } = {},
+    options: {
+      method?: string;
+      signal?: AbortSignal;
+      stream?: boolean;
+    } = {},
   ): Promise<Response> {
     if (!path.startsWith("/") || path.startsWith("//") || path.includes(".."))
       throw new Error("Invalid internal runner route");
     let response: Response;
     const opening = new AbortController();
-    const openingTimer = options.stream ? setTimeout(() => opening.abort(), 15_000) : undefined;
+    const openingTimer = options.stream ? setTimeout(() => opening.abort(), 15000) : undefined;
     try {
       response = await this.fetcher(`${this.config.runnerUrl}/remote-api/v1${path}`, {
         method: options.method ?? (body === undefined ? "GET" : "POST"),
@@ -67,8 +66,8 @@ export class RunnerClient {
             }
           : {
               signal: options.signal
-                ? AbortSignal.any([options.signal, AbortSignal.timeout(30_000)])
-                : AbortSignal.timeout(30_000),
+                ? AbortSignal.any([options.signal, AbortSignal.timeout(30000)])
+                : AbortSignal.timeout(30000),
             }),
       });
     } catch {
@@ -79,7 +78,11 @@ export class RunnerClient {
     if (!response.ok) {
       let code: (typeof ErrorCode)[keyof typeof ErrorCode] = ErrorCode.ServiceUnavailable;
       try {
-        const body = (await response.json()) as { error?: { code?: string } };
+        const body = (await response.json()) as {
+          error?: {
+            code?: string;
+          };
+        };
         if (Object.values(ErrorCode).includes(body.error?.code as typeof code))
           code = body.error!.code as typeof code;
       } catch {
@@ -89,7 +92,6 @@ export class RunnerClient {
     }
     return response;
   }
-
   async json<T = Record<string, unknown>>(
     path: string,
     body?: unknown,
@@ -117,7 +119,6 @@ export class RunnerClient {
     }
     return JSON.parse(Buffer.concat(parts).toString("utf8")) as T;
   }
-
   command(
     scope: RemoteScope,
     actor: RemoteActor,
@@ -136,21 +137,19 @@ export class RunnerClient {
       action,
       payloadHash: commandDigest(payload),
       issuedAt: new Date(now).toISOString(),
-      expiresAt: new Date(now + 30_000).toISOString(),
+      expiresAt: new Date(now + 30000).toISOString(),
     };
   }
-
   async grant(scope: RemoteScope): Promise<void> {
     const grant: ProjectGrant = {
       ...scope,
       capabilities: RemoteCapability.options,
       connectionEpoch: this.forHost(scope.hostId).epoch(),
-      expiresAt: new Date(Date.now() + 45_000).toISOString(),
+      expiresAt: new Date(Date.now() + 45000).toISOString(),
       revokedAt: null,
     };
     await this.json("/grants", grant, "PUT");
   }
-
   async execute<T = Record<string, unknown>>(
     scope: RemoteScope,
     actor: RemoteActor,
@@ -159,16 +158,15 @@ export class RunnerClient {
     requestId?: string,
   ): Promise<T> {
     await this.grant(scope);
-    return this.json<T>("/commands", {
+    return await this.json<T>("/commands", {
       command: this.command(scope, actor, action, payload, requestId),
       payload,
     });
   }
 }
-
 function runnerMessage(code: string): string {
   const messages: Record<string, string> = {
-    STALE_PREVIEW: "仓库状态已变化，请重新预览并确认",
+    STALE_PREVIEW: "预览已失效，请重新预览并确认",
     REPO_BUSY: "仓库正在执行其他操作，请稍后重试",
     UNAUTHORIZED: "此操作需要重新验证邮箱",
     FORBIDDEN: "当前操作未获授权或授权已过期",
@@ -178,6 +176,7 @@ function runnerMessage(code: string): string {
     APPROVAL_REQUIRED: "请先审核并确认此操作",
     CONFLICT: "资源状态已变化，请刷新后核对",
     BAD_REQUEST: "请求参数不符合宿主要求",
+    STORAGE_FULL: "宿主空间低于预留值，请在存储管理中清理空间或调整策略",
   };
   return messages[code] ?? "宿主暂时无法完成操作，请查看任务状态";
 }

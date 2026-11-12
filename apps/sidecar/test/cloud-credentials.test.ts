@@ -3,6 +3,7 @@ import { afterEach, expect, it } from "vitest";
 import { AppError, httpStatusOf } from "@agentdesk/shared";
 import { ZodError } from "zod";
 import { openDatabase, type DbHandle } from "../src/db/client";
+import { businessDatabase } from "../src/db/business-database";
 import type { Container } from "../src/container";
 import type { CloudConfig } from "../src/cloud-config";
 import { remoteRoutes } from "../src/http/routes/remote";
@@ -22,6 +23,7 @@ function fixture(allow = false) {
     recentAuthAt: new Date().toISOString(),
   };
   const container = {
+    business: businessDatabase(handle.raw),
     dbHandle: handle,
     providers,
     cloudRunner: {},

@@ -103,7 +103,7 @@ export function SessionPanel({
         onChange={resize}
         onReset={() => resize(320)}
       />
-      <div className="flex min-h-[64px] shrink-0 items-center gap-2 border-b border-border/60 pl-5 pr-14">
+      <div className="flex min-h-[64px] shrink-0 items-center gap-2 border-b border-border/60 pl-5 pr-4 lg:pr-28">
         <h2 className="flex-1 text-[13px] font-semibold">会话状态</h2>
         <span className="text-muted">
           {data?.activity === "compacting" || compact.isPending

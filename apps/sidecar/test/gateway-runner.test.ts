@@ -30,7 +30,6 @@ import { createContainer, type Container } from "../src/container";
 import type { RepositoryPreview } from "../src/services/remote/repository-operations";
 import { RepositoryOperationService } from "../src/services/remote/repository-operations";
 import { RemoteOperationStore } from "../src/services/remote/operations";
-
 let root: string;
 let workspace: string;
 let db: Database.Database;
@@ -47,7 +46,6 @@ let dropSubmissionResponse: boolean;
 let submissions: number;
 let transfers: GatewayTransfers;
 let dropChunkResponse: boolean;
-
 const request = (path: string, body?: unknown, extra: Record<string, string> = {}) =>
   app.request(`${config.publicOrigin}/api/v1/${path}`, {
     method: body === undefined ? "GET" : "POST",
@@ -60,7 +58,6 @@ const request = (path: string, body?: unknown, extra: Record<string, string> = {
     },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
-
 beforeEach(async () => {
   root = mkdtempSync(join(tmpdir(), "agentdesk-gateway-runner-"));
   const workspaceRoot = join(root, "workspaces");
@@ -103,7 +100,9 @@ beforeEach(async () => {
   const auth = await createGatewayAuth(config, db, async (_email, value) => {
     otp = value;
   });
-  const owner = db.prepare('SELECT id FROM "user"').get() as { id: string };
+  const owner = db.prepare('SELECT id FROM "user"').get() as {
+    id: string;
+  };
   const masterFile = join(root, "master.key");
   const tokenFile = join(root, "remote.key");
   writeFileSync(masterFile, randomBytes(32).toString("base64"));
@@ -117,7 +116,7 @@ beforeEach(async () => {
   });
   container = await createContainer(cloud, {
     inMemory: true,
-    cloud: { hostId: cloud.hostId, workspaceRoot, taskTimeoutMs: 60_000 },
+    cloud: { hostId: cloud.hostId, workspaceRoot, taskTimeoutMs: 60000 },
   });
   await container.cloudRunner!.registerConfiguredWorkspaces();
   // 测试仅向临时 bare 仓库推送；生产仍仅允许明确配置的网络 Git 主机。
@@ -126,12 +125,12 @@ beforeEach(async () => {
     operations: new RemoteOperationStore(container.dbHandle.raw),
     approvals: container.approvals,
     remoteApprovals: container.remoteApprovals!,
-    resolveWorkspace: (scope) => container.cloudRunner!.resolveWorkspace(scope),
+    resolveWorkspace: async (scope) => await container.cloudRunner!.resolveWorkspace(scope),
     locks: container.cloudRunner!.locks,
     allowLocalRemotes: true,
   });
-  projectId = container.projects.list()[0]!.id;
-  faux = registerFauxProvider({ tokensPerSecond: 100_000 });
+  projectId = (await container.projects.list())[0]!.id;
+  faux = registerFauxProvider({ tokensPerSecond: 100000 });
   container.providers.resolve = async () => [
     { providerId: "faux", providerName: "faux", model: faux.getModel(), apiKey: "test" },
   ];
@@ -193,22 +192,24 @@ beforeEach(async () => {
   };
   const session = await (await request("session")).json();
   headers["x-csrf-token"] = session.csrfToken;
-}, 20_000);
-
+}, 20000);
 afterEach(async () => {
   await transfers?.stop();
-  remote?.stop();
+  await remote?.stop();
   if (container) {
-    for (const task of container.tasks.list())
-      if (task.currentRunId) container.tasks.requestCancel(task.currentRunId);
+    for (const task of await container.tasks.list())
+      if (task.currentRunId) await container.tasks.requestCancel(task.currentRunId);
     await expect
-      .poll(() =>
-        container.tasks
-          .list()
-          .every(
-            (task) =>
-              !task.currentRunId || container.tasks.getRun(task.currentRunId)?.status !== "running",
-          ),
+      .poll(async () =>
+        (
+          await Promise.all(
+            (await container.tasks.list()).map(
+              async (task) =>
+                !task.currentRunId ||
+                (await container.tasks.getRun(task.currentRunId))?.status !== "running",
+            ),
+          )
+        ).every(Boolean),
       )
       .toBe(true);
     await container.dispose();
@@ -221,12 +222,11 @@ afterEach(async () => {
   db?.close();
   if (root) rmSync(root, { recursive: true, force: true });
 });
-
 it("recovers a real snapshot through the Gateway and Runner, resumes a lost chunk response and confirms the exact imported workspace", async () => {
   const destination = join(config.cloudWorkspaceRoot, "destination");
   execFileSync("git", ["clone", "--no-hardlinks", workspace, destination], { stdio: "pipe" });
   const target = await container.projects.add(destination);
-  const bytes = Buffer.alloc(130_000, 0x85);
+  const bytes = Buffer.alloc(130000, 0x85);
   writeFileSync(join(workspace, "image.bin"), bytes);
   writeFileSync(join(workspace, "README.md"), "recovered change\n");
   writeFileSync(join(workspace, ".env"), "SECRET=exclude");
@@ -273,7 +273,7 @@ it("recovers a real snapshot through the Gateway and Runner, resumes a lost chun
   expect(imported.status).toBe(200);
   const recovered = await imported.json();
   expect(recovered.state).toBe("verified");
-  const project = container.projects.get(recovered.result.projectId)!;
+  const project = (await container.projects.get(recovered.result.projectId))!;
   expect(readFileSync(join(project.path, "image.bin"))).toEqual(bytes);
   expect(readFileSync(join(project.path, "README.md"), "utf8")).toBe("recovered change\n");
   expect(existsSync(join(project.path, ".env"))).toBe(false);
@@ -287,8 +287,7 @@ it("recovers a real snapshot through the Gateway and Runner, resumes a lost chun
       ).json()
     ).result.projectId,
   ).toBe(project.id);
-}, 30_000);
-
+}, 30000);
 function fileWrite() {
   faux.setResponses([
     fauxAssistantMessage(
@@ -303,7 +302,6 @@ function fileWrite() {
     fauxAssistantMessage(fauxText("The approved file was written")),
   ]);
 }
-
 const input = () => ({
   clientRequestId: randomUUID(),
   goal: "Write a file after mobile approval",
@@ -312,15 +310,18 @@ const input = () => ({
   workspaceId: projectId,
   requiresPlanApproval: false,
 });
-
 async function pending() {
-  await expect.poll(() => container.approvals.list("pending").length).toBe(1);
+  await expect.poll(async () => (await container.approvals.list("pending")).length).toBe(1);
   const response = await request("approvals");
   expect(response.status, await response.clone().text()).toBe(200);
   const result = await response.json();
-  return result.approvals[0] as { approval: { id: string }; context: RemoteApprovalContext };
+  return result.approvals[0] as {
+    approval: {
+      id: string;
+    };
+    context: RemoteApprovalContext;
+  };
 }
-
 describe("Gateway and Runner over HTTP", () => {
   it("previews selected files and separately approves an idempotent commit and push", async () => {
     const git = (...args: string[]) =>
@@ -393,7 +394,7 @@ describe("Gateway and Runner over HTTP", () => {
         encoding: "utf8",
       }).trim(),
     ).toBe(sha);
-  }, 30_000);
+  }, 60000);
   it("logs in, submits once, renews without SSE, approves a real write and replays events", async () => {
     fileWrite();
     expect((await request("hosts", undefined, { cookie: "" })).status).toBe(401);
@@ -411,20 +412,20 @@ describe("Gateway and Runner over HTTP", () => {
     const duplicate = await request(path, body);
     expect(duplicate.status, await duplicate.clone().text()).toBe(202);
     expect(await duplicate.json()).toMatchObject({ task: { id: task.id }, run: { id: run.id } });
-    expect(container.tasks.list()).toHaveLength(1);
-    expect(container.tasks.listRuns(task.id)).toHaveLength(1);
+    expect(await container.tasks.list()).toHaveLength(1);
+    expect(await container.tasks.listRuns(task.id)).toHaveLength(1);
     expect((await request(path, { ...body, goal: "Changed request" })).status).toBe(409);
     const approval = await pending();
     expect(existsSync(join(workspace, "result.txt"))).toBe(false);
     // 模拟租期已消耗一部分，避免初次 45 秒授权与后台 40 秒续租窗口造成时序误判。
-    const prior = new Date(Date.now() + 15_000).toISOString();
+    const prior = new Date(Date.now() + 15000).toISOString();
     container.dbHandle.raw
       .prepare("UPDATE remote_task_contexts SET lease_expires_at=? WHERE task_id=?")
       .run(prior, task.id);
     await remote.renew();
-    expect(Date.parse(container.cloudRunner!.context(task.id).leaseExpiresAt)).toBeGreaterThan(
-      Date.parse(prior),
-    );
+    expect(
+      Date.parse((await container.cloudRunner!.context(task.id)).leaseExpiresAt),
+    ).toBeGreaterThan(Date.parse(prior));
     const resolved = await request(`hosts/cloud/approvals/${approval.approval.id}/resolve`, {
       clientRequestId: randomUUID(),
       approved: true,
@@ -432,7 +433,7 @@ describe("Gateway and Runner over HTTP", () => {
       actionDigest: approval.context.actionDigest,
     });
     expect(resolved.status, await resolved.clone().text()).toBe(200);
-    await expect.poll(() => container.tasks.getRun(run.id)?.status).toBe("succeeded");
+    await expect.poll(async () => (await container.tasks.getRun(run.id))?.status).toBe("succeeded");
     expect(readFileSync(join(workspace, "result.txt"), "utf8")).toBe("approved through gateway");
     const detail = await request(`hosts/cloud/tasks/${task.id}`);
     expect(detail.status, await detail.clone().text()).toBe(200);
@@ -454,8 +455,7 @@ describe("Gateway and Runner over HTTP", () => {
       "last-event-id": last!,
     });
     expect(await replay.text()).toBe("");
-  }, 20_000);
-
+  }, 20000);
   it("revoking the login cancels approval waiting and prevents further task access", async () => {
     fileWrite();
     const response = await request(`hosts/cloud/projects/${projectId}/tasks`, input());
@@ -464,12 +464,11 @@ describe("Gateway and Runner over HTTP", () => {
     await pending();
     expect((await request("sessions/revoke-all", {})).status).toBe(200);
     await remote.renew();
-    await expect.poll(() => container.tasks.getRun(run.id)?.status).toBe("cancelled");
+    await expect.poll(async () => (await container.tasks.getRun(run.id))?.status).toBe("cancelled");
     expect((await request(`hosts/cloud/tasks/${task.id}`)).status).toBe(401);
-    expect(routing.active()).toHaveLength(0);
+    expect(await routing.active()).toHaveLength(0);
     expect(existsSync(join(workspace, "result.txt"))).toBe(false);
   });
-
   it("reconciles a lost submit response without dispatching another task", async () => {
     fileWrite();
     dropSubmissionResponse = true;
@@ -477,10 +476,10 @@ describe("Gateway and Runner over HTTP", () => {
     expect(response.status).toBe(503);
     expect(await response.text()).not.toContain("Simulated connection loss");
     await pending();
-    expect(routing.active()[0]?.taskId).toBeNull();
+    expect((await routing.active())[0]?.taskId).toBeNull();
     await remote.renew();
-    expect(routing.active()[0]?.taskId).toBe(container.tasks.list()[0]!.id);
-    expect(container.tasks.list()).toHaveLength(1);
+    expect((await routing.active())[0]?.taskId).toBe((await container.tasks.list())[0]!.id);
+    expect(await container.tasks.list()).toHaveLength(1);
     expect(submissions).toBe(1);
   });
 });

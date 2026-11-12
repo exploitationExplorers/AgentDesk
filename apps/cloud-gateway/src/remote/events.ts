@@ -1,7 +1,6 @@
 import { AppError, ErrorCode, type RemoteActor, type RemoteScope } from "@agentdesk/shared";
 import type { RunnerClient } from "./client";
 import type { RemoteRoutingStore } from "./store";
-
 /** 用背压直接转发持久事件；流内持续校验会话，浏览器断开只结束订阅。 */
 export class GatewayEvents {
   private readonly connections = new Map<string, Set<AbortController>>();
@@ -9,7 +8,6 @@ export class GatewayEvents {
     private readonly client: RunnerClient,
     private readonly store: RemoteRoutingStore,
   ) {}
-
   async open(
     actor: RemoteActor,
     scope: RemoteScope,
@@ -28,6 +26,7 @@ export class GatewayEvents {
     if (signal.aborted) abort.abort();
     let timer: ReturnType<typeof setInterval> | undefined;
     let finished = false;
+    let checking = false;
     let stopStream: (() => void) | undefined;
     const cleanup = () => {
       if (finished) return;
@@ -40,7 +39,8 @@ export class GatewayEvents {
       if (!connections.size) this.connections.delete(actor.sessionId);
     };
     try {
-      if (!this.store.sessionAlive(actor)) throw new AppError(ErrorCode.Unauthorized, "登录已过期");
+      if (!(await this.store.sessionAlive(actor)))
+        throw new AppError(ErrorCode.Unauthorized, "登录已过期");
       await this.client.grant(scope);
       const payload = { taskId, after };
       const response = await this.client.request(
@@ -68,18 +68,29 @@ export class GatewayEvents {
               stopStream();
               return;
             }
-            timer = setInterval(() => {
-              if (!this.store.sessionAlive(actor)) {
-                cleanup();
-                void reader.cancel().catch(() => undefined);
-                controller.error(new Error("Session expired"));
-              }
+            timer = setInterval(async () => {
+              if (finished || checking) return;
+              checking = true;
+              void this.store
+                .sessionAlive(actor)
+                .then((alive) => {
+                  if (!alive) throw new Error("Session expired");
+                })
+                .catch((error: unknown) => {
+                  if (finished) return;
+                  cleanup();
+                  void reader.cancel().catch(() => undefined);
+                  controller.error(error);
+                })
+                .finally(() => {
+                  checking = false;
+                });
             }, 1000);
             timer.unref();
           },
           pull: async (controller) => {
             try {
-              if (!this.store.sessionAlive(actor))
+              if (!(await this.store.sessionAlive(actor)))
                 throw new AppError(ErrorCode.Unauthorized, "登录已过期");
               const next = await reader.read();
               if (finished) return;
@@ -88,8 +99,9 @@ export class GatewayEvents {
                 controller.close();
                 return;
               }
-              if (!this.store.sessionAlive(actor))
+              if (!(await this.store.sessionAlive(actor)))
                 throw new AppError(ErrorCode.Unauthorized, "登录已过期");
+              if (finished) return;
               controller.enqueue(next.value);
             } catch (error) {
               if (!finished) {
@@ -111,7 +123,6 @@ export class GatewayEvents {
       throw error;
     }
   }
-
   closeSession(sessionId: string): void {
     for (const controller of this.connections.get(sessionId) ?? []) controller.abort();
   }

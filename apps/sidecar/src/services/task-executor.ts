@@ -25,7 +25,6 @@ import { formatBehaviorGuidance, type EvolutionService } from "./evolution";
 import type { RunExecutor, RunOutcome, TaskService } from "./tasks";
 import { readRunToolHistory, summarizeToolCalls } from "./run-tool-history";
 import { runFailureMessage, emptyChatProgress, reduceChatProgress } from "@agentdesk/shared";
-
 /**
  * requestAnswer 的通用实现：用 kind='question' 的审批记录承载问题，等待用户通过
  * POST /approvals/:id/answer 回答后，重新查一次这条记录的 payload.answer 拿到回答文本
@@ -34,7 +33,7 @@ import { runFailureMessage, emptyChatProgress, reduceChatProgress } from "@agent
 function createRequestAnswer(
   approvals: ApprovalService,
   signal: AbortSignal,
-  onCreated: (approval: Approval) => void,
+  onCreated: (approval: Approval) => void | Promise<unknown>,
   conversationId?: string,
 ): (request: ApprovalRequest) => Promise<string> {
   return async (request: ApprovalRequest) => {
@@ -42,19 +41,22 @@ function createRequestAnswer(
     const approved = await approvals.request(
       { kind: "question", ...request, conversationId },
       signal,
-      (approval) => {
+      async (approval) => {
         approvalId = approval.id;
-        onCreated(approval);
+        await onCreated(approval);
       },
     );
     if (!approved) throw new Error("用户未回答该问题（审批被拒绝或已过期）");
-    const resolved = approvals.list("approved").find((a) => a.id === approvalId);
-    const payload = resolved?.payload as { answer?: string } | undefined;
+    const resolved = (await approvals.list("approved")).find((a) => a.id === approvalId);
+    const payload = resolved?.payload as
+      | {
+          answer?: string;
+        }
+      | undefined;
     if (!payload?.answer) throw new Error("未获取到用户回答");
     return payload.answer;
   };
 }
-
 /**
  * agents.delegate 每次委派都需要的三件事：转发事件、转发审批、落地子 Run 终态。
  * 子 Run 的生命周期单独记录，不向聊天流发送任务级结束事件。
@@ -62,9 +64,17 @@ function createRequestAnswer(
 interface DelegateRouting {
   emit: (event: AgentStreamEvent) => void;
   requestApproval: (request: ApprovalRequest) => Promise<boolean>;
-  done: (result: { text: string; toolCalls: ToolCallRecord[] } | { error: string }) => void;
+  done: (
+    result:
+      | {
+          text: string;
+          toolCalls: ToolCallRecord[];
+        }
+      | {
+          error: string;
+        },
+  ) => void;
 }
-
 /**
  * 构造 Orchestrator.run 的 onDelegate 钩子：每次 agents.delegate 调用都会创建一条独立的
  * 子 Run（parentRunId 指向当前 Run），事件写入这条子 Run 自己的 run_events，互不串台。
@@ -79,10 +89,10 @@ export function createDelegateHandler(deps: {
   signal: AbortSignal;
   /** 同步委派时，把子助手进度和审批送回发起请求的聊天界面。 */
   onAgentEvent?: (event: AgentStreamEvent) => void;
-}): (info: { agent: AgentName; task: string }) => DelegateRouting {
+}): (info: { agent: AgentName; task: string }) => Promise<DelegateRouting> {
   const { tasks, approvals, taskId, parentRunId, signal } = deps;
-  return ({ agent, task }) => {
-    const childRun = tasks.createRun({
+  return async ({ agent, task }) => {
+    const childRun = await tasks.createRun({
       taskId,
       parentRunId,
       kind: "delegate",
@@ -91,24 +101,23 @@ export function createDelegateHandler(deps: {
       input: { userMessage: task },
     });
     deps.evolution?.pin(childRun.id, parentRunId);
-    const append = (event: TaskStreamEvent) =>
-      tasks.appendEvent({ taskId, runId: childRun.id, parentRunId, event });
-    const emit = (event: AgentStreamEvent) => {
-      append(event);
+    const append = async (event: TaskStreamEvent) =>
+      await tasks.appendEvent({ taskId, runId: childRun.id, parentRunId, event });
+    const emit = async (event: AgentStreamEvent) => {
+      await append(event);
       deps.onAgentEvent?.(event);
     };
-    tasks.startRunDirect(childRun.id);
-
-    const requestApproval = (request: ApprovalRequest) =>
-      approvals.request(
+    await tasks.startRunDirect(childRun.id);
+    const requestApproval = async (request: ApprovalRequest) =>
+      await approvals.request(
         {
           kind: "tool",
           ...request,
-          conversationId: tasks.get(taskId)?.conversationId ?? undefined,
+          conversationId: (await tasks.get(taskId))?.conversationId ?? undefined,
         },
         signal,
-        (approval) =>
-          emit({
+        async (approval) =>
+          await emit({
             type: "approval_required",
             approvalId: approval.id,
             title: approval.title,
@@ -118,29 +127,35 @@ export function createDelegateHandler(deps: {
             reason: approval.reason,
           }),
       );
-
-    const done = (result: { text: string; toolCalls: ToolCallRecord[] } | { error: string }) => {
+    const done = async (
+      result:
+        | {
+            text: string;
+            toolCalls: ToolCallRecord[];
+          }
+        | {
+            error: string;
+          },
+    ) => {
       const outcome: RunOutcome =
         "error" in result
           ? {
               status: signal.aborted ? "cancelled" : "failed",
               resultError: result.error,
-              toolCalls: readRunToolHistory(tasks, childRun.id),
+              toolCalls: await readRunToolHistory(tasks, childRun.id),
             }
           : { status: "succeeded", resultText: result.text, toolCalls: result.toolCalls };
-      tasks.finalizeRunDirect(childRun.id, outcome);
-      append({
+      await tasks.finalizeRunDirect(childRun.id, outcome);
+      await append({
         type: "run_ended",
         runId: childRun.id,
         status: outcome.status,
         error: outcome.resultError,
       });
     };
-
     return { emit, requestApproval, done };
   };
 }
-
 export interface RealExecutorDeps {
   memory?: MemoryService;
   evolution?: EvolutionService;
@@ -157,11 +172,10 @@ export interface RealExecutorDeps {
   maskFactory: () => MaskStore | undefined;
   cloudPolicy?: {
     allowedTools: string[];
-    approvalCreated: (approval: Approval, task: Task) => void;
-    requiresPlan: (task: Task) => boolean;
+    approvalCreated: (approval: Approval, task: Task) => void | Promise<void>;
+    requiresPlan: (task: Task) => boolean | Promise<boolean>;
   };
 }
-
 /** 阶段 D 的真实 RunExecutor：真正调用 orchestrator，把结果写回会话消息和 run_events。 */
 export function createOrchestratorExecutor(deps: RealExecutorDeps): RunExecutor {
   return async (run, task, signal) => {
@@ -182,13 +196,12 @@ export function createOrchestratorExecutor(deps: RealExecutorDeps): RunExecutor 
         deps;
       const behavior = deps.evolution?.pin(run.id, run.parentRunId ?? undefined);
       const guidance = behavior ? formatBehaviorGuidance(behavior) : undefined;
-
       // 方案关口：requiresPlanApproval 的任务首条根 Run 只允许产出方案，不允许执行任何
       // 有副作用的操作——把可用工具收紧到"只读工具 + tasks.submit_plan"，不传给模型
       // agents.delegate 等有副作用能力。真正"未经批准不能执行"的硬校验在 TaskService.createRun
       // 里（服务层），这里只是约束模型这一轮能调用什么。
       const isPlanGate =
-        deps.cloudPolicy?.requiresPlan(task) ??
+        (await deps.cloudPolicy?.requiresPlan(task)) ??
         (task.requiresPlanApproval && run.trigger === "create");
       const allowedTools = deps.cloudPolicy
         ? deps.cloudPolicy.allowedTools.filter(
@@ -208,11 +221,10 @@ export function createOrchestratorExecutor(deps: RealExecutorDeps): RunExecutor 
         ? "本次只需要产出方案并调用 tasks.submit_plan，不要执行任何有副作用的操作。"
         : undefined;
       const planVersionBefore = isPlanGate
-        ? (tasks.latestArtifact(task.id, "plan")?.version ?? 0)
+        ? ((await tasks.latestArtifact(task.id, "plan"))?.version ?? 0)
         : 0;
-
-      const history = conversationStore.listMessages(task.conversationId);
-      conversationStore.insertMessage({
+      const history = await conversationStore.listMessages(task.conversationId);
+      await conversationStore.insertMessage({
         id: newId(),
         conversationId: task.conversationId,
         role: "user",
@@ -221,11 +233,10 @@ export function createOrchestratorExecutor(deps: RealExecutorDeps): RunExecutor 
         toolCalls: [],
         createdAt: nowIso(),
       });
-
       let progress = emptyChatProgress();
-      const emit = (event: TaskStreamEvent) => {
+      const emit = async (event: TaskStreamEvent) => {
         progress = reduceChatProgress(progress, event);
-        return tasks.appendEvent({
+        return await tasks.appendEvent({
           taskId: task.id,
           runId: run.id,
           parentRunId: run.parentRunId,
@@ -236,20 +247,20 @@ export function createOrchestratorExecutor(deps: RealExecutorDeps): RunExecutor 
       // 发过这条事件（真实执行只会看到 agent_start/text_delta/agent_end/run_ended），导致 CLI 的
       // task-reducer.mjs（只在收到 run_started 时才建根 Run 节点）在交互式 TaskView 里对根 Run 一直
       // 建不出节点、什么都不渲染——这里补发，让根/子 Run 共用同一条"进入 runsById"的入口事件。
-      emit({
+      await emit({
         type: "run_started",
         runId: run.id,
         parentRunId: run.parentRunId,
         agent: run.agent,
         trigger: run.trigger,
       });
-      const requestApproval = (request: ApprovalRequest) =>
-        approvals.request(
+      const requestApproval = async (request: ApprovalRequest) =>
+        await approvals.request(
           { kind: "tool", ...request, conversationId: task.conversationId ?? undefined },
           signal,
-          (approval) => {
-            deps.cloudPolicy?.approvalCreated(approval, task);
-            emit({
+          async (approval) => {
+            await deps.cloudPolicy?.approvalCreated(approval, task);
+            await emit({
               type: "approval_required",
               approvalId: approval.id,
               title: approval.title,
@@ -263,8 +274,8 @@ export function createOrchestratorExecutor(deps: RealExecutorDeps): RunExecutor 
       const requestAnswer = createRequestAnswer(
         approvals,
         signal,
-        (approval) =>
-          emit({
+        async (approval) =>
+          await emit({
             type: "approval_required",
             approvalId: approval.id,
             title: approval.title,
@@ -283,7 +294,7 @@ export function createOrchestratorExecutor(deps: RealExecutorDeps): RunExecutor 
         parentRunId: run.id,
         signal,
       });
-      const recordArtifact = (input: {
+      const recordArtifact = async (input: {
         kind: ArtifactKind;
         title: string;
         content?: string;
@@ -292,7 +303,7 @@ export function createOrchestratorExecutor(deps: RealExecutorDeps): RunExecutor 
         mimeType?: string;
         artifactKey?: string;
       }) =>
-        tasks.recordArtifact({
+        await tasks.recordArtifact({
           taskId: task.id,
           runId: run.id,
           kind: input.kind,
@@ -303,21 +314,19 @@ export function createOrchestratorExecutor(deps: RealExecutorDeps): RunExecutor 
           mimeType: input.mimeType,
           artifactKey: input.artifactKey,
         });
-
       // trigger='resume' 时，把上一条失败/取消的历史 Run 的摘要（工具调用 + 失败原因）
       // 和已有的 plan 产物（阶段 F 才会真正产出，这里查不到时直接跳过）拼进这次的 context，
       // 让模型知道"之前已经做过什么、为什么失败"，而不是从零开始。
       let resumeContext: string | undefined;
       if (run.trigger === "resume") {
-        const previousFailed = tasks
-          .listRuns(task.id)
+        const previousFailed = (await tasks.listRuns(task.id))
           .filter((r) => r.id !== run.id && (r.status === "failed" || r.status === "cancelled"))
           .sort((a, b) => (a.createdAt > b.createdAt ? -1 : 1))[0];
         const parts: string[] = [];
         if (previousFailed) {
           const toolCalls = previousFailed.toolCalls?.length
             ? (previousFailed.toolCalls as ToolCallRecord[])
-            : readRunToolHistory(tasks, previousFailed.id);
+            : await readRunToolHistory(tasks, previousFailed.id);
           if (toolCalls.length > 0) {
             parts.push(
               `之前已记录以下操作，请跳过已确认完成的操作：${summarizeToolCalls(toolCalls)}`,
@@ -325,7 +334,7 @@ export function createOrchestratorExecutor(deps: RealExecutorDeps): RunExecutor 
           }
           if (previousFailed.resultError) parts.push(`上次失败原因：${previousFailed.resultError}`);
         }
-        const plan = tasks.latestArtifact(task.id, "plan");
+        const plan = await tasks.latestArtifact(task.id, "plan");
         if (plan) {
           parts.push(
             `已有方案草稿（版本 ${plan.version}）：${(plan.content ?? plan.title).slice(0, 1000)}`,
@@ -333,7 +342,6 @@ export function createOrchestratorExecutor(deps: RealExecutorDeps): RunExecutor 
         }
         if (parts.length > 0) resumeContext = parts.join("\n");
       }
-
       try {
         const projectContext = await deps.projectInstructions.load(run.input.workspace, signal);
         const memoryContext = {
@@ -375,7 +383,7 @@ export function createOrchestratorExecutor(deps: RealExecutorDeps): RunExecutor 
         const result = await (deps.memory
           ? deps.memory.withContext(memoryContext, execute)
           : execute());
-        conversationStore.insertMessage({
+        await conversationStore.insertMessage({
           id: newId(),
           conversationId: task.conversationId,
           role: "assistant",
@@ -386,19 +394,20 @@ export function createOrchestratorExecutor(deps: RealExecutorDeps): RunExecutor 
           createdAt: nowIso(),
         });
         if (!isPlanGate && deps.memory) {
-          await deps.memory.withContext(memoryContext, () =>
-            deps.memory!.captureFromTurn({
-              userText: run.input.userMessage,
-              assistantText: result.text,
-              conversationId: task.conversationId,
-              signal,
-            }),
+          await deps.memory.withContext(
+            memoryContext,
+            async () =>
+              await deps.memory!.captureFromTurn({
+                userText: run.input.userMessage,
+                assistantText: result.text,
+                conversationId: task.conversationId,
+                signal,
+              }),
           );
         }
-        emit({ type: "run_ended", runId: run.id, status: "succeeded" });
-
+        await emit({ type: "run_ended", runId: run.id, status: "succeeded" });
         if (isPlanGate) {
-          const plan = tasks.latestArtifact(task.id, "plan");
+          const plan = await tasks.latestArtifact(task.id, "plan");
           if (plan && plan.version > planVersionBefore) {
             // 不 await：这条 Run 在方案提交后就算成功结束，批准/拒绝由下面的 .then()
             // 异步驱动 Task 的后续状态迁移（awaiting_plan_approval -> running/planning）。
@@ -412,9 +421,9 @@ export function createOrchestratorExecutor(deps: RealExecutorDeps): RunExecutor 
                   payload: { taskId: task.id, artifactId: plan.id, version: plan.version },
                 },
                 signal,
-                (approval) => {
-                  deps.cloudPolicy?.approvalCreated(approval, task);
-                  emit({
+                async (approval) => {
+                  await deps.cloudPolicy?.approvalCreated(approval, task);
+                  await emit({
                     type: "approval_required",
                     approvalId: approval.id,
                     title: approval.title,
@@ -425,9 +434,9 @@ export function createOrchestratorExecutor(deps: RealExecutorDeps): RunExecutor 
                   });
                 },
               )
-              .then((approved) => {
+              .then(async (approved) => {
                 try {
-                  tasks.transition(task.id, approved ? "running" : "planning");
+                  await tasks.transition(task.id, approved ? "running" : "planning");
                 } catch {
                   // 任务状态机已经走到其它分支（例如被用户取消），忽略
                 }
@@ -444,7 +453,6 @@ export function createOrchestratorExecutor(deps: RealExecutorDeps): RunExecutor 
             `[task-executor] 方案关口：模型未调用 tasks.submit_plan，已降级为直接执行（taskId=${task.id} runId=${run.id}）`,
           );
         }
-
         // 正常走到 awaiting_review：真正创建一条 kind='review' 的审批记录承载验收，而不是等
         // POST /tasks/:id/review 被调用时凭空接受一个请求。只对 requiresPlanApproval 的任务
         // 主动创建——这类任务本来就走正式的流程监管（方案关口 + 验收关口成对出现）；普通任务
@@ -452,21 +460,23 @@ export function createOrchestratorExecutor(deps: RealExecutorDeps): RunExecutor 
         // 永不过期的 pending 审批，污染"取第一条 pending 审批"这类既有调用方的假设。没有主动创建
         // 的任务仍可以正常走 POST /tasks/:id/review——那里有懒创建兜底，同样会落一条真实记录。
         if (task.requiresPlanApproval) {
-          const review = approvals.create({
-            kind: "review",
-            title: `验收：${task.title}`,
-            detail: result.text.slice(0, 2000),
-            risk: "confirm",
-            payload: { taskId: task.id, runId: run.id },
-          }).approval;
+          const review = (
+            await approvals.create({
+              kind: "review",
+              title: `验收：${task.title}`,
+              detail: result.text.slice(0, 2000),
+              risk: "confirm",
+              payload: { taskId: task.id, runId: run.id },
+            })
+          ).approval;
           deps.cloudPolicy?.approvalCreated(review, task);
         }
         return { status: "succeeded", resultText: result.text, toolCalls: result.toolCalls };
       } catch (error) {
         const status = signal.aborted ? "cancelled" : "failed";
         const message = errorMessage(error);
-        const toolCalls = readRunToolHistory(tasks, run.id);
-        conversationStore.insertMessage({
+        const toolCalls = await readRunToolHistory(tasks, run.id);
+        await conversationStore.insertMessage({
           id: newId(),
           conversationId: task.conversationId,
           role: "assistant",
@@ -479,7 +489,7 @@ export function createOrchestratorExecutor(deps: RealExecutorDeps): RunExecutor 
           toolCalls,
           createdAt: nowIso(),
         });
-        emit({ type: "run_ended", runId: run.id, status, error: message });
+        await emit({ type: "run_ended", runId: run.id, status, error: message });
         return { status, resultError: message, toolCalls };
       }
     } catch (error) {

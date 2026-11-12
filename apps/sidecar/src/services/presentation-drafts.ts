@@ -57,7 +57,7 @@ export class PresentationDrafts {
     const next = { ...draft, slides: [...draft.slides, ...args.slides] };
     const { pages } = await renderPresentation(next, ctx, draft.total, args.draftId);
     ctx.signal?.throwIfAborted();
-    const artifact = ctx.recordArtifact!({
+    const artifact = await ctx.recordArtifact!({
       kind: "file",
       title: draft.title,
       artifactKey: `presentation:${draft.title}`,

@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { z } from "zod";
+import { StorageCleanupInput } from "@agentdesk/shared";
 import type { StorageService } from "../../services/storage/service";
 
 export function storageRoutes(storage: StorageService) {
@@ -9,7 +9,7 @@ export function storageRoutes(storage: StorageService) {
   app.get("/storage/usage", async (c) => c.json(await storage.usage()));
   app.post("/storage/cleanup/preview", async (c) => c.json(await storage.preview()));
   app.post("/storage/cleanup", async (c) => {
-    const { previewId } = z.strictObject({ previewId: z.uuid() }).parse(await c.req.json());
+    const { previewId } = StorageCleanupInput.parse(await c.req.json());
     return c.json(await storage.cleanup(previewId));
   });
   return app;

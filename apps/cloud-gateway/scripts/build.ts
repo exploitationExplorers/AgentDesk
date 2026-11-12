@@ -5,7 +5,7 @@ import { cp, mkdir, stat } from "node:fs/promises";
 await stat("../desktop/dist-cloud/cloud.html");
 
 await build({
-  entryPoints: { server: "src/index.ts", recover: "src/recover.ts" },
+  entryPoints: { server: "src/index.ts", recover: "src/recover.ts", migrate: "src/migrate.ts" },
   outdir: "dist",
   outExtension: { ".js": ".mjs" },
   bundle: true,
@@ -16,7 +16,7 @@ await build({
     js: "import { createRequire as __createRequire } from 'node:module'; const require = __createRequire(import.meta.url);",
   },
   sourcemap: true,
-  external: ["better-auth", "better-auth/*", "better-sqlite3", "nodemailer"],
+  external: ["better-auth", "better-auth/*", "better-sqlite3", "nodemailer", "pg"],
 });
 await mkdir("dist/public", { recursive: true });
 await cp("../desktop/dist-cloud", "dist/public", { recursive: true });

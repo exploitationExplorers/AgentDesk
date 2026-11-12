@@ -30,7 +30,6 @@ import { stableId, type AutoloopStore } from "./store";
 import { nowIso } from "../../util";
 import { assertBudget } from "./budgets";
 import { waitUntilTool } from "./timers";
-
 export interface AutomationExecutorDeps {
   registry: ToolRegistry;
   providers: ProviderService;
@@ -41,7 +40,6 @@ export interface AutomationExecutorDeps {
   store: AutoloopStore;
   maskFactory?: () => MaskStore | undefined;
 }
-
 const FILE_TOOLS = new Set(["fs.read", "fs.write", "fs.patch", "fs.glob", "fs.search"]);
 /** 首期工具边界限定为本地文件与报告产物；每次工具入口重验绑定和拒绝规则。 */
 export async function executeAutomation(
@@ -64,14 +62,17 @@ export async function executeAutomation(
       throw new AppError(ErrorCode.Conflict, "绑定的工作区位置已变化，请重新创建自动化");
     const registry = new ToolRegistry();
     registry.register(waitUntilTool);
-    const approvals = new Collection<{ id: string; hash: string }>(
-      deps.store.db,
-      "autoloop_resource_approvals_v1",
-    );
+    const approvals = new Collection<{
+      id: string;
+      hash: string;
+    }>(deps.store.db, "autoloop_resource_approvals_v1");
     const resourceHash = async (args: unknown) => {
-      const input = args as { project: string; path: string };
+      const input = args as {
+        project: string;
+        path: string;
+      };
       try {
-        return (await fsRead(deps.projects.find(input.project).path, input.path)).hash;
+        return (await fsRead((await deps.projects.find(input.project)).path, input.path)).hash;
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") return "";
         throw error;
@@ -94,7 +95,7 @@ export async function executeAutomation(
             : undefined;
         if (
           typeof project !== "string" ||
-          key(await realpath(deps.projects.find(project).path)) !== key(root)
+          key(await realpath((await deps.projects.find(project)).path)) !== key(root)
         )
           throw new AppError(ErrorCode.BadRequest, "此自动化只能访问绑定的项目");
       }
@@ -150,7 +151,7 @@ export async function executeAutomation(
     const agents = [
       createAutomationAgentDefinition({
         binding,
-        project: deps.projects.find(binding.projectId ?? binding.workspacePolicy.root),
+        project: await deps.projects.find(binding.projectId ?? binding.workspacePolicy.root),
         trigger,
         now: nowIso(),
       }),
@@ -159,10 +160,10 @@ export async function executeAutomation(
     const history = new ConversationStore(deps.store.db);
     const saved = deps.store.checkpoints.get(task.id)?.checkpoint;
     assertBudget(binding, saved);
-    const drafts = new Collection<{ id: string; value: unknown }>(
-      deps.store.db,
-      "autoloop_drafts_v1",
-    );
+    const drafts = new Collection<{
+      id: string;
+      value: unknown;
+    }>(deps.store.db, "autoloop_drafts_v1");
     const draftId = (key: string) => JSON.stringify([task.id, key]);
     const result = await orchestrator.run({
       agent: "orchestrator",
@@ -179,15 +180,19 @@ export async function executeAutomation(
       requestAnswer: async () => {
         throw new Error("自动化问题必须持久化");
       },
-      emit: (event) => {
+      emit: async (event) => {
         deps.store.assertEpoch();
-        deps.tasks.appendEvent({ taskId: task.id, runId: run.id, event });
+        await deps.tasks.appendEvent({ taskId: task.id, runId: run.id, event });
       },
-      recordArtifact: (input) => {
+      recordArtifact: async (input) => {
         deps.store.assertEpoch();
         signal.throwIfAborted();
-        const artifact = deps.tasks.recordArtifact({ ...input, taskId: task.id, runId: run.id });
-        deps.tasks.appendEvent({
+        const artifact = await deps.tasks.recordArtifact({
+          ...input,
+          taskId: task.id,
+          runId: run.id,
+        });
+        await deps.tasks.appendEvent({
           taskId: task.id,
           runId: run.id,
           event: { type: "artifact_ready", artifactId: artifact.id, title: artifact.title },
@@ -215,7 +220,10 @@ export async function executeAutomation(
           assertBudget(binding, checkpoint);
         },
         validateApproval: async (request) => {
-          const payload = request.payload as { tool?: string; args?: unknown };
+          const payload = request.payload as {
+            tool?: string;
+            args?: unknown;
+          };
           if (!payload.tool) throw new AppError(ErrorCode.BadRequest, "授权缺少操作信息");
           await validate(payload.tool, payload.args);
           if (payload.tool === "fs.write" || payload.tool === "fs.patch") {
@@ -233,8 +241,10 @@ export async function executeAutomation(
       run.id,
       deps.store.checkpoints.get(task.id)?.checkpoint.revision,
     );
-    if (!history.listMessages(task.conversationId).some((message) => message.id === messageId))
-      history.insertMessage({
+    if (
+      !(await history.listMessages(task.conversationId)).some((message) => message.id === messageId)
+    )
+      await history.insertMessage({
         id: messageId,
         conversationId: task.conversationId,
         role: "assistant",

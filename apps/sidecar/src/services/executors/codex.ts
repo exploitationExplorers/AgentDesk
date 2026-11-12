@@ -1,3 +1,4 @@
+import { businessDatabase, type BusinessDatabase } from "../../db/business-database";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { realpath } from "node:fs/promises";
 import type Database from "better-sqlite3";
@@ -11,12 +12,16 @@ import { AppError, ErrorCode, type TaskStreamEvent } from "@agentdesk/shared";
 import type { ApprovalService } from "../approvals";
 import type { CloudRunnerService } from "../remote/runner";
 import type { RunExecutor, TaskService } from "../tasks";
-
 interface Thread {
   id: string;
   cwd: string;
-  status?: { type: string };
-  turns?: { id: string; status: string }[];
+  status?: {
+    type: string;
+  };
+  turns?: {
+    id: string;
+    status: string;
+  }[];
 }
 interface Item {
   id: string;
@@ -27,20 +32,24 @@ interface Item {
   status?: string;
   aggregatedOutput?: string;
 }
-
 export class CodexExecutorService {
+  private readonly db: BusinessDatabase;
+  readonly ready: Promise<void>;
   private rpc: Promise<CodexRpc> | undefined;
   private readonly loaded = new Set<string>();
   private active = false;
   private disposed = false;
   constructor(
-    private readonly db: Database.Database,
+    db: Database.Database | BusinessDatabase,
     private readonly dataDir: string,
     private readonly runner: CloudRunnerService,
     private readonly approvals: ApprovalService,
     private readonly tasks: () => TaskService,
     private readonly binary = process.env.AGENTDESK_CODEX_BIN,
-  ) {}
+  ) {
+    this.db = businessDatabase(db);
+    this.ready = (async () => {})();
+  }
   private connection() {
     if (this.disposed)
       throw new AppError(ErrorCode.ServiceUnavailable, "Codex executor has stopped");
@@ -72,10 +81,10 @@ export class CodexExecutorService {
       };
     try {
       const rpc = await this.connection();
-      const result = await rpc.request<{ account: unknown; requiresOpenaiAuth: boolean }>(
-        "account/read",
-        { refreshToken: false },
-      );
+      const result = await rpc.request<{
+        account: unknown;
+        requiresOpenaiAuth: boolean;
+      }>("account/read", { refreshToken: false });
       const authenticated = Boolean(result.account) || !result.requiresOpenaiAuth;
       return {
         id: "codex",
@@ -97,10 +106,12 @@ export class CodexExecutorService {
     if (this.active) throw new AppError(ErrorCode.Conflict, "请等待当前 Codex 任务结束后登录");
     const result = await (
       await this.connection()
-    ).request<{ type: string; loginId: string; verificationUrl: string; userCode: string }>(
-      "account/login/start",
-      { type: "chatgptDeviceCode" },
-    );
+    ).request<{
+      type: string;
+      loginId: string;
+      verificationUrl: string;
+      userCode: string;
+    }>("account/login/start", { type: "chatgptDeviceCode" });
     const url = new URL(result.verificationUrl);
     if (
       result.type !== "chatgptDeviceCode" ||
@@ -134,24 +145,35 @@ export class CodexExecutorService {
   private executeRun: RunExecutor = async (run, task, signal) => {
     await Promise.resolve();
     const tasks = this.tasks(),
-      workspace = await this.runner.resolveWorkspace(this.runner.context(task.id));
+      workspace = await this.runner.resolveWorkspace(await this.runner.context(task.id));
     const rpc = await this.connection();
-    const emit = (event: TaskStreamEvent) =>
-      tasks.appendEvent({ taskId: task.id, runId: run.id, parentRunId: run.parentRunId, event });
-    const planOnly = this.runner.requiresPlan(task);
+    const emit = async (event: TaskStreamEvent) =>
+      await tasks.appendEvent({
+        taskId: task.id,
+        runId: run.id,
+        parentRunId: run.parentRunId,
+        event,
+      });
+    const planOnly = await this.runner.requiresPlan(task);
     const threadOptions = {
       cwd: workspace,
       approvalPolicy: "untrusted",
       approvalsReviewer: "user",
       sandbox: "read-only",
     };
-    const old = this.db
+    const old = (await this.db
       .prepare("SELECT thread_id FROM codex_threads WHERE task_id=?")
-      .get(task.id) as { thread_id: string } | undefined;
+      .get(task.id)) as
+      | {
+          thread_id: string;
+        }
+      | undefined;
     signal.throwIfAborted();
-    this.runner.authorizeRun(run);
+    await this.runner.authorizeRun(run);
     if (old) {
-      const current = await rpc.request<{ thread: Thread }>("thread/read", {
+      const current = await rpc.request<{
+        thread: Thread;
+      }>("thread/read", {
         threadId: old.thread_id,
         includeTurns: false,
       });
@@ -161,7 +183,9 @@ export class CodexExecutorService {
         throw new AppError(ErrorCode.Forbidden, "Codex thread workspace differs from this task");
     }
     const alreadyLoaded = old && this.loaded.has(old.thread_id);
-    const response = await rpc.request<{ thread: Thread }>(
+    const response = await rpc.request<{
+      thread: Thread;
+    }>(
       alreadyLoaded ? "thread/read" : old ? "thread/resume" : "thread/start",
       alreadyLoaded
         ? { threadId: old.thread_id, includeTurns: false }
@@ -178,7 +202,7 @@ export class CodexExecutorService {
       throw new AppError(ErrorCode.Conflict, "Codex thread still has an active turn");
     const threadId = response.thread.id;
     this.loaded.add(threadId);
-    this.db
+    await this.db
       .prepare(
         "INSERT INTO codex_threads(task_id,thread_id) VALUES(?,?) ON CONFLICT(task_id) DO UPDATE SET thread_id=excluded.thread_id",
       )
@@ -206,10 +230,17 @@ export class CodexExecutorService {
       }
     };
     const unsubscribeFailure = rpc.onFailure(terminate);
-    const unsubscribe = rpc.subscribe((event) => {
+    let eventQueue = Promise.resolve();
+    let pendingEvents = 0,
+      pendingBytes = 0;
+    const handleNotification: Parameters<CodexRpc["subscribe"]>[0] = async (event) => {
       if (event.params.threadId !== threadId) return;
       if (event.method === "turn/started") {
-        const turn = event.params.turn as { id?: string } | undefined;
+        const turn = event.params.turn as
+          | {
+              id?: string;
+            }
+          | undefined;
         if (typeof turn?.id === "string" && !turnId) turnId = turn.id;
       }
       if (!turnId) return;
@@ -222,7 +253,7 @@ export class CodexExecutorService {
         const id = String(event.params.itemId);
         messageText.set(id, (messageText.get(id) ?? "") + event.params.delta);
         text += event.params.delta;
-        emit({ type: "text_delta", agent: run.agent, delta: event.params.delta });
+        await emit({ type: "text_delta", agent: run.agent, delta: event.params.delta });
       }
       if (event.method === "turn/diff/updated" && typeof event.params.diff === "string")
         diff = event.params.diff.slice(0, 2 * 1024 * 1024);
@@ -244,12 +275,12 @@ export class CodexExecutorService {
             }
             text += delta;
             messageText.set(item.id, item.text);
-            if (delta) emit({ type: "text_delta", agent: run.agent, delta });
+            if (delta) await emit({ type: "text_delta", agent: run.agent, delta });
           }
         }
         if (item.type === "commandExecution" || item.type === "fileChange") {
           if (event.method === "item/started")
-            emit({
+            await emit({
               type: "tool_call",
               agent: run.agent,
               id: item.id,
@@ -257,7 +288,7 @@ export class CodexExecutorService {
               args: { command: item.command, changes: item.changes },
             });
           else
-            emit({
+            await emit({
               type: "tool_result",
               agent: run.agent,
               id: item.id,
@@ -267,15 +298,39 @@ export class CodexExecutorService {
         }
       }
       if (event.method === "turn/completed") {
-        const turn = event.params.turn as { id?: string; status?: string };
+        const turn = event.params.turn as {
+          id?: string;
+          status?: string;
+        };
         if (turnId && turn.id !== turnId) return;
         if (!settled) {
           settled = true;
           finish(turn.status ?? "failed");
         }
       }
+    };
+    const unsubscribe = rpc.subscribe((event) => {
+      const bytes = JSON.stringify(event).length * 2;
+      if (pendingEvents >= 4096 || pendingBytes + bytes > 8 * 1024 * 1024) {
+        terminate(new Error("Codex event persistence queue exceeded its capacity"));
+        return;
+      }
+      pendingEvents++;
+      pendingBytes += bytes;
+      eventQueue = eventQueue
+        .then(async () => {
+          if (!settled) await handleNotification(event);
+        })
+        .catch((error) =>
+          terminate(error instanceof Error ? error : new Error("Codex event persistence failed")),
+        )
+        .finally(() => {
+          pendingEvents--;
+          pendingBytes -= bytes;
+        });
     });
     rpc.onRequest = async (request: CodexServerRequest) => {
+      await eventQueue;
       if (
         request.params.threadId !== threadId ||
         !turnId ||
@@ -283,7 +338,7 @@ export class CodexExecutorService {
         signal.aborted
       )
         return { decision: "cancel" };
-      this.runner.authorizeRun(run);
+      await this.runner.authorizeRun(run);
       const file = request.method === "item/fileChange/requestApproval",
         command = request.method === "item/commandExecution/requestApproval";
       if (!file && !command) throw new Error("Unsupported approval type");
@@ -319,9 +374,9 @@ export class CodexExecutorService {
           },
         },
         approvalSignal,
-        (approval) => {
-          this.runner.bindApproval(approval, task);
-          emit({
+        async (approval) => {
+          await this.runner.bindApproval(approval, task);
+          await emit({
             type: "approval_required",
             approvalId: approval.id,
             title: approval.title,
@@ -331,7 +386,7 @@ export class CodexExecutorService {
           });
         },
       );
-      this.runner.authorizeRun(run);
+      await this.runner.authorizeRun(run);
       signal.throwIfAborted();
       return { decision: approved ? "accept" : "decline" };
     };
@@ -343,7 +398,7 @@ export class CodexExecutorService {
     signal.addEventListener("abort", abort, { once: true });
     try {
       signal.throwIfAborted();
-      emit({
+      await emit({
         type: "run_started",
         runId: run.id,
         parentRunId: run.parentRunId,
@@ -351,10 +406,14 @@ export class CodexExecutorService {
         trigger: run.trigger,
       });
       // 发起前落库；回包丢失不自动重试 turn/start。
-      this.db
+      await this.db
         .prepare("INSERT INTO codex_turns(run_id,thread_id,status) VALUES(?,?,'starting')")
         .run(run.id, threadId);
-      const started = await rpc.request<{ turn: { id: string } }>("turn/start", {
+      const started = await rpc.request<{
+        turn: {
+          id: string;
+        };
+      }>("turn/start", {
         threadId,
         clientUserMessageId: run.id,
         input: [
@@ -371,21 +430,21 @@ export class CodexExecutorService {
       });
       if (turnId && turnId !== started.turn.id) throw new Error("Codex turn identity changed");
       turnId = started.turn.id;
-      this.db
+      await this.db
         .prepare("UPDATE codex_turns SET turn_id=?,status='running' WHERE run_id=?")
         .run(turnId, run.id);
       if (signal.aborted) abort();
       const status = await completed;
-      this.runner.authorizeRun(run);
+      await this.runner.authorizeRun(run);
       signal.throwIfAborted();
-      this.db.prepare("UPDATE codex_turns SET status=? WHERE run_id=?").run(status, run.id);
+      await this.db.prepare("UPDATE codex_turns SET status=? WHERE run_id=?").run(status, run.id);
       if (status !== "completed")
         return {
           status: status === "interrupted" ? "cancelled" : "failed",
           resultError: "Codex turn did not complete",
         };
       if (diff)
-        tasks.recordArtifact({
+        await tasks.recordArtifact({
           taskId: task.id,
           runId: run.id,
           kind: "change",
@@ -393,27 +452,29 @@ export class CodexExecutorService {
           content: diff,
         });
       if (planOnly) {
-        const plan = tasks.recordArtifact({
+        const plan = await tasks.recordArtifact({
           taskId: task.id,
           runId: run.id,
           kind: "plan",
           title: "Codex plan",
           content: text,
         });
-        const approval = this.approvals.create({
-          kind: "plan",
-          title: `方案待批准：${task.title}`,
-          detail: text,
-          risk: "confirm",
-          payload: { taskId: task.id, artifactId: plan.id, version: plan.version },
-        }).approval;
-        this.runner.bindApproval(approval, task);
-        emit({ type: "plan_updated", artifactId: plan.id, version: plan.version });
+        const approval = (
+          await this.approvals.create({
+            kind: "plan",
+            title: `方案待批准：${task.title}`,
+            detail: text,
+            risk: "confirm",
+            payload: { taskId: task.id, artifactId: plan.id, version: plan.version },
+          })
+        ).approval;
+        await this.runner.bindApproval(approval, task);
+        await emit({ type: "plan_updated", artifactId: plan.id, version: plan.version });
         return { status: "succeeded", resultText: text, nextTaskStatus: "awaiting_plan_approval" };
       }
       return { status: "succeeded", resultText: text };
     } catch {
-      this.db
+      await this.db
         .prepare(
           "UPDATE codex_turns SET status='interrupted' WHERE run_id=? AND status IN ('starting','running')",
         )
@@ -436,7 +497,6 @@ export class CodexExecutorService {
     }
   };
 }
-
 /** 文件审批中的路径和移动目标必须落在当前工作区，现有符号链接也不能越界。 */
 export async function changesInsideWorkspace(
   workspace: string,
@@ -455,7 +515,13 @@ export async function changesInsideWorkspace(
   };
   for (const value of changes) {
     if (!value || typeof value !== "object") return false;
-    const change = value as { path?: unknown; kind?: { type?: unknown; move_path?: unknown } };
+    const change = value as {
+      path?: unknown;
+      kind?: {
+        type?: unknown;
+        move_path?: unknown;
+      };
+    };
     if (!change.kind || !["add", "delete", "update"].includes(String(change.kind.type)))
       return false;
     const paths = [change.path, ...(change.kind.move_path == null ? [] : [change.kind.move_path])];

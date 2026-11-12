@@ -18,7 +18,11 @@ function isUnderRoot(root: string, path: string): boolean {
 
 /** 每次运行独立加载已登记项目根的指令，禁止猜测项目或读取祖先目录。 */
 export class ProjectInstructionService {
-  constructor(private readonly projects: { list: () => ReadonlyArray<{ path: string }> }) {}
+  constructor(
+    private readonly projects: {
+      list: () => ReadonlyArray<{ path: string }> | Promise<ReadonlyArray<{ path: string }>>;
+    },
+  ) {}
 
   async validateWorkspace(workspace?: string): Promise<string | undefined> {
     if (workspace === undefined) return undefined;
@@ -30,7 +34,9 @@ export class ProjectInstructionService {
     ) {
       throw new AppError(ErrorCode.BadRequest, "工作区必须是已登记项目根的绝对路径");
     }
-    const project = this.projects.list().find((item) => pathKey(item.path) === pathKey(workspace));
+    const project = (await this.projects.list()).find(
+      (item) => pathKey(item.path) === pathKey(workspace),
+    );
     if (!project) throw new AppError(ErrorCode.BadRequest, "工作区未登记，请先添加该项目根目录");
     try {
       const root = await realpath(project.path);

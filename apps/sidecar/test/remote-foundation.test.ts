@@ -14,7 +14,6 @@ import { RemoteGrantStore } from "../src/services/remote/grants";
 import { RemoteOperationStore } from "../src/services/remote/operations";
 import { RemoteTaskSubmissionService } from "../src/services/remote/task-submissions";
 import { readRemoteTask } from "../src/services/remote/task-contexts";
-
 let handle: DbHandle;
 const directories: string[] = [];
 afterEach(() => {
@@ -42,7 +41,7 @@ function grant(): ProjectGrant {
     ...scope,
     capabilities: ["task.create", "git.push"],
     connectionEpoch: 1,
-    expiresAt: new Date(Date.now() + 45_000).toISOString(),
+    expiresAt: new Date(Date.now() + 45000).toISOString(),
     revokedAt: null,
   };
 }
@@ -57,7 +56,7 @@ function command(payload: unknown): RemoteCommand {
     action: "task.create",
     payloadHash: payloadDigest(payload),
     issuedAt: new Date().toISOString(),
-    expiresAt: new Date(Date.now() + 30_000).toISOString(),
+    expiresAt: new Date(Date.now() + 30000).toISOString(),
   };
 }
 function count(table: string) {
@@ -71,47 +70,52 @@ function count(table: string) {
     ].includes(table)
   )
     throw new Error("Invalid test table");
-  return (handle.raw.prepare(`SELECT count(*) AS n FROM ${table}`).get() as { n: number }).n;
+  return (
+    handle.raw.prepare(`SELECT count(*) AS n FROM ${table}`).get() as {
+      n: number;
+    }
+  ).n;
 }
-
 describe("完整任务请求事务", () => {
-  it("重复请求只创建一个 Conversation／Task／Run，不同内容返回冲突", () => {
+  it("重复请求只创建一个 Conversation／Task／Run，不同内容返回冲突", async () => {
     const { tasks, submissions } = fixture();
     const input = { goal: "Fix the test", idempotencyKey: "request-1" };
-    const first = submissions.submit(input);
-    const replay = submissions.submit(input);
+    const first = await submissions.submit(input);
+    const replay = await submissions.submit(input);
     expect(replay.replayed).toBe(true);
     expect(replay.task.id).toBe(first.task.id);
     expect(replay.run.id).toBe(first.run.id);
-    expect(tasks.list()).toHaveLength(1);
+    expect(await tasks.list()).toHaveLength(1);
     expect(count("documents")).toBe(2);
     expect(count("runs")).toBe(1);
-    expect(() => submissions.submit({ ...input, goal: "Different action" })).toThrow(/幂等键/);
-    expect(tasks.list()).toHaveLength(1);
+    await expect(submissions.submit({ ...input, goal: "Different action" })).rejects.toThrow(
+      /幂等键/,
+    );
+    expect(await tasks.list()).toHaveLength(1);
   });
-
-  it("Run 创建失败时回滚会话和任务，重试可完整创建", () => {
+  it("Run 创建失败时回滚会话和任务，重试可完整创建", async () => {
     const { tasks, submissions } = fixture();
     const spy = vi.spyOn(tasks, "createRun").mockImplementationOnce(() => {
       throw new Error("disk failure");
     });
-    expect(() => submissions.submit({ goal: "Fix", idempotencyKey: "request-1" })).toThrow(
+    await expect(submissions.submit({ goal: "Fix", idempotencyKey: "request-1" })).rejects.toThrow(
       "disk failure",
     );
     expect(count("documents")).toBe(0);
     expect(count("runs")).toBe(0);
     spy.mockRestore();
-    expect(submissions.submit({ goal: "Fix", idempotencyKey: "request-1" }).replayed).toBe(false);
+    expect((await submissions.submit({ goal: "Fix", idempotencyKey: "request-1" })).replayed).toBe(
+      false,
+    );
   });
-
-  it("旧 Run 幂等键冲突不留下新的孤立 Task", () => {
+  it("旧 Run 幂等键冲突不留下新的孤立 Task", async () => {
     const { tasks, submissions } = fixture();
-    const task = tasks.create({
+    const task = await tasks.create({
       goal: "Legacy",
       conversationId: "legacy",
       requiresPlanApproval: false,
     });
-    tasks.createRun({
+    await tasks.createRun({
       taskId: task.id,
       kind: "root",
       agent: "orchestrator",
@@ -119,112 +123,117 @@ describe("完整任务请求事务", () => {
       idempotencyKey: "legacy-key",
       input: { userMessage: "Legacy" },
     });
-    expect(() => submissions.submit({ goal: "New", idempotencyKey: "legacy-key" })).toThrow();
-    expect(tasks.list()).toHaveLength(1);
+    await expect(
+      submissions.submit({ goal: "New", idempotencyKey: "legacy-key" }),
+    ).rejects.toThrow();
+    expect(await tasks.list()).toHaveLength(1);
     expect(count("documents")).toBe(1);
   });
 });
-
 describe("权限范围与 lease", () => {
-  it("拒绝跨宿主／项目／工作区／身份、内容篡改和未知能力", () => {
+  it("拒绝跨宿主／项目／工作区／身份、内容篡改和未知能力", async () => {
     fixture();
     const grants = new RemoteGrantStore(handle.raw, "cloud");
-    grants.put(grant());
+    await grants.put(grant());
     const payload = { goal: "Fix" };
     const valid = command(payload);
-    expect(grants.authorize(valid, payload)).toEqual(valid);
+    expect(await grants.authorize(valid, payload)).toEqual(valid);
     for (const field of ["hostId", "projectId", "workspaceId", "userId"] as const)
-      expect(() => grants.authorize({ ...valid, [field]: "other" }, payload)).toThrow();
-    expect(() => grants.authorize(valid, { goal: "Changed" })).toThrow(/摘要/);
-    expect(() => grants.authorize({ ...valid, action: "git.commit" }, payload)).toThrow(/权限/);
+      await expect(grants.authorize({ ...valid, [field]: "other" }, payload)).rejects.toThrow();
+    await expect(grants.authorize(valid, { goal: "Changed" })).rejects.toThrow(/摘要/);
+    await expect(grants.authorize({ ...valid, action: "git.commit" }, payload)).rejects.toThrow(
+      /权限/,
+    );
   });
-
-  it("撤销和新 epoch 使旧命令失效，不能用旧 epoch 恢复授权", () => {
+  it("撤销和新 epoch 使旧命令失效，不能用旧 epoch 恢复授权", async () => {
     fixture();
     const grants = new RemoteGrantStore(handle.raw, "cloud");
-    grants.put(grant());
+    await grants.put(grant());
     const valid = command({});
-    grants.revoke(scope);
-    expect(() => grants.authorize(valid, {})).toThrow();
-    expect(() => grants.put(grant())).toThrow(/epoch/);
-    grants.put({ ...grant(), connectionEpoch: 2 });
-    expect(() => grants.authorize(valid, {})).toThrow();
-    expect(grants.authorize({ ...valid, connectionEpoch: 2 }, {})).toBeTruthy();
+    await grants.revoke(scope);
+    await expect(grants.authorize(valid, {})).rejects.toThrow();
+    await expect(grants.put(grant())).rejects.toThrow(/epoch/);
+    await grants.put({ ...grant(), connectionEpoch: 2 });
+    await expect(grants.authorize(valid, {})).rejects.toThrow();
+    expect(await grants.authorize({ ...valid, connectionEpoch: 2 }, {})).toBeTruthy();
   });
-
-  it("过期命令和 lease、未来时间、缺少近期验证的 push 均拒绝", () => {
+  it("过期命令和 lease、未来时间、缺少近期验证的 push 均拒绝", async () => {
     fixture();
     const grants = new RemoteGrantStore(handle.raw, "cloud");
-    grants.put(grant());
+    await grants.put(grant());
     const valid = command({});
     const now = Date.now();
-    expect(() => grants.authorize(valid, {}, now + 46_000)).toThrow(/过期/);
-    expect(() =>
-      grants.authorize({ ...valid, issuedAt: new Date(now + 10_000).toISOString() }, {}, now),
-    ).toThrow();
-    expect(() =>
+    await expect(grants.authorize(valid, {}, now + 46000)).rejects.toThrow(/过期/);
+    await expect(
+      grants.authorize({ ...valid, issuedAt: new Date(now + 10000).toISOString() }, {}, now),
+    ).rejects.toThrow();
+    await expect(
       grants.authorize(
         {
           ...valid,
           action: "git.push",
-          actor: { ...valid.actor, recentAuthAt: new Date(now - 16 * 60_000).toISOString() },
+          actor: { ...valid.actor, recentAuthAt: new Date(now - 16 * 60000).toISOString() },
         },
         {},
       ),
-    ).toThrow(/近期/);
+    ).rejects.toThrow(/近期/);
   });
 });
-
 describe("远程操作日志与原子任务", () => {
   it("规范化 JSON 不受属性顺序影响，不忽略数组顺序或非法数字", () => {
     expect(payloadDigest({ b: 2, a: [1, 3] })).toBe(payloadDigest({ a: [1, 3], b: 2 }));
     expect(payloadDigest([1, 2])).not.toBe(payloadDigest([2, 1]));
     expect(() => payloadDigest({ value: NaN })).toThrow();
   });
-
-  it("幂等键按 user／host／project／action 隔离，工作区变更冲突", () => {
+  it("幂等键按 user／host／project／action 隔离，工作区变更冲突", async () => {
     const { operations } = fixture();
-    const first = operations.accept(scope, "git.commit", "request-1", { files: ["a"] });
-    expect(operations.accept(scope, "git.commit", "request-1", { files: ["a"] }).replayed).toBe(
-      true,
-    );
-    expect(() => operations.accept(scope, "git.commit", "request-1", { files: ["b"] })).toThrow(
-      /请求 ID/,
-    );
-    expect(() =>
+    const first = await operations.accept(scope, "git.commit", "request-1", { files: ["a"] });
+    expect(
+      (await operations.accept(scope, "git.commit", "request-1", { files: ["a"] })).replayed,
+    ).toBe(true);
+    await expect(
+      operations.accept(scope, "git.commit", "request-1", { files: ["b"] }),
+    ).rejects.toThrow(/请求 ID/);
+    await expect(
       operations.accept({ ...scope, workspaceId: "other" }, "git.commit", "request-1", {
         files: ["a"],
       }),
-    ).toThrow();
+    ).rejects.toThrow();
     expect(
-      operations.accept({ ...scope, projectId: "other" }, "git.commit", "request-1", {
-        files: ["a"],
-      }).replayed,
+      (
+        await operations.accept({ ...scope, projectId: "other" }, "git.commit", "request-1", {
+          files: ["a"],
+        })
+      ).replayed,
     ).toBe(false);
     expect(
-      operations.get({ ...scope, userId: "other" }, first.operation.operationId),
+      await operations.get({ ...scope, userId: "other" }, first.operation.operationId),
     ).toBeUndefined();
   });
-
-  it("外部动作中断后必须对账，不能回到 running 盲目重试", () => {
+  it("外部动作中断后必须对账，不能回到 running 盲目重试", async () => {
     const { operations } = fixture();
-    const { operation } = operations.accept(scope, "git.commit", "request-1", {});
+    const { operation } = await operations.accept(scope, "git.commit", "request-1", {});
     const result = { beforeHead: "a", expectedTree: "b" };
-    operations.transition(scope, operation.operationId, "running", result);
-    expect(operations.reconcileInterrupted("cloud")).toBe(1);
-    expect(operations.get(scope, operation.operationId)?.status).toBe("needs_reconciliation");
-    expect(() => operations.transition(scope, operation.operationId, "running", result)).toThrow();
-    operations.transition(scope, operation.operationId, "succeeded", { commit: "c" });
-    expect(operations.accept(scope, "git.commit", "request-1", {}).operation.result).toEqual({
+    await operations.transition(scope, operation.operationId, "running", result);
+    expect(await operations.reconcileInterrupted("cloud")).toBe(1);
+    expect((await operations.get(scope, operation.operationId))?.status).toBe(
+      "needs_reconciliation",
+    );
+    await expect(
+      operations.transition(scope, operation.operationId, "running", result),
+    ).rejects.toThrow();
+    await operations.transition(scope, operation.operationId, "succeeded", { commit: "c" });
+    expect(
+      (await operations.accept(scope, "git.commit", "request-1", {})).operation.result,
+    ).toEqual({
       commit: "c",
     });
     expect(count("remote_audit_events")).toBe(4);
   });
-
   it("完整资源图在一个事务内创建，重复提交不会调度第二次", async () => {
     const { tasks } = fixture();
     const grants = new RemoteGrantStore(handle.raw, "cloud");
-    grants.put(grant());
+    await grants.put(grant());
     const service = new RemoteTaskSubmissionService(
       handle,
       tasks,
@@ -240,26 +249,25 @@ describe("远程操作日志与原子任务", () => {
     });
     const valid = command(payload);
     const [first, replay] = await Promise.all([
-      service.submit(valid, payload),
-      service.submit(valid, payload),
+      await service.submit(valid, payload),
+      await service.submit(valid, payload),
     ]);
     expect(replay.task.id).toBe(first.task.id);
     expect(count("remote_operations")).toBe(1);
     expect(count("remote_task_contexts")).toBe(1);
     expect(count("runs")).toBe(1);
     expect(first.run.executionOwner).toBe("local");
-    expect(readRemoteTask(handle.raw, first.task.id)?.executor).toBe("native-bot");
-    expect(() => tasks.enqueue(first.run.id)).toThrow(/重新验证/);
+    expect((await readRemoteTask(handle.raw, first.task.id))?.executor).toBe("native-bot");
+    await expect(tasks.enqueue(first.run.id)).rejects.toThrow(/重新验证/);
     const executor = vi.fn();
     new TaskService(handle.db, new EventHub(), { executor });
     expect(executor).not.toHaveBeenCalled();
-    expect(tasks.getRun(first.run.id)?.status).toBe("queued");
+    expect((await tasks.getRun(first.run.id))?.status).toBe("queued");
   });
-
   it("关联写入失败一并回滚操作、Task、Run 和审计", async () => {
     const { tasks } = fixture();
     const grants = new RemoteGrantStore(handle.raw, "cloud");
-    grants.put(grant());
+    await grants.put(grant());
     handle.raw.exec(
       "CREATE TRIGGER fail_context BEFORE INSERT ON remote_task_contexts BEGIN SELECT RAISE(ABORT, 'context failure'); END",
     );
@@ -286,13 +294,12 @@ describe("远程操作日志与原子任务", () => {
     ])
       expect(count(table)).toBe(0);
   });
-
   it("异步解析工作区期间撤销，不再创建任务", async () => {
     const { tasks } = fixture();
     const grants = new RemoteGrantStore(handle.raw, "cloud");
-    grants.put(grant());
+    await grants.put(grant());
     const service = new RemoteTaskSubmissionService(handle, tasks, grants, async () => {
-      grants.revoke(scope);
+      await grants.revoke(scope);
       return "/workspaces/project-1";
     });
     const payload = RemoteTaskInput.parse({
@@ -306,7 +313,6 @@ describe("远程操作日志与原子任务", () => {
     expect(count("remote_operations")).toBe(0);
   });
 });
-
 describe("前向迁移", () => {
   it("旧库数据保留，重复打开不重建迁移，未知 schema 拒绝启动", () => {
     const dir = mkdtempSync(join(tmpdir(), "agentdesk-remote-migration-"));

@@ -1,4 +1,4 @@
-﻿import { Hono } from "hono";
+import { Hono } from "hono";
 import {
   AppError,
   AutomationBindingInput,
@@ -8,7 +8,6 @@ import {
   ErrorCode,
 } from "@agentdesk/shared";
 import type { Container } from "../../container";
-
 export function autoloopRoutes({ autoloop }: Pick<Container, "autoloop">) {
   const app = new Hono();
   app.get("/autoloop/status", (c) => c.json(autoloop.status()));
@@ -30,7 +29,9 @@ export function autoloopRoutes({ autoloop }: Pick<Container, "autoloop">) {
       202,
     ),
   );
-  app.get("/automations/:id/tasks", (c) => c.json(autoloop.listTasks(c.req.param("id"))));
+  app.get("/automations/:id/tasks", async (c) =>
+    c.json(await autoloop.listTasks(c.req.param("id"))),
+  );
   app.get("/interactions", (c) => c.json(autoloop.listInteractions(c.req.query("taskId"))));
   app.post("/interactions/:id/answer", async (c) =>
     c.json(

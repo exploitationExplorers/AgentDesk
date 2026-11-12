@@ -9,7 +9,6 @@ import { createApp } from "../src/http/app";
 import { createAgentDefinitions } from "../src/agents/definitions";
 import { ReachService } from "../src/services/reach";
 import { fetchPublicSource, resolvePublicSource } from "../src/services/public-fetch";
-
 vi.mock("../src/services/public-fetch", () => ({
   fetchPublicSource: vi.fn(),
   resolvePublicSource: vi.fn(),
@@ -52,7 +51,6 @@ const call = (path: string, method = "GET", body?: unknown) =>
     headers: { "Content-Type": "application/json", "X-AgentDesk-Token": "reach-test" },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
-
 describe("Reach service and API", () => {
   it("keeps status/capabilities local and exposes all three native channels", async () => {
     const capabilities = await (await call("/reach/capabilities")).json();
@@ -67,7 +65,6 @@ describe("Reach service and API", () => {
     );
     expect(fetchPublicSource).not.toHaveBeenCalled();
   });
-
   it("persists channel switches and prevents disabled tools from sending requests", async () => {
     expect((await call("/reach/settings", "PUT", { disabledChannels: ["github"] })).status).toBe(
       200,
@@ -80,7 +77,6 @@ describe("Reach service and API", () => {
     expect(fetchPublicSource).not.toHaveBeenCalled();
     restarted.dispose();
   });
-
   it("rejects unknown channels in settings and invalid action parameters", async () => {
     expect((await call("/reach/settings", "PUT", { disabledChannels: ["unknown"] })).status).toBe(
       400,
@@ -98,13 +94,11 @@ describe("Reach service and API", () => {
     ).toBe(400);
     expect(fetchPublicSource).not.toHaveBeenCalled();
   });
-
   it("requires the existing sidecar session token", async () => {
     expect((await createApp(container).request("/api/reach/capabilities")).status).toBe(401);
   });
-
   it("reuses existing GitHub account credentials without returning them", async () => {
-    container.projects.saveAccount({ platform: "github", token: "configured-github-token" });
+    await container.projects.saveAccount({ platform: "github", token: "configured-github-token" });
     const res = await call("/reach/run", "POST", {
       channel: "github",
       action: "search",
@@ -119,7 +113,6 @@ describe("Reach service and API", () => {
     expect(JSON.stringify(result)).not.toContain("configured-github-token");
     expect(container.reach.status().channels.find((entry) => entry.id === "github")?.ok).toBe(true);
   });
-
   it("registers safe tools for research with cancellation context", async () => {
     const definition = createAgentDefinitions().find((agent) => agent.name === "research")!;
     const selected = container.registry.select(definition.tools);
@@ -140,14 +133,12 @@ describe("Reach service and API", () => {
     );
     expect(result.ok).toBe(true);
   });
-
   it("identifies URLs without silently reading another GitHub resource", async () => {
     const result = await container.reach.read("https://github.com/owner/repo/blob/main/file.ts");
     expect(result.channel).toBe("github");
     expect(result.error?.code).toBe("BAD_INPUT");
     expect(fetchPublicSource).not.toHaveBeenCalled();
   });
-
   it("records Jina only when used and validates the nested target", async () => {
     vi.mocked(fetchPublicSource).mockImplementation(async (url, options) => {
       options?.onRequest?.(new URL(url));
@@ -166,7 +157,6 @@ describe("Reach service and API", () => {
       expect.any(AbortSignal),
     );
   });
-
   it("prevents requests while a channel is cooling down", async () => {
     const service = new ReachService(container.dbHandle.db, container.secrets);
     vi.mocked(fetchPublicSource).mockResolvedValue({
@@ -183,7 +173,6 @@ describe("Reach service and API", () => {
     expect(fetchPublicSource).toHaveBeenCalledTimes(1);
     service.dispose();
   });
-
   it("does not access the network for pre-cancelled requests", async () => {
     const controller = new AbortController();
     controller.abort();
@@ -194,7 +183,6 @@ describe("Reach service and API", () => {
     expect(result.error?.code).toBe("TIMEOUT");
     expect(fetchPublicSource).not.toHaveBeenCalled();
   });
-
   it("reports connection timeout as TIMEOUT rather than an upstream protocol failure", async () => {
     vi.mocked(fetchPublicSource).mockRejectedValue(
       new TypeError("fetch failed", { cause: { code: "UND_ERR_CONNECT_TIMEOUT" } }),

@@ -11,12 +11,10 @@ import {
 import { loadConfig } from "../src/config";
 import { createContainer, type Container } from "../src/container";
 import { createApp } from "../src/http/app";
-
 let container: Container;
 let app: ReturnType<typeof createApp>;
 let faux: FauxProviderRegistration;
 const token = "evolution-integration-test-token";
-
 beforeAll(async () => {
   container = await createContainer(
     {
@@ -26,7 +24,7 @@ beforeAll(async () => {
     { inMemory: true },
   );
   app = createApp(container);
-  faux = registerFauxProvider({ tokensPerSecond: 100_000 });
+  faux = registerFauxProvider({ tokensPerSecond: 100000 });
   vi.spyOn(container.providers, "resolve").mockImplementation(async () => [
     {
       providerId: "fixture",
@@ -37,13 +35,11 @@ beforeAll(async () => {
   ]);
   container.memory.updatePolicy({ autoCaptureEnabled: false });
 });
-
 afterAll(async () => {
   faux?.unregister();
   await container?.dispose();
   vi.restoreAllMocks();
 });
-
 async function request(path: string, method = "GET", body?: unknown) {
   return app.request(`/api${path}`, {
     method,
@@ -51,7 +47,6 @@ async function request(path: string, method = "GET", body?: unknown) {
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
 }
-
 it("完整容器接通认证、候选、隔离记忆回归与发布拒绝", async () => {
   expect((await app.request("/api/evolution")).status).toBe(401);
   const overview = await request("/evolution");
@@ -82,7 +77,6 @@ it("完整容器接通认证、候选、隔离记忆回归与发布拒绝", asyn
   expect((await request(`/evaluations/${result.id}`)).status).toBe(200);
   expect((await request("/evaluations", "POST", { eligibleForRelease: true })).status).toBe(404);
 });
-
 it("服务器解析可信版本，拒绝客户端伪造基线、未授权模型评测与非法JSON", async () => {
   const candidate = await (
     await request("/evolution/proposals", "POST", {
@@ -113,7 +107,6 @@ it("服务器解析可信版本，拒绝客户端伪造基线、未授权模型�
   });
   expect(malformed.status).toBe(400);
 });
-
 it("记忆候选经认证管理接口审核、更正和遗忘，不污染默认召回", async () => {
   const stored = container.memory.store({
     text: "用户偏好深色主题",
@@ -131,7 +124,6 @@ it("记忆候选经认证管理接口审核、更正和遗忘，不污染默认�
   expect(container.memory.recall("浅色主题")).toEqual([]);
   expect((await request("/memories/policy")).status).toBe(200);
 });
-
 it("设置页直接创建真实用户记忆，不调用模型并拒绝伪造来源或凭据", async () => {
   expect((await app.request("/api/memories", { method: "POST", body: "{}" })).status).toBe(401);
   const resolver = vi.mocked(container.providers.resolve);
@@ -167,7 +159,6 @@ it("设置页直接创建真实用户记忆，不调用模型并拒绝伪造来�
     ).status,
   ).toBe(400);
 });
-
 it("真实聊天固定行为版本到Run，并可提交反馈作为后续候选证据", async () => {
   faux.setResponses([fauxAssistantMessage(fauxText("本次使用合成模型完成验证。"))]);
   const conversationId = await container.chat.send(
@@ -175,7 +166,7 @@ it("真实聊天固定行为版本到Run，并可提交反馈作为后续候选�
     () => undefined,
     new AbortController().signal,
   );
-  const task = container.tasks.findByConversation(conversationId);
+  const task = await container.tasks.findByConversation(conversationId);
   expect(task).toBeDefined();
   const runId = task!.currentRunId!;
   const pinned = container.dbHandle.raw

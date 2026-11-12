@@ -14,7 +14,6 @@ import { loadConfig } from "../src/config";
 import { createApp } from "../src/http/app";
 import { ConversationContextService } from "../src/services/conversation-context";
 import { ConversationStore } from "../src/services/conversation-store";
-
 let container: Container;
 let faux: FauxProviderRegistration;
 beforeAll(async () => {
@@ -25,7 +24,7 @@ beforeAll(async () => {
     },
     { inMemory: true },
   );
-  faux = registerFauxProvider({ tokensPerSecond: 100_000 });
+  faux = registerFauxProvider({ tokensPerSecond: 100000 });
   container.providers.resolve = async () => [
     { providerId: "faux", providerName: "faux", model: faux.getModel(), apiKey: "test" },
   ];
@@ -40,7 +39,6 @@ const request = (path: string, method = "GET", body?: unknown) =>
     headers: { "Content-Type": "application/json", "X-AgentDesk-Token": "test" },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-
 it("聊天完成后状态栏返回真实运行、模型用量和预算", async () => {
   faux.setResponses([
     fauxAssistantMessage(fauxText("已收到")),
@@ -59,7 +57,6 @@ it("聊天完成后状态栏返回真实运行、模型用量和预算", async (
   expect(state.latestUsage?.providerId).toBe("faux");
   expect(state.context).toMatchObject({ estimated: true, messageCount: 2 });
 });
-
 it("压缩和排队期间拒绝删除，发布摘要后继续保留全部历史", async () => {
   const conversation = container.chat.conversations.put({
     id: "long-session",
@@ -69,7 +66,7 @@ it("压缩和排队期间拒绝删除，发布摘要后继续保留全部历史"
   });
   const store = new ConversationStore(container.dbHandle.db);
   for (let i = 0; i < 12; i++)
-    store.insertMessage({
+    await store.insertMessage({
       id: `long-${i}`,
       conversationId: conversation.id,
       role: i % 2 ? "assistant" : "user",
@@ -113,36 +110,35 @@ it("压缩和排队期间拒绝删除，发布摘要后继续保留全部历史"
   expect(after.context?.summary?.goal).toBe("保留目标");
   expect(after.context?.summarizedMessages).toBe(6);
   expect(after.lastCompaction?.phase).toBe("complete");
-  expect(container.chat.messages(conversation.id)).toHaveLength(12);
+  expect(await container.chat.messages(conversation.id)).toHaveLength(12);
   // 排队中的 Run 尚未取得会话锁，也必须阻止删除其历史和摘要。
-  const task = container.tasks.create({
+  const task = await container.tasks.create({
     goal: "等待继续长会话",
     conversationId: conversation.id,
     requiresPlanApproval: false,
   });
-  const run = container.tasks.createRun({
+  const run = await container.tasks.createRun({
     taskId: task.id,
     kind: "root",
     agent: "code",
     trigger: "create",
     input: { userMessage: "继续验证" },
   });
-  const queuedTask = container.tasks.get(task.id);
+  const queuedTask = await container.tasks.get(task.id);
   expect((await request(`/conversations/${conversation.id}`, "DELETE")).status).toBe(409);
   expect(container.chat.getConversation(conversation.id)).toEqual(conversation);
-  expect(container.chat.messages(conversation.id)).toHaveLength(12);
+  expect(await container.chat.messages(conversation.id)).toHaveLength(12);
   expect((await context.inspect({ conversationId: conversation.id })).summary).toEqual(
     after.context?.summary,
   );
-  expect(container.tasks.get(task.id)).toEqual(queuedTask);
-  expect(container.tasks.getRun(run.id)?.status).toBe("queued");
-  container.tasks.cancelTask(task.id);
-  container.tasks.enqueue(run.id);
-  expect(container.tasks.getRun(run.id)?.status).toBe("cancelled");
+  expect(await container.tasks.get(task.id)).toEqual(queuedTask);
+  expect((await container.tasks.getRun(run.id))?.status).toBe("queued");
+  await container.tasks.cancelTask(task.id);
+  await container.tasks.enqueue(run.id);
+  expect((await container.tasks.getRun(run.id))?.status).toBe("cancelled");
   expect((await request(`/conversations/${conversation.id}`, "DELETE")).status).toBe(204);
   expect((await context.inspect({ conversationId: conversation.id })).summary).toBeNull();
 });
-
 it("模型配置不可用时仍能读取任务状态，未知会话返回404", async () => {
   const resolve = container.providers.resolve;
   container.providers.resolve = async () => {

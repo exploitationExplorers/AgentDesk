@@ -17,6 +17,7 @@ import type { DeviceRelay } from "./devices/relay";
 import { registerDeviceRoutes } from "./devices/routes";
 import { GatewayTransfers } from "./remote/transfers";
 import { GatewayEvents } from "./remote/events";
+import { registerStorageRoutes } from "./storage-routes";
 import {
   CloudProviderInput,
   AgentModelBinding,
@@ -24,10 +25,8 @@ import {
   RemoteId,
   RemoteTaskInput,
 } from "@agentdesk/shared";
-
 const EmailInput = z.strictObject({ email: OwnerEmail });
 const VerifyInput = EmailInput.extend({ otp: z.string().regex(/^\d{6}$/) });
-
 export function createGatewayApp(deps: {
   config: GatewayConfig;
   auth: GatewayAuth;
@@ -44,7 +43,11 @@ export function createGatewayApp(deps: {
   const { config, auth, store } = deps;
   const events = new GatewayEvents(deps.runner, deps.routing);
   deps.shutdownSignal?.addEventListener("abort", () => events.closeAll(), { once: true });
-  const app = new Hono<{ Variables: { clientIp: string } }>();
+  const app = new Hono<{
+    Variables: {
+      clientIp: string;
+    };
+  }>();
   // 一个身份库一个写进程；串行 OTP 发行／验证也防止旧请求覆盖刚轮换的新 challenge。
   let authTail: Promise<unknown> = Promise.resolve();
   function serialize<T>(action: () => Promise<T>): Promise<T> {
@@ -65,6 +68,14 @@ export function createGatewayApp(deps: {
     await next();
   });
   app.get("/health/live", (c) => c.json({ status: "ok" }));
+  app.get("/health/ready", async (c) => {
+    try {
+      await store.db.prepare("SELECT 1 AS ready").get();
+      return c.json({ status: "ok", database: store.db.dialect });
+    } catch {
+      return c.json({ status: "unavailable" }, 503);
+    }
+  });
   app.use(
     "/api/*",
     bodyLimit({
@@ -99,16 +110,16 @@ export function createGatewayApp(deps: {
     if (!/^\d{13}\.[a-f0-9]{64}$/.test(nonce))
       throw new AppError(ErrorCode.Forbidden, "请刷新登录页");
     const age = Date.now() - Number(nonce.split(".")[0]);
-    if (age < 0 || age >= 600_000) throw new AppError(ErrorCode.Forbidden, "登录页已过期，请刷新");
+    if (age < 0 || age >= 600000) throw new AppError(ErrorCode.Forbidden, "登录页已过期，请刷新");
     verifyCsrf(c.req.header("x-csrf-token"), `login:${nonce}`, config.sessionSecret);
     await next();
   });
   app.post("/api/v1/auth/otp/request", async (c) => {
     const { email } = EmailInput.parse(await c.req.json());
-    store.limit([
-      { key: `send-email:${email}`, max: 1, windowMs: 60_000 },
-      { key: `send-ip:${c.get("clientIp")}`, max: 10, windowMs: 600_000 },
-      { key: "send-total", max: 100, windowMs: 600_000 },
+    await store.limit([
+      { key: `send-email:${email}`, max: 1, windowMs: 60000 },
+      { key: `send-ip:${c.get("clientIp")}`, max: 10, windowMs: 600000 },
+      { key: "send-total", max: 100, windowMs: 600000 },
     ]);
     await serialize(async () => {
       if (!config.authMultiUser && email !== config.ownerEmail) return;
@@ -121,7 +132,7 @@ export function createGatewayApp(deps: {
         await auth.deliverOtp(email, otp);
       } catch {
         await context.internalAdapter.deleteVerificationByIdentifier(`sign-in-otp-${email}`);
-        store.audit("auth.otp.request", "delivery_failed");
+        await store.audit("auth.otp.request", "delivery_failed");
         throw new AppError(ErrorCode.ServiceUnavailable, "邮件暂时无法发送，请稍后重试");
       }
     });
@@ -136,9 +147,9 @@ export function createGatewayApp(deps: {
   });
   app.post("/api/v1/auth/otp/verify", async (c) => {
     const { email, otp } = VerifyInput.parse(await c.req.json());
-    store.limit([
-      { key: `verify-ip:${c.get("clientIp")}`, max: 30, windowMs: 300_000 },
-      { key: `verify-email:${email}`, max: 20, windowMs: 300_000 },
+    await store.limit([
+      { key: `verify-ip:${c.get("clientIp")}`, max: 30, windowMs: 300000 },
+      { key: `verify-email:${email}`, max: 20, windowMs: 300000 },
     ]);
     return serialize(async () => {
       if (!config.authMultiUser && email !== config.ownerEmail)
@@ -153,10 +164,10 @@ export function createGatewayApp(deps: {
         asResponse: true,
       });
       if (!response.ok) {
-        store.audit("auth.otp.verify", "rejected");
+        await store.audit("auth.otp.verify", "rejected");
         throw new AppError(ErrorCode.Unauthorized, "验证码无效或已过期");
       }
-      if (previous) store.removeSession(previous.session.id);
+      if (previous) await store.removeSession(previous.session.id);
       for (const cookie of response.headers.getSetCookie())
         c.header("Set-Cookie", cookie, { append: true });
       const sessionCookie = response.headers
@@ -167,15 +178,15 @@ export function createGatewayApp(deps: {
         headers: new Headers({ origin: config.publicOrigin, cookie: sessionCookie }),
       });
       if (sessionResult)
-        store.markSessionAuthenticated(sessionResult.user.id, sessionResult.session.id);
-      store.audit("auth.otp.verify", "authenticated");
+        await store.markSessionAuthenticated(sessionResult.user.id, sessionResult.session.id);
+      await store.audit("auth.otp.verify", "authenticated");
       // 不转发库返回的 bearer token，只通过 HttpOnly Cookie 交付。
       return c.json({ authenticated: true });
     });
   });
   app.get("/api/v1/session", async (c) => {
     const { session, user } = await requireSession(auth, store, authHeaders(c, config), config);
-    const recentAuthAt = store.sessionAuthenticatedAt(user.id, session.id);
+    const recentAuthAt = await store.sessionAuthenticatedAt(user.id, session.id);
     return c.json({
       user: {
         id: user.id,
@@ -195,16 +206,24 @@ export function createGatewayApp(deps: {
         userId: result.user.id,
         sessionId: result.session.id,
         recentAuthAt:
-          store.sessionAuthenticatedAt(result.user.id, result.session.id) ??
+          (await store.sessionAuthenticatedAt(result.user.id, result.session.id)) ??
           new Date(0).toISOString(),
       },
       result,
     };
   };
   if (deps.devices) registerDeviceRoutes(app, { ...deps, relay: deps.devices, loggedIn });
+  registerStorageRoutes(app, {
+    runner: deps.runner,
+    store,
+    loggedIn: async (c) => {
+      const { actor, result } = await loggedIn(c);
+      return { actor, isOwner: result.user.email === config.ownerEmail };
+    },
+  });
   const transfers = deps.transfers ?? new GatewayTransfers(store.db, deps.remote, deps.routing);
   app.get("/api/v1/transfers", async (c) =>
-    c.json({ transfers: transfers.list((await loggedIn(c)).actor) }),
+    c.json({ transfers: await transfers.list((await loggedIn(c)).actor) }),
   );
   app.post("/api/v1/transfers", async (c) =>
     c.json(await transfers.create((await loggedIn(c)).actor, await c.req.json()), 202),
@@ -228,7 +247,6 @@ export function createGatewayApp(deps: {
   const hostRoute = /^\/api\/v1\/hosts\/([^/]+)(?:\/(.*))?$/;
   const providerRoute = /^\/api\/v1\/hosts\/([^/]+)\/providers(?:\/([^/]+))?(?:\/(.*))?$/;
   const providerAllowed = new Set(config.providerHostAllowlist);
-
   app.all("/api/v1/hosts", async (c) => {
     if (c.req.method !== "GET") throw new AppError(ErrorCode.NotFound, "接口不存在");
     const { actor } = await loggedIn(c);
@@ -237,7 +255,11 @@ export function createGatewayApp(deps: {
         hostId: string;
         mode: string;
         capabilities: string[];
-        executors?: Array<{ id: string; available: boolean; reason?: string }>;
+        executors?: Array<{
+          id: string;
+          available: boolean;
+          reason?: string;
+        }>;
       }>("/health")
       .catch((error: unknown) => {
         if (error instanceof AppError && error.code === ErrorCode.HostOffline) return null;
@@ -248,8 +270,7 @@ export function createGatewayApp(deps: {
     const projects = cloud ? await deps.remote.projects(actor) : [];
     return c.json({
       hosts: [
-        ...(deps.devices?.store
-          .list(actor.userId)
+        ...(((await deps.devices?.store.list(actor.userId)) ?? [])
           .filter((d) => d.state === "active")
           .map((d) => ({
             id: d.id,
@@ -286,10 +307,10 @@ export function createGatewayApp(deps: {
     const approvalMatch = path.match(approvalRoute);
     const providerMatch = path.match(providerRoute);
     if (!hostMatch) throw new AppError(ErrorCode.NotFound, "?????");
-    if (hostMatch[1] !== "cloud") deps.devices?.store.get(hostMatch[1]!, actor.userId);
+    if (hostMatch[1] !== "cloud") await deps.devices?.store.get(hostMatch[1]!, actor.userId);
     const runner = deps.runner.forHost(hostMatch[1]!);
     if (hostMatch[1] !== "cloud" && hostMatch[2] === undefined && c.req.method === "GET") {
-      const d = deps.devices!.store.get(hostMatch[1]!, actor.userId);
+      const d = await deps.devices!.store.get(hostMatch[1]!, actor.userId);
       return c.json({
         id: d.id,
         name: d.identity.name,
@@ -301,7 +322,11 @@ export function createGatewayApp(deps: {
     }
     if (hostMatch && hostMatch[2] === "executors" && c.req.method === "GET") {
       const host = await runner.json<{
-        executors: Array<{ id: string; available: boolean; reason?: string }>;
+        executors: Array<{
+          id: string;
+          available: boolean;
+          reason?: string;
+        }>;
       }>("/host");
       return c.json({ executors: host.executors });
     }
@@ -315,7 +340,7 @@ export function createGatewayApp(deps: {
       if (c.req.method === "GET" && hostMatch[2]!.startsWith("repository-imports"))
         return c.json(await runner.json(`/host/${hostMatch[2]}`));
       if (c.req.method !== "POST") throw new AppError(ErrorCode.NotFound, "接口不存在");
-      if (Date.now() - Date.parse(actor.recentAuthAt) > 15 * 60_000)
+      if (Date.now() - Date.parse(actor.recentAuthAt) > 15 * 60000)
         throw new AppError(ErrorCode.Unauthorized, "配置 Git 需要重新验证邮箱");
       const input = await c.req.json();
       if (hostMatch[2] === "repository-fetch")
@@ -339,12 +364,12 @@ export function createGatewayApp(deps: {
       /^executors\/codex\/(login|login-status)$/.test(hostMatch[2] ?? "") &&
       c.req.method === "POST"
     ) {
-      if (Date.now() - Date.parse(actor.recentAuthAt) > 15 * 60_000)
+      if (Date.now() - Date.parse(actor.recentAuthAt) > 15 * 60000)
         throw new AppError(ErrorCode.Unauthorized, "Codex 登录需要重新验证邮箱");
       return c.json(await runner.json(`/host/${hostMatch[2]}`, { actor }));
     }
     if (hostMatch && hostMatch[2] === "provider-bindings" && c.req.method === "PUT") {
-      if (Date.now() - Date.parse(actor.recentAuthAt) > 15 * 60_000)
+      if (Date.now() - Date.parse(actor.recentAuthAt) > 15 * 60000)
         throw new AppError(ErrorCode.Unauthorized, "修改模型绑定需要重新验证邮箱");
       const { bindings } = z
         .strictObject({ bindings: z.array(AgentModelBinding).max(6) })
@@ -370,7 +395,11 @@ export function createGatewayApp(deps: {
         hostId: string;
         mode: string;
         capabilities: string[];
-        executors?: Array<{ id: string; available: boolean; reason?: string }>;
+        executors?: Array<{
+          id: string;
+          available: boolean;
+          reason?: string;
+        }>;
       }>("/health");
       if (hostMatch[1] !== "cloud" || cloud.hostId !== "cloud")
         throw new AppError(ErrorCode.NotFound, "执行宿主不存在");
@@ -431,7 +460,7 @@ export function createGatewayApp(deps: {
         }>();
         if (body.kind !== "commit" && body.kind !== "push")
           throw new AppError(ErrorCode.BadRequest, "无效的 Git 操作类型");
-        if (body.kind === "push" && Date.now() - Date.parse(actor.recentAuthAt) > 15 * 60_000)
+        if (body.kind === "push" && Date.now() - Date.parse(actor.recentAuthAt) > 15 * 60000)
           throw new AppError(ErrorCode.Unauthorized, "推送前需要重新验证邮箱");
         const clientRequestId = RemoteId.parse(
           body.clientRequestId ?? c.req.header("x-request-id") ?? randomUUID(),
@@ -452,11 +481,13 @@ export function createGatewayApp(deps: {
       throw new AppError(ErrorCode.NotFound, "接口不存在");
       async function thisExecuteGit(action: "git.commit" | "git.push") {
         const scope = await deps.remote.scope(actor, hostId!, projectId!);
-        const body = await c.req.json<{ clientRequestId: string }>();
+        const body = await c.req.json<{
+          clientRequestId: string;
+        }>();
         const clientRequestId = RemoteId.parse(body.clientRequestId);
-        if (action === "git.push" && Date.now() - Date.parse(actor.recentAuthAt) > 15 * 60_000)
+        if (action === "git.push" && Date.now() - Date.parse(actor.recentAuthAt) > 15 * 60000)
           throw new AppError(ErrorCode.Unauthorized, "推送前需要重新验证邮箱");
-        return runner.execute(scope, actor, action, body, clientRequestId);
+        return await runner.execute(scope, actor, action, body, clientRequestId);
       }
     }
     if (taskMatch) {
@@ -475,15 +506,23 @@ export function createGatewayApp(deps: {
         const result = await runner.execute<Record<string, unknown>>(scope, actor, "task.read", {
           taskId: id,
         });
-        const runs = result.runs as Array<{ id: string }> | undefined;
-        const task = result.task as { currentRunId?: string };
+        const runs = result.runs as
+          | Array<{
+              id: string;
+            }>
+          | undefined;
+        const task = result.task as {
+          currentRunId?: string;
+        };
         return c.json({
           ...result,
           run: runs?.find((run) => run.id === task.currentRunId) ?? runs?.at(-1),
         });
       }
       if (tail === "cancel" && c.req.method === "POST") {
-        const body = await c.req.json<{ clientRequestId?: string }>();
+        const body = await c.req.json<{
+          clientRequestId?: string;
+        }>();
         const payload = {
           taskId: id,
           clientRequestId: body.clientRequestId ?? c.req.header("x-request-id") ?? randomUUID(),
@@ -494,7 +533,10 @@ export function createGatewayApp(deps: {
         );
       }
       if (tail === "followup" && c.req.method === "POST") {
-        const body = await c.req.json<{ message?: string; clientRequestId?: string }>();
+        const body = await c.req.json<{
+          message?: string;
+          clientRequestId?: string;
+        }>();
         if (!body.message?.trim()) throw new AppError(ErrorCode.BadRequest, "请输入继续说明");
         const payload = {
           taskId: id,
@@ -543,7 +585,9 @@ export function createGatewayApp(deps: {
         const result = await runner.json<{
           providers: unknown[];
           bindings: unknown[];
-          credentialPolicy?: { allowServerCredentials?: boolean };
+          credentialPolicy?: {
+            allowServerCredentials?: boolean;
+          };
         }>("/host/providers");
         return c.json({
           ...result,
@@ -558,10 +602,14 @@ export function createGatewayApp(deps: {
       }
       if (tail === "test" && id && c.req.method === "POST") {
         const providerId = RemoteId.parse(id);
-        const p = await runner.json<{ providers: Array<{ id: string }> }>("/host/providers");
+        const p = await runner.json<{
+          providers: Array<{
+            id: string;
+          }>;
+        }>("/host/providers");
         if (!p.providers.some((value) => value.id === providerId))
           throw new AppError(ErrorCode.NotFound, "Provider 不存在");
-        if (Date.now() - Date.parse(actor.recentAuthAt) > 15 * 60_000)
+        if (Date.now() - Date.parse(actor.recentAuthAt) > 15 * 60000)
           throw new AppError(ErrorCode.Unauthorized, "测试模型配置需要重新登录");
         return c.json(
           await runner.json(`/host/providers/${providerId}/test`, { actor }, "POST"),
@@ -569,7 +617,7 @@ export function createGatewayApp(deps: {
         );
       }
       if (id && c.req.method === "PUT") {
-        if (Date.now() - Date.parse(actor.recentAuthAt) > 15 * 60_000)
+        if (Date.now() - Date.parse(actor.recentAuthAt) > 15 * 60000)
           throw new AppError(ErrorCode.Unauthorized, "修改模型配置需要重新登录");
         RemoteId.parse(id);
         const raw = await c.req.json();
@@ -606,7 +654,7 @@ export function createGatewayApp(deps: {
   app.get("/api/v1/approvals", async (c) => {
     const { actor } = await loggedIn(c);
     const approvals = await deps.remote.approvals(actor);
-    for (const d of deps.devices?.store.list(actor.userId) ?? []) {
+    for (const d of (await deps.devices?.store.list(actor.userId)) ?? []) {
       if (d.state === "active" && deps.devices!.online(d.id))
         approvals.push(...(await deps.remote.approvals(actor, d.id)));
     }
@@ -616,10 +664,10 @@ export function createGatewayApp(deps: {
     app.post(`/api/v1/${path}`, async (c) => {
       const { session, user } = await requireSession(auth, store, authHeaders(c, config), config);
       verifyCsrf(c.req.header("x-csrf-token"), session.id, config.sessionSecret);
-      if (path === "sessions/revoke-all") store.revokeAll(user.id);
+      if (path === "sessions/revoke-all") await store.revokeAll(user.id);
       else {
-        store.removeSession(session.id);
-        store.audit("session.logout", "revoked", user.id);
+        await store.removeSession(session.id);
+        await store.audit("session.logout", "revoked", user.id);
       }
       events.closeSession(session.id);
       void deps.remote.renew();

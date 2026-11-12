@@ -1,3 +1,4 @@
+import { businessDatabase, type BusinessDatabase } from "../../db/business-database";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { realpathSync } from "node:fs";
 import { readdir, realpath, stat } from "node:fs/promises";
@@ -24,15 +25,17 @@ import { readRemoteTask } from "./task-contexts";
 import { RemoteApprovalService } from "./approvals";
 import { RepositoryLockManager } from "./repository-locks";
 import type { PermissionRuleService } from "../permission-rules";
-
-const activeRun = new AsyncLocalStorage<{ taskId: string; runId: string }>();
-const LEASE_MS = 45_000;
-
+const activeRun = new AsyncLocalStorage<{
+  taskId: string;
+  runId: string;
+}>();
+const LEASE_MS = 45000;
 export class CloudRunnerService {
+  private readonly raw: BusinessDatabase;
+  readonly ready: Promise<void>;
   readonly locks = new RepositoryLockManager();
-
   constructor(
-    private readonly raw: Database.Database,
+    raw: Database.Database | BusinessDatabase,
     readonly hostId: string,
     readonly workspaceRoot: string,
     private readonly taskTimeoutMs: number,
@@ -42,12 +45,14 @@ export class CloudRunnerService {
     private readonly tasks: () => TaskService,
     private readonly permissionRules: PermissionRuleService,
     private readonly officeProjects?: Readonly<Record<string, string>>,
-  ) {}
-
+  ) {
+    this.raw = businessDatabase(raw);
+    this.ready = (async () => {})();
+  }
   async resolveWorkspace(scope: RemoteScope): Promise<string> {
     if (scope.hostId !== this.hostId || scope.workspaceId !== scope.projectId)
       throw new AppError(ErrorCode.Forbidden, "Workspace scope does not match the cloud project");
-    const project = this.projects.get(scope.projectId);
+    const project = await this.projects.get(scope.projectId);
     const workspace = await realpath(project.path);
     if (this.officeProjects) {
       if (this.officeProjects[scope.projectId] !== workspace)
@@ -71,7 +76,6 @@ export class CloudRunnerService {
       throw new AppError(ErrorCode.NotFound, "Workspace is unavailable");
     return workspace;
   }
-
   async registerConfiguredWorkspaces(): Promise<void> {
     if (this.officeProjects) return;
     const root = await realpath(this.workspaceRoot);
@@ -90,23 +94,25 @@ export class CloudRunnerService {
       await this.projects.add(candidate);
     }
   }
-
-  authorize(command: RemoteCommand, payload: unknown) {
-    const authorized = this.grants.authorize(command, payload);
+  async authorize(command: RemoteCommand, payload: unknown) {
+    const authorized = await this.grants.authorize(command, payload);
     if (authorized.hostId !== this.hostId)
       throw new AppError(ErrorCode.Forbidden, "Cloud host mismatch");
     return authorized;
   }
-
-  context(taskId: string): RemoteTaskContext {
-    const context = readRemoteTask(this.raw, taskId);
+  async context(taskId: string): Promise<RemoteTaskContext> {
+    const context = await readRemoteTask(this.raw, taskId);
     if (!context) throw new AppError(ErrorCode.NotFound, "Remote task not found");
     return context;
   }
-
-  taskContext(command: RemoteCommand, payload: unknown, taskId: string, requireSession = true) {
-    const authorized = this.authorize(command, payload);
-    const context = this.context(taskId);
+  async taskContext(
+    command: RemoteCommand,
+    payload: unknown,
+    taskId: string,
+    requireSession = true,
+  ) {
+    const authorized = await this.authorize(command, payload);
+    const context = await this.context(taskId);
     if (
       context.userId !== authorized.userId ||
       context.hostId !== authorized.hostId ||
@@ -120,10 +126,13 @@ export class CloudRunnerService {
       throw new AppError(ErrorCode.Forbidden, "Task lease expired");
     return context;
   }
-
-  assertLease(scope: RemoteScope, taskId: string, sessionId?: string): RemoteTaskContext {
-    const context = this.context(taskId);
-    const grant = this.grants.get(scope);
+  async assertLease(
+    scope: RemoteScope,
+    taskId: string,
+    sessionId?: string,
+  ): Promise<RemoteTaskContext> {
+    const context = await this.context(taskId);
+    const grant = await this.grants.get(scope);
     if (
       context.userId !== scope.userId ||
       context.hostId !== scope.hostId ||
@@ -139,10 +148,13 @@ export class CloudRunnerService {
       throw new AppError(ErrorCode.Forbidden, "Remote task lease or grant is no longer active");
     return context;
   }
-
-  assertReadAccess(scope: RemoteScope, taskId: string, epoch: number): RemoteTaskContext {
-    const context = this.context(taskId);
-    const grant = this.grants.get(scope);
+  async assertReadAccess(
+    scope: RemoteScope,
+    taskId: string,
+    epoch: number,
+  ): Promise<RemoteTaskContext> {
+    const context = await this.context(taskId);
+    const grant = await this.grants.get(scope);
     if (
       context.userId !== scope.userId ||
       context.hostId !== scope.hostId ||
@@ -157,10 +169,9 @@ export class CloudRunnerService {
       throw new AppError(ErrorCode.Forbidden, "Task read authorization is no longer active");
     return context;
   }
-
-  authorizeRun(run: Run): void {
-    const context = this.context(run.taskId);
-    const grant = this.grants.get(context);
+  async authorizeRun(run: Run): Promise<void> {
+    const context = await this.context(run.taskId);
+    const grant = await this.grants.get(context);
     if (
       !grant ||
       grant.revokedAt ||
@@ -171,15 +182,14 @@ export class CloudRunnerService {
     )
       throw new AppError(ErrorCode.Forbidden, "Remote task lease or grant is no longer active");
   }
-
   async withRun<T>(
     run: Run,
     task: Task,
     signal: AbortSignal,
     action: (signal: AbortSignal) => Promise<T>,
   ): Promise<T> {
-    this.authorizeRun(run);
-    const context = this.context(task.id);
+    await this.authorizeRun(run);
+    const context = await this.context(task.id);
     const workspace = await this.resolveWorkspace(context);
     signal.throwIfAborted();
     const leaseController = new AbortController();
@@ -188,9 +198,9 @@ export class CloudRunnerService {
       leaseController.signal,
       AbortSignal.timeout(this.taskTimeoutMs),
     ]);
-    const checkLease = setInterval(() => {
+    const checkLease = setInterval(async () => {
       try {
-        this.authorizeRun(run);
+        await this.authorizeRun(run);
       } catch {
         leaseController.abort(new Error("Remote authorization expired"));
       }
@@ -199,7 +209,7 @@ export class CloudRunnerService {
     try {
       return await this.locks.withLock(workspace, run.id, () =>
         activeRun.run({ taskId: task.id, runId: run.id }, async () => {
-          this.authorizeRun(run);
+          await this.authorizeRun(run);
           return action(executionSignal);
         }),
       );
@@ -207,17 +217,16 @@ export class CloudRunnerService {
       clearInterval(checkLease);
     }
   }
-
-  assertActiveRun(): {
+  async assertActiveRun(): Promise<{
     taskId: string;
     runId: string;
     context: RemoteTaskContext;
     workspace: string;
-  } {
+  }> {
     const active = activeRun.getStore();
     if (!active) throw new AppError(ErrorCode.Forbidden, "Tool is outside an authorized cloud run");
-    const context = this.context(active.taskId);
-    const grant = this.grants.get(context);
+    const context = await this.context(active.taskId);
+    const grant = await this.grants.get(context);
     if (
       !grant ||
       grant.revokedAt ||
@@ -227,7 +236,7 @@ export class CloudRunnerService {
       Date.parse(context.leaseExpiresAt) <= Date.now()
     )
       throw new AppError(ErrorCode.Forbidden, "Remote task lease or grant is no longer active");
-    const project = this.projects.get(context.projectId);
+    const project = await this.projects.get(context.projectId);
     const workspace = realpathSync(project.path);
     if (this.officeProjects) {
       if (this.officeProjects[context.projectId] !== workspace)
@@ -243,16 +252,15 @@ export class CloudRunnerService {
       throw new AppError(ErrorCode.Forbidden, "Workspace is outside the configured root");
     return { ...active, context, workspace };
   }
-
-  bindApproval(approval: Approval, task: Task): void {
-    const context = this.context(task.id);
+  async bindApproval(approval: Approval, task: Task): Promise<void> {
+    const context = await this.context(task.id);
     const digest = payloadDigest({
       kind: approval.kind,
       title: approval.title,
       detail: approval.detail,
       payload: approval.payload,
     });
-    new RemoteApprovalService(this.raw, this.approvals).attach(
+    await new RemoteApprovalService(this.raw, this.approvals).attach(
       RemoteApprovalContext.parse({
         approvalId: approval.id,
         userId: context.userId,
@@ -264,44 +272,54 @@ export class CloudRunnerService {
         action: "approval.resolve",
         actionDigest: digest,
         version: 1,
-        expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
+        expiresAt: new Date(Date.now() + 5 * 60000).toISOString(),
         resolvedBy: null,
         decision: null,
       }),
     );
   }
-
-  requiresPlan(task: Task): boolean {
+  async requiresPlan(task: Task): Promise<boolean> {
     if (!task.requiresPlanApproval) return false;
-    const plan = this.tasks().latestArtifact(task.id, "plan");
+    const plan = await this.tasks().latestArtifact(task.id, "plan");
     if (!plan) return true;
-    const ids = this.raw
+    const ids = (await this.raw
       .prepare("SELECT approval_id FROM remote_approval_contexts WHERE task_id=? AND decision=1")
-      .all(task.id) as Array<{ approval_id: string }>;
-    return !ids.some(({ approval_id }) => {
-      const approval = this.approvals.get(approval_id);
-      const payload = approval?.payload as { artifactId?: string } | undefined;
-      return (
-        approval?.kind === "plan" &&
-        approval.status === "approved" &&
-        payload?.artifactId === plan.id
-      );
-    });
+      .all(task.id)) as Array<{
+      approval_id: string;
+    }>;
+    const approved = await Promise.all(
+      ids.map(async ({ approval_id }) => {
+        const approval = await this.approvals.get(approval_id);
+        const payload = approval?.payload as
+          | {
+              artifactId?: string;
+            }
+          | undefined;
+        return (
+          approval?.kind === "plan" &&
+          approval.status === "approved" &&
+          payload?.artifactId === plan.id
+        );
+      }),
+    );
+    return !approved.some(Boolean);
   }
-
-  renewLease(
+  async renewLease(
     command: RemoteCommand,
-    payload: { taskId: string; leaseExpiresAt: string },
-  ): RemoteTaskContext {
-    const current = this.taskContext(command, payload, payload.taskId);
-    const grant = this.grants.get(current);
+    payload: {
+      taskId: string;
+      leaseExpiresAt: string;
+    },
+  ): Promise<RemoteTaskContext> {
+    const current = await this.taskContext(command, payload, payload.taskId);
+    const grant = await this.grants.get(current);
     const expiry = Date.parse(payload.leaseExpiresAt);
     const now = Date.now();
     if (!grant || expiry > now + LEASE_MS || expiry > Date.parse(grant.expiresAt))
       throw new AppError(ErrorCode.BadRequest, "Lease duration exceeds the grant limit");
-    const updated = this.raw
-      .transaction(() => {
-        const taskUpdate = this.raw
+    const updated = await this.raw
+      .transaction(async () => {
+        const taskUpdate = await this.raw
           .prepare(
             `UPDATE remote_task_contexts SET lease_expires_at=? WHERE task_id=? AND session_id=? AND connection_epoch=?`,
           )
@@ -317,12 +335,11 @@ export class CloudRunnerService {
     if (updated.changes !== 1)
       throw new AppError(ErrorCode.Conflict, "Task lease changed concurrently");
     if (expiry <= now) {
-      const task = this.tasks().get(payload.taskId);
-      if (task?.currentRunId) this.tasks().requestCancel(task.currentRunId);
+      const task = await this.tasks().get(payload.taskId);
+      if (task?.currentRunId) await this.tasks().requestCancel(task.currentRunId);
     }
-    return this.context(payload.taskId);
+    return await this.context(payload.taskId);
   }
-
   restrictedRegistry(source: ToolRegistry): ToolRegistry {
     const target = new ToolRegistry();
     const allowed = [
@@ -342,19 +359,28 @@ export class CloudRunnerService {
     }
     return target;
   }
-
   private restrictTool(tool: AnyAgentTool, name: string): AnyAgentTool {
-    const requireProject = (args: unknown) => {
-      const { context, workspace } = this.assertActiveRun();
+    const requireProject = async (args: unknown) => {
+      const { context, workspace } = await this.assertActiveRun();
       if (this.permissionRules.match(name, args)?.decision === "deny")
         throw new AppError(ErrorCode.Forbidden, "Tool is denied by the host permission policy");
       if (typeof args === "object" && args !== null && "project" in args) {
-        const project = (args as { project?: unknown }).project;
-        if (typeof project !== "string" || this.projects.find(project).id !== context.projectId)
+        const project = (
+          args as {
+            project?: unknown;
+          }
+        ).project;
+        if (
+          typeof project !== "string" ||
+          (await this.projects.find(project)).id !== context.projectId
+        )
           throw new AppError(ErrorCode.Forbidden, "Tool project does not match the task workspace");
       }
       if (typeof args === "object" && args !== null) {
-        const values = args as { cwd?: unknown; path?: unknown };
+        const values = args as {
+          cwd?: unknown;
+          path?: unknown;
+        };
         if (
           name === "shell.run" &&
           values.cwd !== undefined &&
@@ -384,7 +410,7 @@ export class CloudRunnerService {
       risk,
       riskFor: name === "shell.run" ? () => "confirm" : tool.riskFor,
       describeApproval: async (args) => {
-        const { workspace } = requireProject(args);
+        const { workspace } = await requireProject(args);
         const normalized =
           name === "shell.run" && typeof args === "object" && args !== null
             ? { ...args, cwd: workspace }
@@ -394,7 +420,7 @@ export class CloudRunnerService {
           : { title: `Execute ${name}`, detail: JSON.stringify(normalized) };
       },
       execute: async (args, ctx) => {
-        const { context, workspace } = requireProject(args);
+        const { context, workspace } = await requireProject(args);
         let safeArgs = args;
         if (typeof args === "object" && args !== null && "project" in args)
           safeArgs = { ...args, project: context.projectId };

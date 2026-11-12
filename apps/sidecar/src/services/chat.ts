@@ -31,35 +31,34 @@ import type { ProjectInstructionService } from "./project-instructions";
 import { createDelegateHandler } from "./task-executor";
 import type { TaskService } from "./tasks";
 import { readRunToolHistory, RunToolHistory } from "./run-tool-history";
-
 const TERMINAL_TASK = new Set(["completed", "failed", "cancelled", "closed"]);
-
 export class ChatService {
   readonly conversations: ConversationService;
   private readonly conversationStore: ConversationStore;
   private contextService?: ConversationContextService;
   private evolutionService?: EvolutionService;
-  private readonly active = new Map<string, { controller: AbortController; done: Promise<void> }>();
-
+  private readonly active = new Map<
+    string,
+    {
+      controller: AbortController;
+      done: Promise<void>;
+    }
+  >();
   stop(conversationId: string): void {
     this.getConversation(conversationId);
     this.active.get(conversationId)?.controller.abort();
   }
-
   async dispose(): Promise<void> {
     const active = [...this.active.values()];
     active.forEach(({ controller }) => controller.abort());
     await Promise.allSettled(active.map(({ done }) => done));
   }
-
   setContextService(service: ConversationContextService): void {
     this.contextService = service;
   }
-
   setEvolutionService(service: EvolutionService): void {
     this.evolutionService = service;
   }
-
   constructor(
     private readonly db: Db,
     private readonly orchestrator: Orchestrator,
@@ -73,31 +72,30 @@ export class ChatService {
     this.conversations = new ConversationService(db);
     this.conversationStore = new ConversationStore(db);
   }
-
   listConversations(query: ConversationQuery = {}): Conversation[] {
     return this.conversations.list(query);
   }
-
   getConversation(id: string): Conversation {
     const conversation = this.conversations.get(id);
     if (!conversation) throw new AppError(ErrorCode.NotFound, "会话不存在");
     return conversation;
   }
-
-  messages(conversationId: string): ChatMessage[] {
-    return this.conversationStore.listMessages(conversationId);
+  async messages(conversationId: string): Promise<ChatMessage[]> {
+    return await this.conversationStore.listMessages(conversationId);
   }
-
-  async deleteConversation(id: string, options: { force?: boolean } = {}): Promise<void> {
+  async deleteConversation(
+    id: string,
+    options: {
+      force?: boolean;
+    } = {},
+  ): Promise<void> {
     this.getConversation(id);
-    const task = this.tasks.findByConversation(id);
+    const task = await this.tasks.findByConversation(id);
     if (task?.automationId && !TERMINAL_TASK.has(task.status)) {
       throw new AppError(ErrorCode.Conflict, "自动化会话仍在执行，暂不能删除");
     }
-
     // 单条删除先检查执行、压缩和排队，避免提前释放其他操作持有的锁。
-    if (!options.force) this.tasks.assertConversationAvailable(id);
-
+    if (!options.force) await this.tasks.assertConversationAvailable(id);
     const inflight = this.active.get(id);
     if (inflight) {
       inflight.controller.abort();
@@ -108,9 +106,8 @@ export class ChatService {
       ]);
     }
     releaseConversation(id);
-
-    this.conversationStore.deleteProgress(id);
-    this.contextService?.forget(id);
+    await this.conversationStore.deleteProgress(id);
+    await this.contextService?.forget(id);
     this.db.delete(messages).where(eq(messages.conversationId, id)).run();
     this.db
       .delete(traces)
@@ -118,13 +115,20 @@ export class ChatService {
       .run();
     this.conversations.delete(id);
   }
-
   async clearConversations(ids: string[]): Promise<{
     deleted: string[];
-    skipped: Array<{ id: string; title: string; reason: string }>;
+    skipped: Array<{
+      id: string;
+      title: string;
+      reason: string;
+    }>;
   }> {
     const deleted: string[] = [];
-    const skipped: Array<{ id: string; title: string; reason: string }> = [];
+    const skipped: Array<{
+      id: string;
+      title: string;
+      reason: string;
+    }> = [];
     for (const id of ids) {
       const current = this.conversations.get(id);
       if (!current) {
@@ -140,18 +144,16 @@ export class ChatService {
     }
     return { deleted, skipped };
   }
-
-  renameConversation(id: string, title: string): Conversation {
-    return this.patchConversation(id, { title });
+  async renameConversation(id: string, title: string): Promise<Conversation> {
+    return await this.patchConversation(id, { title });
   }
-
-  patchConversation(id: string, patch: ConversationPatch): Conversation {
-    if (patch.projectId !== undefined && this.tasks.findByConversation(id)?.automationId)
+  async patchConversation(id: string, patch: ConversationPatch): Promise<Conversation> {
+    if (patch.projectId !== undefined && (await this.tasks.findByConversation(id))?.automationId)
       throw new AppError(ErrorCode.Conflict, "自动化工作区由创建时的绑定决定，不能在会话中更换");
     if (patch.projectId !== undefined && conversationActivity(id)) {
       throw new AppError(ErrorCode.Conflict, "请等待当前会话处理完成后再更换关联项目");
     }
-    const task = this.tasks.findByConversation(id);
+    const task = await this.tasks.findByConversation(id);
     if (
       patch.projectId !== undefined &&
       task &&
@@ -161,16 +163,16 @@ export class ChatService {
     }
     return this.conversations.patch(id, patch);
   }
-
-  conversationWorkspace(id?: string, workspace?: string): string | undefined {
+  async conversationWorkspace(id?: string, workspace?: string): Promise<string | undefined> {
     if (workspace !== undefined || !id) return workspace;
     const linked = this.conversations.projectWorkspace(id);
     if (linked || this.conversations.hasProjectBinding(id)) return linked;
     // 旧会话尚无项目关联字段时，沿用已有 Run 的工作区。
-    const task = this.tasks.findByConversation(id);
-    return task?.currentRunId ? this.tasks.getRun(task.currentRunId)?.input.workspace : undefined;
+    const task = await this.tasks.findByConversation(id);
+    return task?.currentRunId
+      ? (await this.tasks.getRun(task.currentRunId))?.input.workspace
+      : undefined;
   }
-
   traces(conversationId: string, limit = 500) {
     return this.db
       .select()
@@ -181,36 +183,37 @@ export class ChatService {
       .all()
       .reverse();
   }
-
-  private insertMessage(message: ChatMessage) {
-    this.conversationStore.insertMessage(message);
+  private async insertMessage(message: ChatMessage) {
+    await this.conversationStore.insertMessage(message);
   }
-
   /**
    * 不影响 /chat 本身的响应：找不到或创建失败时返回 null，由调用方 best-effort 忽略。
    * 同一个 conversationId 复用同一个 Task，每轮对话各自一条 Run。
    */
-  private shadowTaskFor(
+  private async shadowTaskFor(
     conversationId: string,
     userMessage: string,
     agent: ChatRequest["agent"],
     controller: AbortController,
     workspace?: string,
-  ): { taskId: string; runId: string } | null {
+  ): Promise<{
+    taskId: string;
+    runId: string;
+  } | null> {
     try {
-      const previous = this.tasks.findByConversation(conversationId);
+      const previous = await this.tasks.findByConversation(conversationId);
       const effectiveWorkspace = workspace;
       const existing =
         previous && !["closed", "completed"].includes(previous.status) ? previous : undefined;
       const task =
         existing ??
-        this.tasks.create({
+        (await this.tasks.create({
           goal: userMessage,
           agent,
           conversationId,
           requiresPlanApproval: false,
-        });
-      const run = this.tasks.createRun({
+        }));
+      const run = await this.tasks.createRun({
         taskId: task.id,
         kind: "root",
         agent: agent ?? task.agent ?? "orchestrator",
@@ -219,14 +222,13 @@ export class ChatService {
         inheritWorkspace: false,
         conversationLockHeld: true,
       });
-      this.tasks.startRunDirect(run.id, controller);
+      await this.tasks.startRunDirect(run.id, controller);
       return { taskId: task.id, runId: run.id };
     } catch (error) {
       console.error("[tasks] shadow task 创建失败", error);
       return null;
     }
   }
-
   /**
    * 处理一轮对话，事件通过 emit 流式推送。
    * 返回会话 ID；全部事件同时写入 traces 便于回放。
@@ -237,10 +239,13 @@ export class ChatService {
     signal: AbortSignal,
   ): Promise<string> {
     const req = ChatRequest.parse(input);
-    if (req.conversationId && this.tasks.findByConversation(req.conversationId)?.automationId)
+    if (
+      req.conversationId &&
+      (await this.tasks.findByConversation(req.conversationId))?.automationId
+    )
       throw new AppError(ErrorCode.Conflict, "请通过自动化会话中的回答或继续修改操作提交请求");
     const workspace = await this.projectInstructions.validateWorkspace(
-      this.conversationWorkspace(req.conversationId, req.workspace),
+      await this.conversationWorkspace(req.conversationId, req.workspace),
     );
     await this.tasks.assertStorageAvailable(workspace);
     let conversation = req.conversationId ? this.conversations.get(req.conversationId) : undefined;
@@ -262,14 +267,14 @@ export class ChatService {
     const conversationId = conversation.id;
     if (
       req.conversationId &&
-      this.tasks.findByConversation(conversationId)?.purpose === "reference_analysis"
+      (await this.tasks.findByConversation(conversationId))?.purpose === "reference_analysis"
     ) {
       throw new AppError(
         ErrorCode.Conflict,
         "请从项目中心选择资料建议创建开发任务，或重新提交资料分析",
       );
     }
-    this.tasks.assertConversationAvailable(conversationId);
+    await this.tasks.assertConversationAvailable(conversationId);
     const release = acquireConversation(conversationId, "running");
     const controller = new AbortController();
     let finish!: () => void;
@@ -279,15 +284,15 @@ export class ChatService {
     this.active.set(conversationId, { controller, done });
     try {
       signal = AbortSignal.any([signal, controller.signal]);
-      const shadow = this.shadowTaskFor(
+      const shadow = await this.shadowTaskFor(
         conversationId,
         req.message,
         req.agent,
         controller,
         workspace,
       );
-      const history = this.messages(conversationId);
-      this.insertMessage({
+      const history = await this.messages(conversationId);
+      await this.insertMessage({
         id: newId(),
         conversationId,
         role: "user",
@@ -296,7 +301,6 @@ export class ChatService {
         toolCalls: [],
         createdAt: nowIso(),
       });
-
       const scope = `chat:${conversationId}`;
       let progress = emptyChatProgress();
       const traced = (event: AgentStreamEvent) => {
@@ -310,12 +314,12 @@ export class ChatService {
         emit(event);
       };
       const turnTools = new RunToolHistory();
-      const forwardToShadow = (event: AgentStreamEvent) => {
+      const forwardToShadow = async (event: AgentStreamEvent) => {
         traced(event);
         turnTools.append(event);
         if (shadow) {
           try {
-            this.tasks.appendEvent({
+            await this.tasks.appendEvent({
               taskId: shadow.taskId,
               runId: shadow.runId,
               parentRunId: null,
@@ -326,15 +330,14 @@ export class ChatService {
           }
         }
       };
-
       emit({ type: "conversation", conversationId });
       const assistantId = newId();
-      const requestAnswer = (request: ApprovalRequest): Promise<string> => {
+      const requestAnswer = async (request: ApprovalRequest): Promise<string> => {
         let approvalId = "";
         return this.approvals
-          .request({ kind: "question", ...request, conversationId }, signal, (approval) => {
+          .request({ kind: "question", ...request, conversationId }, signal, async (approval) => {
             approvalId = approval.id;
-            forwardToShadow({
+            await forwardToShadow({
               type: "approval_required",
               approvalId: approval.id,
               title: approval.title,
@@ -344,10 +347,16 @@ export class ChatService {
               reason: approval.reason,
             });
           })
-          .then((approved) => {
+          .then(async (approved) => {
             if (!approved) throw new Error("用户未回答该问题（审批被拒绝或已过期）");
-            const resolved = this.approvals.list("approved").find((a) => a.id === approvalId);
-            const payload = resolved?.payload as { answer?: string } | undefined;
+            const resolved = (await this.approvals.list("approved")).find(
+              (a) => a.id === approvalId,
+            );
+            const payload = resolved?.payload as
+              | {
+                  answer?: string;
+                }
+              | undefined;
             if (!payload?.answer) throw new Error("未获取到用户回答");
             return payload.answer;
           });
@@ -355,7 +364,7 @@ export class ChatService {
       let text = "";
       let context: string | undefined;
       const effectiveWorkspace = shadow
-        ? this.tasks.getRun(shadow.runId)?.input.workspace
+        ? (await this.tasks.getRun(shadow.runId))?.input.workspace
         : workspace;
       const memoryContext = { workspace: effectiveWorkspace, conversationId };
       try {
@@ -392,12 +401,12 @@ export class ChatService {
             context,
             signal,
             emit: forwardToShadow,
-            requestApproval: (request) =>
-              this.approvals.request(
+            requestApproval: async (request) =>
+              await this.approvals.request(
                 { kind: "tool", ...request, conversationId },
                 signal,
-                (approval) =>
-                  forwardToShadow({
+                async (approval) =>
+                  await forwardToShadow({
                     type: "approval_required",
                     approvalId: approval.id,
                     title: approval.title,
@@ -411,8 +420,8 @@ export class ChatService {
             autoApprove: this.autoApprove,
             mask: this.maskFactory(),
             recordArtifact: shadow
-              ? (input) =>
-                  this.tasks.recordArtifact({
+              ? async (input) =>
+                  await this.tasks.recordArtifact({
                     ...input,
                     taskId: shadow.taskId,
                     runId: shadow.runId,
@@ -432,7 +441,7 @@ export class ChatService {
           }),
         );
         text = result.text;
-        this.insertMessage({
+        await this.insertMessage({
           id: assistantId,
           conversationId,
           role: "assistant",
@@ -443,25 +452,27 @@ export class ChatService {
           createdAt: nowIso(),
         });
         try {
-          await this.memory.withContext(memoryContext, () =>
-            this.memory.captureFromTurn({
-              userText: req.message,
-              assistantText: text,
-              conversationId,
-              signal,
-            }),
+          await this.memory.withContext(
+            memoryContext,
+            async () =>
+              await this.memory.captureFromTurn({
+                userText: req.message,
+                assistantText: text,
+                conversationId,
+                signal,
+              }),
           );
         } catch (error) {
           console.error("[memory] capture failed", error);
         }
         if (shadow) {
           try {
-            this.tasks.finalizeRunDirect(shadow.runId, {
+            await this.tasks.finalizeRunDirect(shadow.runId, {
               status: "succeeded",
               resultText: text,
               toolCalls: result.toolCalls,
             });
-            this.tasks.appendEvent({
+            await this.tasks.appendEvent({
               taskId: shadow.taskId,
               runId: shadow.runId,
               event: { type: "run_ended", runId: shadow.runId, status: "succeeded" },
@@ -472,9 +483,11 @@ export class ChatService {
         }
       } catch (error) {
         const message = errorMessage(error);
-        forwardToShadow({ type: "error", message });
-        const toolCalls = shadow ? readRunToolHistory(this.tasks, shadow.runId) : turnTools.list();
-        this.insertMessage({
+        await forwardToShadow({ type: "error", message });
+        const toolCalls = shadow
+          ? await readRunToolHistory(this.tasks, shadow.runId)
+          : turnTools.list();
+        await this.insertMessage({
           id: assistantId,
           conversationId,
           role: "assistant",
@@ -490,8 +503,12 @@ export class ChatService {
         if (shadow) {
           try {
             const status = signal.aborted ? "cancelled" : "failed";
-            this.tasks.finalizeRunDirect(shadow.runId, { status, resultError: message, toolCalls });
-            this.tasks.appendEvent({
+            await this.tasks.finalizeRunDirect(shadow.runId, {
+              status,
+              resultError: message,
+              toolCalls,
+            });
+            await this.tasks.appendEvent({
               taskId: shadow.taskId,
               runId: shadow.runId,
               event: { type: "run_ended", runId: shadow.runId, status, error: message },

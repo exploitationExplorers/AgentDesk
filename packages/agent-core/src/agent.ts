@@ -8,6 +8,7 @@ import {
   type ToolResultMessage,
 } from "@mariozechner/pi-ai";
 import type { AgentName, AgentStreamEvent, ToolCallRecord } from "@agentdesk/shared";
+import { OrderedEventSink } from "./event-sink";
 import type { ResolvedModel } from "./llm";
 import { DEFAULT_CONTEXT_WINDOW } from "./llm";
 import {
@@ -56,10 +57,12 @@ export interface RunAgentOptions {
   models: ResolvedModel[];
   messages: Message[];
   systemPromptSuffix?: string;
-  emit: (event: AgentStreamEvent) => void;
+  emit: (event: AgentStreamEvent) => unknown;
+  /** 在工具副作用和检查点提交前等待事件持久化。 */
+  flushEvents?: () => Promise<void>;
   requestApproval: (request: ApprovalRequest) => Promise<boolean>;
   requestAnswer?: (request: ApprovalRequest) => Promise<string>;
-  recordArtifact?: (input: RecordArtifactInput) => RecordedArtifact;
+  recordArtifact?: (input: RecordArtifactInput) => RecordedArtifact | Promise<RecordedArtifact>;
   /** 可选：审批前先问一次能不能自动放行（规则匹配/分类器等）。不传时行为与现状完全一致。 */
   autoApprove?: AutoApprove;
   /** 可选：发给模型前脱敏、拿到回复后换回真实值。同一次对话/任务的多轮、多委派 Agent 共用同一个 store。 */
@@ -318,6 +321,29 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 }
 
 export async function runAgent(options: RunAgentOptions): Promise<AgentRunResult> {
+  const sink = new OrderedEventSink(options.emit);
+  const durable = options.durable;
+  try {
+    return await runAgentInternal({
+      ...options,
+      emit: sink.emit,
+      flushEvents: sink.flush,
+      durable: durable
+        ? {
+            ...durable,
+            save: async (checkpoint) => {
+              await sink.flush();
+              await durable.save(checkpoint);
+            },
+          }
+        : undefined,
+    });
+  } finally {
+    await sink.flush();
+  }
+}
+
+async function runAgentInternal(options: RunAgentOptions): Promise<AgentRunResult> {
   const { definition, tools, models, emit, signal } = options;
   if (models.length === 0 && !options.durable) throw new NoModelError(definition.name);
 
@@ -448,6 +474,7 @@ async function executeToolCall(
   const name = fromWireName(call.name);
   const tool = tools.find((t) => t.name === name);
   options.emit({ type: "tool_call", agent, id: call.id, name, args: call.arguments });
+  await options.flushEvents?.();
 
   let output: unknown;
   let isError = false;

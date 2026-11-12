@@ -196,14 +196,14 @@ export async function createPresentation(
   await mkdir(join(root, folder), { recursive: true });
   await writeFile(join(root, relativePath), bytes, { flag: "wx" });
   ctx.signal?.throwIfAborted();
-  const preview = ctx.recordArtifact({
+  const preview = await ctx.recordArtifact({
     kind: "file",
     title: `${deck.title}预览`,
     mimeType: "text/html",
     content: `<!doctype html><html><head><style>body{margin:0}svg{display:block;width:100%;height:auto}section{margin-bottom:16px}</style></head><body>${pages.join("")}</body></html>`,
     metadata: { role: "preview", format: "slides" },
   });
-  const artifact = ctx.recordArtifact({
+  const artifact = await ctx.recordArtifact({
     kind: "file",
     title: filename,
     filePath: relativePath,

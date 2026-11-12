@@ -2,7 +2,9 @@ import { readFileSync } from "node:fs";
 
 const runner = process.argv[2] === "runner";
 const response = await fetch(
-  runner ? "http://127.0.0.1:17893/remote-api/v1/health" : "http://127.0.0.1:3000/health/live",
+  runner
+    ? "http://127.0.0.1:17893/remote-api/v1/health/ready"
+    : "http://127.0.0.1:3000/health/ready",
   {
     headers: runner
       ? {

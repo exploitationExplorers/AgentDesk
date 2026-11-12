@@ -22,7 +22,6 @@ import { createContainer, type Container } from "../src/container";
 import { createCloudApp } from "../src/cloud-app";
 import { loadCloudConfig, type CloudConfig } from "../src/cloud-config";
 import { payloadDigest } from "../src/services/remote/digest";
-
 let root: string;
 let workspace: string;
 let config: CloudConfig;
@@ -47,8 +46,16 @@ function envelope(
   action: RemoteCapability,
   payload: unknown,
   session = actor,
-): { command: RemoteCommand; payload: unknown } {
-  const requestId = (payload as { clientRequestId?: string }).clientRequestId ?? randomUUID();
+): {
+  command: RemoteCommand;
+  payload: unknown;
+} {
+  const requestId =
+    (
+      payload as {
+        clientRequestId?: string;
+      }
+    ).clientRequestId ?? randomUUID();
   return {
     command: {
       ...scope,
@@ -60,16 +67,16 @@ function envelope(
       action,
       payloadHash: payloadDigest(payload),
       issuedAt: new Date().toISOString(),
-      expiresAt: new Date(Date.now() + 25_000).toISOString(),
+      expiresAt: new Date(Date.now() + 25000).toISOString(),
     },
     payload,
   };
 }
 const command = (action: RemoteCapability, payload: unknown, session = actor) =>
   call("/commands", envelope(action, payload, session));
-async function waitFor(predicate: () => boolean, timeout = 8_000) {
+async function waitFor(predicate: () => boolean | Promise<boolean>, timeout = 8000) {
   const start = Date.now();
-  while (!predicate()) {
+  while (!(await predicate())) {
     if (Date.now() - start > timeout) throw new Error("Runner condition timed out");
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
@@ -85,10 +92,17 @@ async function createTask(requiresPlanApproval = false) {
   };
   const response = await command("task.create", input);
   expect(response.status, await response.clone().text()).toBe(201);
-  return (await response.json()) as { task: { id: string }; run: { id: string } };
+  return (await response.json()) as {
+    task: {
+      id: string;
+    };
+    run: {
+      id: string;
+    };
+  };
 }
 async function resolveApproval(id: string, approved = true) {
-  const context = container.remoteApprovals!.get(scope, id)!;
+  const context = (await container.remoteApprovals!.get(scope, id))!;
   return command("approval.resolve", {
     approvalId: id,
     clientRequestId: randomUUID(),
@@ -97,7 +111,6 @@ async function resolveApproval(id: string, approved = true) {
     actionDigest: context.actionDigest,
   });
 }
-
 beforeEach(async () => {
   root = mkdtempSync(join(tmpdir(), "agentdesk-cloud-runner-"));
   const workspaceRoot = join(root, "workspaces");
@@ -122,10 +135,10 @@ beforeEach(async () => {
   });
   container = await createContainer(config, {
     inMemory: true,
-    cloud: { hostId: config.hostId, workspaceRoot, taskTimeoutMs: 60_000 },
+    cloud: { hostId: config.hostId, workspaceRoot, taskTimeoutMs: 60000 },
   });
   await container.cloudRunner!.registerConfiguredWorkspaces();
-  const project = container.projects.list()[0]!;
+  const project = (await container.projects.list())[0]!;
   scope = {
     userId: config.ownerUserId,
     hostId: config.hostId,
@@ -140,35 +153,37 @@ beforeEach(async () => {
       ...scope,
       capabilities: RemoteCapability.options,
       connectionEpoch: 1,
-      expiresAt: new Date(Date.now() + 45_000).toISOString(),
+      expiresAt: new Date(Date.now() + 45000).toISOString(),
       revokedAt: null,
     },
     "PUT",
   );
   expect(granted.status, await granted.clone().text()).toBe(200);
-  faux = registerFauxProvider({ tokensPerSecond: 100_000 });
+  faux = registerFauxProvider({ tokensPerSecond: 100000 });
   container.providers.resolve = async () => [
     { providerId: "faux", providerName: "faux", model: faux.getModel(), apiKey: "test" },
   ];
-}, 20_000);
+}, 20000);
 afterEach(async () => {
   if (container) {
-    for (const task of container.tasks.list())
-      if (task.currentRunId) container.tasks.requestCancel(task.currentRunId);
-    await waitFor(() =>
-      container.tasks
-        .list()
-        .every(
-          (task) =>
-            !task.currentRunId || container.tasks.getRun(task.currentRunId)?.status !== "running",
-        ),
+    for (const task of await container.tasks.list())
+      if (task.currentRunId) await container.tasks.requestCancel(task.currentRunId);
+    await waitFor(async () =>
+      (
+        await Promise.all(
+          (await container.tasks.list()).map(
+            async (task) =>
+              !task.currentRunId ||
+              (await container.tasks.getRun(task.currentRunId))?.status !== "running",
+          ),
+        )
+      ).every(Boolean),
     );
     await container.dispose();
   }
   faux?.unregister();
   if (root) rmSync(root, { recursive: true, force: true });
 });
-
 describe("Dedicated cloud runner", () => {
   it("ends SSE and rejects new requests while active tasks drain during shutdown", async () => {
     faux.setResponses([
@@ -183,7 +198,7 @@ describe("Dedicated cloud runner", () => {
       ),
     ]);
     const { task, run } = await createTask();
-    await waitFor(() => container.approvals.list("pending").length > 0);
+    await waitFor(async () => (await container.approvals.list("pending")).length > 0);
     const stream = await call(
       `/tasks/${task.id}/events`,
       envelope("task.read", { taskId: task.id, after: 0 }),
@@ -194,7 +209,7 @@ describe("Dedicated cloud runner", () => {
     expect((await call("/host")).status).toBe(503);
     await drained;
     await container.tasks.shutdown();
-    expect(container.tasks.getRun(run.id)?.status).toBe("cancelled");
+    expect((await container.tasks.getRun(run.id))?.status).toBe("cancelled");
     expect(existsSync(join(workspace, "shutdown.txt"))).toBe(false);
   });
   it("requires a recently authenticated owner for Git credentials and rejects private repository URLs", async () => {
@@ -272,12 +287,11 @@ describe("Dedicated cloud runner", () => {
       userId: "other-owner",
       capabilities: ["task.read"],
       connectionEpoch: 1,
-      expiresAt: new Date(Date.now() + 40_000).toISOString(),
+      expiresAt: new Date(Date.now() + 40000).toISOString(),
       revokedAt: null,
     };
     expect((await call("/grants", grant, "PUT")).status).toBe(403);
   });
-
   it("executes a real file write only after bound approval, ignoring a local allow rule", async () => {
     container.permissionRules.add("fs.write", "", "allow");
     faux.setResponses([
@@ -293,19 +307,20 @@ describe("Dedicated cloud runner", () => {
       fauxAssistantMessage(fauxText("The file was written")),
     ]);
     const { task, run } = await createTask();
-    await waitFor(() => container.approvals.list("pending").length > 0);
+    await waitFor(async () => (await container.approvals.list("pending")).length > 0);
     expect(existsSync(join(workspace, "result.txt"))).toBe(false);
-    const approval = container.approvals.list("pending")[0]!;
-    expect(container.remoteApprovals!.get(scope, approval.id)).toMatchObject({ taskId: task.id });
+    const approval = (await container.approvals.list("pending"))[0]!;
+    expect(await container.remoteApprovals!.get(scope, approval.id)).toMatchObject({
+      taskId: task.id,
+    });
     expect((await resolveApproval(approval.id)).status).toBe(200);
-    await waitFor(() => container.tasks.getRun(run.id)?.status === "succeeded");
+    await waitFor(async () => (await container.tasks.getRun(run.id))?.status === "succeeded");
     expect(readFileSync(join(workspace, "result.txt"), "utf8")).toBe("verified");
     const detail = await (
       await command("task.read", { taskId: task.id }, { ...actor, sessionId: "session-new" })
     ).json();
     expect(detail.runs[0].toolCalls[0]).toMatchObject({ name: "fs.write", isError: false });
   });
-
   it("enforces deny rules before approval and preserves the workspace", async () => {
     container.permissionRules.add("fs.write", "", "deny");
     faux.setResponses([
@@ -321,12 +336,11 @@ describe("Dedicated cloud runner", () => {
       fauxAssistantMessage(fauxText("The tool was denied")),
     ]);
     const { run } = await createTask();
-    await waitFor(() => container.tasks.getRun(run.id)?.status === "succeeded");
+    await waitFor(async () => (await container.tasks.getRun(run.id))?.status === "succeeded");
     expect(existsSync(join(workspace, "denied.txt"))).toBe(false);
-    expect(container.approvals.list("pending")).toHaveLength(0);
-    expect(container.tasks.getRun(run.id)?.toolCalls?.[0]).toMatchObject({ isError: true });
+    expect(await container.approvals.list("pending")).toHaveLength(0);
+    expect((await container.tasks.getRun(run.id))?.toolCalls?.[0]).toMatchObject({ isError: true });
   });
-
   it("rejects tools targeting another project or Git metadata", async () => {
     const otherWorkspace = join(config.workspaceRoot, "other");
     mkdirSync(otherWorkspace);
@@ -345,7 +359,6 @@ describe("Dedicated cloud runner", () => {
         content: "unsafe",
       },
     ];
-
     for (const args of attempts) {
       faux.setResponses([
         fauxAssistantMessage(fauxToolCall(toWireName("fs.write"), { ...args, expectedHash: "" }), {
@@ -354,16 +367,16 @@ describe("Dedicated cloud runner", () => {
         fauxAssistantMessage(fauxText("The write was rejected")),
       ]);
       const { run } = await createTask();
-      await waitFor(() => container.tasks.getRun(run.id)?.status === "succeeded");
-      expect(container.tasks.getRun(run.id)?.toolCalls?.[0]).toMatchObject({ isError: true });
-      expect(container.approvals.list("pending")).toHaveLength(0);
+      await waitFor(async () => (await container.tasks.getRun(run.id))?.status === "succeeded");
+      expect((await container.tasks.getRun(run.id))?.toolCalls?.[0]).toMatchObject({
+        isError: true,
+      });
+      expect(await container.approvals.list("pending")).toHaveLength(0);
     }
-
     expect(existsSync(join(workspace, "outside.txt"))).toBe(false);
     expect(existsSync(join(otherWorkspace, "outside.txt"))).toBe(false);
     expect(readFileSync(join(workspace, ".git", "config"), "utf8")).toBe(gitConfig);
   });
-
   it("forces shell approval and binds the approval to the normalized workspace", async () => {
     container.permissionRules.add("shell.run", "", "allow");
     faux.setResponses([
@@ -378,15 +391,16 @@ describe("Dedicated cloud runner", () => {
       fauxAssistantMessage(fauxText("The command was not approved")),
     ]);
     const { task, run } = await createTask();
-    await waitFor(() => container.approvals.list("pending").length > 0);
-    const approval = container.approvals.list("pending")[0]!;
+    await waitFor(async () => (await container.approvals.list("pending")).length > 0);
+    const approval = (await container.approvals.list("pending"))[0]!;
     expect(approval.kind).toBe("tool");
     expect(approval.detail).toContain(workspace);
-    expect(container.remoteApprovals!.get(scope, approval.id)).toMatchObject({ taskId: task.id });
+    expect(await container.remoteApprovals!.get(scope, approval.id)).toMatchObject({
+      taskId: task.id,
+    });
     expect((await resolveApproval(approval.id, false)).status).toBe(200);
-    await waitFor(() => container.tasks.getRun(run.id)?.status === "succeeded");
+    await waitFor(async () => (await container.tasks.getRun(run.id))?.status === "succeeded");
   });
-
   it("cancels an active shell process when the grant is revoked", async () => {
     faux.setResponses([
       fauxAssistantMessage(
@@ -399,8 +413,8 @@ describe("Dedicated cloud runner", () => {
       ),
     ]);
     const { run } = await createTask();
-    await waitFor(() => container.approvals.list("pending").length > 0);
-    const approval = container.approvals.list("pending")[0]!;
+    await waitFor(async () => (await container.approvals.list("pending")).length > 0);
+    const approval = (await container.approvals.list("pending"))[0]!;
     expect((await resolveApproval(approval.id)).status).toBe(200);
     await waitFor(() => existsSync(join(workspace, "running.txt")));
     const running = JSON.parse(readFileSync(join(workspace, "running.txt"), "utf8")) as {
@@ -408,14 +422,12 @@ describe("Dedicated cloud runner", () => {
       pid: number;
     };
     expect(running.cwd).toBe(workspace);
-
-    container.remoteGrants!.revoke(scope);
-    await waitFor(() => container.tasks.getRun(run.id)?.status === "cancelled");
+    await container.remoteGrants!.revoke(scope);
+    await waitFor(async () => (await container.tasks.getRun(run.id))?.status === "cancelled");
     expect(() => process.kill(running.pid, 0)).toThrowError(
       expect.objectContaining({ code: "ESRCH" }),
     );
   });
-
   it("requires the original session for lease renewal and cancels real approval waiting on revocation", async () => {
     faux.setResponses([
       fauxAssistantMessage(
@@ -429,10 +441,10 @@ describe("Dedicated cloud runner", () => {
       ),
     ]);
     const { task, run } = await createTask();
-    await waitFor(() => container.approvals.list("pending").length > 0);
+    await waitFor(async () => (await container.approvals.list("pending")).length > 0);
     const payload = {
       taskId: task.id,
-      leaseExpiresAt: new Date(Date.now() + 35_000).toISOString(),
+      leaseExpiresAt: new Date(Date.now() + 35000).toISOString(),
     };
     expect(
       (
@@ -444,16 +456,15 @@ describe("Dedicated cloud runner", () => {
     ).toBe(403);
     const revoke = { taskId: task.id, leaseExpiresAt: new Date().toISOString() };
     expect((await call(`/tasks/${task.id}/lease`, envelope("task.read", revoke))).status).toBe(200);
-    await waitFor(() => container.tasks.getRun(run.id)?.status === "cancelled");
+    await waitFor(async () => (await container.tasks.getRun(run.id))?.status === "cancelled");
     expect(existsSync(join(workspace, "late.txt"))).toBe(false);
   });
-
   it("replays more than 1000 durable events to a new session even after the execution lease expires", async () => {
     faux.setResponses([fauxAssistantMessage(fauxText("done"))]);
     const { task, run } = await createTask();
-    await waitFor(() => container.tasks.getRun(run.id)?.status === "succeeded");
+    await waitFor(async () => (await container.tasks.getRun(run.id))?.status === "succeeded");
     for (let i = 0; i < 1005; i++)
-      container.tasks.appendEvent({
+      await container.tasks.appendEvent({
         taskId: task.id,
         runId: run.id,
         event: { type: "text_delta", agent: "orchestrator", delta: String(i) },
@@ -470,7 +481,6 @@ describe("Dedicated cloud runner", () => {
     expect(stream).toContain('"delta":"1004"');
     expect((stream.match(/^id:/gm) ?? []).length).toBeGreaterThan(1000);
   });
-
   it("connects Git status, preview, explicit approval and commit without exposing local routes", async () => {
     writeFileSync(join(workspace, "README.md"), "reviewed change\n");
     const status = await command("project.read", {
@@ -499,8 +509,7 @@ describe("Dedicated cloud runner", () => {
     const committed = await command("git.commit", input);
     expect(committed.status, await committed.clone().text()).toBe(200);
     expect(git("log", "-1", "--format=%s")).toBe("fix: reviewed change");
-  }, 20_000);
-
+  }, 20000);
   it("runs approved plans automatically and does not let followup bypass an unapproved plan", async () => {
     faux.setResponses([
       fauxAssistantMessage(
@@ -523,17 +532,21 @@ describe("Dedicated cloud runner", () => {
       fauxAssistantMessage(fauxText("Done")),
     ]);
     const { task } = await createTask(true);
-    await waitFor(() => container.tasks.get(task.id)?.status === "awaiting_plan_approval");
-    const plan = container.approvals.list("pending").find((a) => a.kind === "plan")!;
+    await waitFor(
+      async () => (await container.tasks.get(task.id))?.status === "awaiting_plan_approval",
+    );
+    const plan = (await container.approvals.list("pending")).find((a) => a.kind === "plan")!;
     expect((await resolveApproval(plan.id)).status).toBe(200);
-    await waitFor(() => container.approvals.list("pending").some((a) => a.kind === "tool"));
+    await waitFor(async () =>
+      (await container.approvals.list("pending")).some((a) => a.kind === "tool"),
+    );
     expect(existsSync(join(workspace, "approved.txt"))).toBe(false);
-    const write = container.approvals.list("pending").find((a) => a.kind === "tool")!;
+    const write = (await container.approvals.list("pending")).find((a) => a.kind === "tool")!;
     expect((await resolveApproval(write.id)).status).toBe(200);
-    await waitFor(() => container.tasks.get(task.id)?.status === "awaiting_review");
+    await waitFor(async () => (await container.tasks.get(task.id))?.status === "awaiting_review");
     expect(readFileSync(join(workspace, "approved.txt"), "utf8")).toBe("approved");
-    const review = container.approvals.list("pending").find((a) => a.kind === "review")!;
+    const review = (await container.approvals.list("pending")).find((a) => a.kind === "review")!;
     expect((await resolveApproval(review.id)).status).toBe(200);
-    expect(container.tasks.get(task.id)?.status).toBe("completed");
+    expect((await container.tasks.get(task.id))?.status).toBe("completed");
   });
 });

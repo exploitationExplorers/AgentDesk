@@ -11,6 +11,9 @@ export const StoragePolicy = z.object({
 });
 export type StoragePolicy = z.infer<typeof StoragePolicy>;
 
+export const StorageCleanupInput = z.strictObject({ previewId: z.uuid() });
+export type StorageCleanupInput = z.infer<typeof StorageCleanupInput>;
+
 export interface StorageUsageItem {
   name: string;
   bytes: number;
@@ -27,6 +30,12 @@ export interface StorageUsage {
   incomplete: boolean;
   disk: { totalBytes: number; freeBytes: number; reserveBytes: number } | null;
   warnings: string[];
+}
+
+export interface CloudStorageStatus {
+  hostId: string;
+  policy: StoragePolicy;
+  usage: StorageUsage;
 }
 
 export interface StorageCleanupPreview {

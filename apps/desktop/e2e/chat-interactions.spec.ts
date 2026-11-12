@@ -280,7 +280,7 @@ test("工作台宽度可调整并保存，明暗主题及窄屏均可关闭面�
   await expect(handle).toHaveAttribute("aria-valuenow", "404");
   await handle.press("Escape");
   await expect(handle).toHaveAttribute("aria-valuenow", "320");
-  await page.getByRole("button", { name: "切换主题" }).first().click();
+  await page.getByRole("switch", { name: "浅色主题" }).first().click();
   await page.screenshot({ path: testInfo.outputPath("chat-workbench-dark.png") });
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(panel.getByRole("button", { name: "关闭工作台" })).toBeVisible();
@@ -302,7 +302,7 @@ test("欢迎页与输入菜单在桌面和窄屏下保持可读", async ({ page 
   await page.getByRole("button", { name: "选择 Agent" }).click();
   await page.screenshot({ path: testInfo.outputPath("chat-agent-menu.png") });
   await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "切换主题" }).first().click();
+  await page.getByRole("switch", { name: "浅色主题" }).first().click();
   await page.screenshot({ path: testInfo.outputPath("chat-home-dark.png") });
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

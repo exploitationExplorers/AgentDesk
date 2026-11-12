@@ -1,3 +1,4 @@
+import { businessDatabase, type BusinessDatabase } from "../../db/business-database";
 import { randomUUID, createHash } from "node:crypto";
 import { mkdir, realpath, rename, statfs } from "node:fs/promises";
 import { join } from "node:path";
@@ -8,7 +9,6 @@ import type { SecretStore } from "../../secrets";
 import type { ProjectService } from "../projects";
 import { repositoryGit } from "./repository-git";
 import { payloadDigest } from "./digest";
-
 const line = z
   .string()
   .trim()
@@ -39,7 +39,6 @@ interface ImportRow {
   project_id: string | null;
   created_at: string;
 }
-
 export function approvedRepositoryUrl(value: string): string {
   let url: URL;
   try {
@@ -60,9 +59,10 @@ export function approvedRepositoryUrl(value: string): string {
     throw new AppError(ErrorCode.Forbidden, "仅允许无凭据的 GitHub 或 Gitee HTTPS 仓库地址");
   return `${url.origin}${url.pathname.replace(/\.git$/, "")}.git`;
 }
-
 /** 云端初始化采用持久导入记录；断线重试只查询同一记录，不重复 clone。 */
 export class CloudRepositorySetup {
+  private readonly db: BusinessDatabase;
+  readonly ready: Promise<void>;
   private readonly active = new Map<string, Promise<void>>();
   private stopping = false;
   private readonly abort = new AbortController();
@@ -71,15 +71,18 @@ export class CloudRepositorySetup {
     this.abort.abort();
   }
   constructor(
-    private readonly db: Database.Database,
+    db: Database.Database | BusinessDatabase,
     private readonly secrets: SecretStore,
     private readonly projects: ProjectService,
     private readonly dataDir: string,
     private readonly workspaceRoot: string,
   ) {
-    db.prepare(
-      "UPDATE cloud_repository_imports SET status='interrupted' WHERE status='running'",
-    ).run();
+    this.db = businessDatabase(db);
+    this.ready = Promise.resolve().then(async () => {
+      await this.db
+        .prepare("UPDATE cloud_repository_imports SET status='interrupted' WHERE status='running'")
+        .run();
+    });
   }
   private key(url: string) {
     return `cloud-git:${createHash("sha256").update(url).digest("hex")}`;
@@ -106,7 +109,10 @@ export class CloudRepositorySetup {
     }
     const stored = this.secrets.get(this.key(url));
     if (!stored) return {};
-    const { username, token } = JSON.parse(stored) as { username: string; token: string };
+    const { username, token } = JSON.parse(stored) as {
+      username: string;
+      token: string;
+    };
     return {
       "credential.helper": "",
       [`http.${url}.extraHeader`]: `Authorization: Basic ${Buffer.from(`${username}:${token}`).toString("base64")}`,
@@ -117,7 +123,7 @@ export class CloudRepositorySetup {
     const url = approvedRepositoryUrl(value);
     await repositoryGit(this.workspaceRoot, ["ls-remote", "--exit-code", "--", url, "HEAD"], {
       config: this.gitConfig(url),
-      timeoutMs: 25_000,
+      timeoutMs: 25000,
     });
     return { readable: true, pushVerified: false };
   }
@@ -141,22 +147,22 @@ export class CloudRepositorySetup {
         url,
         ref,
       ],
-      { timeoutMs: 25_000, config: this.gitConfig(url) },
+      { timeoutMs: 25000, config: this.gitConfig(url) },
     );
     const head = (await repositoryGit(workspace, ["rev-parse", "FETCH_HEAD"])).stdout.trim();
     return { fetched: true, head };
   }
-  list() {
+  async list() {
     return (
-      this.db
+      (await this.db
         .prepare("SELECT * FROM cloud_repository_imports ORDER BY created_at DESC LIMIT 30")
-        .all() as ImportRow[]
+        .all()) as ImportRow[]
     ).map((row) => this.public(row));
   }
-  get(id: string) {
-    const row = this.db
+  async get(id: string) {
+    const row = (await this.db
       .prepare("SELECT * FROM cloud_repository_imports WHERE id=?")
-      .get(RemoteId.parse(id)) as ImportRow | undefined;
+      .get(RemoteId.parse(id))) as ImportRow | undefined;
     if (!row) throw new AppError(ErrorCode.NotFound, "仓库导入记录不存在");
     return this.public(row);
   }
@@ -165,17 +171,21 @@ export class CloudRepositorySetup {
       id: row.id,
       status: row.status,
       projectId: row.project_id,
-      repository: (JSON.parse(row.input_json) as { url: string }).url,
+      repository: (
+        JSON.parse(row.input_json) as {
+          url: string;
+        }
+      ).url,
       createdAt: row.created_at,
     };
   }
-  begin(raw: unknown) {
+  async begin(raw: unknown) {
     const input = RepositoryImportInput.parse(raw);
     input.url = approvedRepositoryUrl(input.url);
     const hash = payloadDigest(input);
-    const old = this.db
+    const old = (await this.db
       .prepare("SELECT * FROM cloud_repository_imports WHERE request_id=?")
-      .get(input.clientRequestId) as ImportRow | undefined;
+      .get(input.clientRequestId)) as ImportRow | undefined;
     if (old) {
       if (old.payload_hash !== hash)
         throw new AppError(ErrorCode.Conflict, "请求编号已被其他导入使用");
@@ -184,7 +194,7 @@ export class CloudRepositorySetup {
     if (this.stopping || this.active.size)
       throw new AppError(ErrorCode.Conflict, "已有仓库正在导入，请等待完成");
     const id = randomUUID();
-    this.db
+    await this.db
       .prepare("INSERT INTO cloud_repository_imports VALUES(?,?,?,?,?,?,?,?)")
       .run(
         id,
@@ -197,12 +207,14 @@ export class CloudRepositorySetup {
         null,
       );
     const operation = this.clone(id, input)
-      .catch(() => {
-        this.db.prepare("UPDATE cloud_repository_imports SET status='failed' WHERE id=?").run(id);
+      .catch(async () => {
+        await this.db
+          .prepare("UPDATE cloud_repository_imports SET status='failed' WHERE id=?")
+          .run(id);
       })
       .finally(() => this.active.delete(id));
     this.active.set(id, operation);
-    return this.get(id);
+    return await this.get(id);
   }
   private async clone(id: string, input: z.infer<typeof RepositoryImportInput>) {
     const root = await realpath(this.workspaceRoot),
@@ -223,14 +235,14 @@ export class CloudRepositorySetup {
         input.url,
         checkout,
       ],
-      { config: this.gitConfig(input.url), timeoutMs: 180_000, signal: this.abort.signal },
+      { config: this.gitConfig(input.url), timeoutMs: 180000, signal: this.abort.signal },
     );
     await repositoryGit(checkout, ["config", "--local", "user.name", input.name]);
     await repositoryGit(checkout, ["config", "--local", "user.email", input.email]);
     const target = join(root, `cloud-${id}`);
     await rename(checkout, target);
     const project = await this.projects.add(target);
-    this.db
+    await this.db
       .prepare("UPDATE cloud_repository_imports SET status='succeeded',project_id=? WHERE id=?")
       .run(project.id, id);
   }

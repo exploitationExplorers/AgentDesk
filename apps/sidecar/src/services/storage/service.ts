@@ -15,12 +15,18 @@ import type { Db } from "../../db/client";
 import { conversationActivity } from "../conversation-activity";
 import type { TaskService } from "../tasks";
 import type { RetentionStore } from "./ports";
-
-const DAY = 86_400_000;
+const DAY = 86400000;
 const GiB = 1024 ** 3;
-const MAX_FILES = 10_000;
-type Candidate = { path: string; bytes: number; mtimeMs: number; ino: number; dev: number };
+const MAX_FILES = 10000;
+type Candidate = {
+  path: string;
+  bytes: number;
+  mtimeMs: number;
+  ino: number;
+  dev: number;
+};
 type Plan = {
+  audience?: string;
   preview: StorageCleanupPreview;
   files: Candidate[];
   taskIds: string[];
@@ -29,9 +35,12 @@ type Plan = {
   traceCutoff: string;
   screenshotCutoff: number;
 };
-
 export class StorageService {
-  private readonly policies: Collection<StoragePolicy & { id: string }>;
+  private readonly policies: Collection<
+    StoragePolicy & {
+      id: string;
+    }
+  >;
   private readonly plans = new Map<string, Plan>();
   private timer?: ReturnType<typeof setInterval>;
   private running?: Promise<StorageCleanupResult>;
@@ -39,7 +48,6 @@ export class StorageService {
   private lastAutomaticError = false;
   private stopping = false;
   private automatic?: Promise<void>;
-
   constructor(
     db: Db,
     private readonly dataDir: string,
@@ -49,26 +57,23 @@ export class StorageService {
   ) {
     this.policies = new Collection(db, "storagePolicies");
   }
-
   policy(): StoragePolicy {
     return StoragePolicy.parse(this.policies.get("local") ?? {});
   }
-
   updatePolicy(value: unknown): StoragePolicy {
     const policy = StoragePolicy.parse(value);
     this.policies.put({ id: "local", ...policy });
     this.plans.clear();
     return policy;
   }
-
   start(): void {
     if (this.timer) return;
     // 不在启动瞬间删除旧记录；先让任务恢复和订阅完成。默认不开启自动回收。
-    this.timer = setInterval(() => {
+    this.timer = setInterval(async () => {
       if (this.stopping || !this.policy().automaticCleanup || this.running || this.automatic)
         return;
       this.automatic = this.preview()
-        .then((p) => this.cleanup(p.id))
+        .then(async (p) => await this.cleanup(p.id))
         .then(() => undefined)
         .catch(() => {
           this.lastAutomaticError = true;
@@ -77,10 +82,9 @@ export class StorageService {
         .finally(() => {
           this.automatic = undefined;
         });
-    }, 60 * 60_000);
+    }, 60 * 60000);
     this.timer.unref();
   }
-
   async dispose(): Promise<void> {
     this.stopping = true;
     clearInterval(this.timer);
@@ -88,7 +92,6 @@ export class StorageService {
     await this.running;
     this.plans.clear();
   }
-
   private async disk(path: string) {
     const info = await statfs(path);
     const policy = this.policy();
@@ -99,7 +102,6 @@ export class StorageService {
       reserveBytes: Math.max(policy.reserveGiB * GiB, (totalBytes * policy.reservePercent) / 100),
     };
   }
-
   async assertWritable(workspace?: string): Promise<void> {
     for (const path of new Set([this.dataDir, ...(workspace ? [workspace] : [])])) {
       let disk;
@@ -118,19 +120,21 @@ export class StorageService {
         );
     }
   }
-
-  usage(): Promise<StorageUsage> {
+  async usage(): Promise<StorageUsage> {
     // 合并并发请求，避免页面轮询重复遍历。
     return (this.measurement ??= this.measure().finally(() => {
       this.measurement = undefined;
     }));
   }
-
   private async measure(): Promise<StorageUsage> {
     let remaining = MAX_FILES;
     const visit = async (
       path: string,
-    ): Promise<{ bytes: number; files: number; incomplete: boolean }> => {
+    ): Promise<{
+      bytes: number;
+      files: number;
+      incomplete: boolean;
+    }> => {
       if (--remaining < 0) return { bytes: 0, files: 0, incomplete: true };
       try {
         const info = await lstat(path);
@@ -187,46 +191,46 @@ export class StorageService {
       warnings,
     };
   }
-
-  private eligibleTasks(cutoff: string) {
-    const all = this.tasks.list();
+  private async eligibleTasks(cutoff: string) {
+    const all = await this.tasks.list();
     const activeConversations = new Set(
       all.filter((task) => task.status !== "closed").map((task) => task.conversationId),
     );
-    return all.filter((task) => {
-      if (
-        task.status !== "closed" ||
-        !task.closedAt ||
-        task.closedAt >= cutoff ||
-        task.pendingApprovalId ||
-        this.tasks.isHistoryInUse(task.id) ||
-        conversationActivity(task.conversationId) ||
-        this.store.hasPendingApproval(task.id, task.conversationId)
-      )
-        return false;
-      if (activeConversations.has(task.conversationId)) return false;
-      return this.tasks
-        .listRuns(task.id)
-        .every(
+    const eligible = await Promise.all(
+      all.map(async (task) => {
+        if (
+          task.status !== "closed" ||
+          !task.closedAt ||
+          task.closedAt >= cutoff ||
+          task.pendingApprovalId ||
+          this.tasks.isHistoryInUse(task.id) ||
+          conversationActivity(task.conversationId) ||
+          (await this.store.hasPendingApproval(task.id, task.conversationId))
+        )
+          return undefined;
+        if (activeConversations.has(task.conversationId)) return undefined;
+        return (await this.tasks.listRuns(task.id)).every(
           (run) =>
             ["succeeded", "failed", "cancelled"].includes(run.status) &&
             !!run.endedAt &&
             run.endedAt < cutoff,
-        );
-    });
+        )
+          ? task
+          : undefined;
+      }),
+    );
+    return eligible.filter((task): task is NonNullable<typeof task> => Boolean(task));
   }
-
-  private filesBusy(): boolean {
+  private async filesBusy(): Promise<boolean> {
     return (
       this.screenshotsBusy() ||
-      this.tasks
-        .list()
-        .some((task) => !["completed", "failed", "cancelled", "closed"].includes(task.status))
+      (await this.tasks.list()).some(
+        (task) => !["completed", "failed", "cancelled", "closed"].includes(task.status),
+      )
     );
   }
-
   private async candidates(cutoff: number): Promise<Candidate[]> {
-    if (this.filesBusy()) return [];
+    if (await this.filesBusy()) return [];
     const root = join(this.dataDir, "browser-shots");
     const files: Candidate[] = [];
     let inspected = 0;
@@ -246,7 +250,7 @@ export class StorageService {
             !info.isFile() ||
             info.isSymbolicLink() ||
             info.mtimeMs >= cutoff ||
-            this.store.referencesFile(name)
+            (await this.store.referencesFile(name))
           )
             continue;
           files.push({
@@ -264,22 +268,32 @@ export class StorageService {
     }
     return files;
   }
-
-  async preview(): Promise<StorageCleanupPreview> {
+  async preview(audience?: string): Promise<StorageCleanupPreview> {
     const now = Date.now();
     const policy = this.policy();
     const eventCutoff = new Date(now - policy.eventDays * DAY).toISOString();
     const traceCutoff = new Date(now - policy.traceDays * DAY).toISOString();
     // 同批日志和事件采用更长的任务保留期，避免为了日志提前清除任务历史。
-    const tasks = this.eligibleTasks(eventCutoff < traceCutoff ? eventCutoff : traceCutoff)
-      .filter((task) => {
-        const count = this.store.count([task.id], [task.conversationId], eventCutoff, traceCutoff);
-        return count.events + count.traces > 0;
-      })
+    const eligible = await this.eligibleTasks(
+      eventCutoff < traceCutoff ? eventCutoff : traceCutoff,
+    );
+    const counted = await Promise.all(
+      eligible.map(async (task) => {
+        const count = await this.store.count(
+          [task.id],
+          [task.conversationId],
+          eventCutoff,
+          traceCutoff,
+        );
+        return count.events + count.traces > 0 ? task : undefined;
+      }),
+    );
+    const tasks = counted
+      .filter((task): task is NonNullable<typeof task> => Boolean(task))
       .slice(0, 20);
     const screenshotCutoff = now - policy.screenshotDays * DAY;
     const files = await this.candidates(screenshotCutoff);
-    const counts = this.store.count(
+    const counts = await this.store.count(
       tasks.map((t) => t.id),
       tasks.map((t) => t.conversationId),
       eventCutoff,
@@ -287,7 +301,7 @@ export class StorageService {
     );
     const preview: StorageCleanupPreview = {
       id: randomUUID(),
-      expiresAt: new Date(now + 300_000).toISOString(),
+      expiresAt: new Date(now + 300000).toISOString(),
       files: files.length,
       fileBytes: files.reduce((n, f) => n + f.bytes, 0),
       ...counts,
@@ -296,8 +310,14 @@ export class StorageService {
         "每批最多 500 个文件、20 个任务，每任务最多 1,000 条事件和轨迹。数据库文件不会立即缩小。",
       ],
     };
-    this.plans.clear();
+    for (const [id, plan] of this.plans) {
+      if (plan.audience === audience || Date.parse(plan.preview.expiresAt) <= now)
+        this.plans.delete(id);
+    }
+    // 每个会话仅保留最新预览，并限制总数，避免长期登录会话积累候选文件。
+    if (this.plans.size >= 32) this.plans.delete(this.plans.keys().next().value!);
     this.plans.set(preview.id, {
+      audience,
       preview,
       files,
       taskIds: tasks.map((t) => t.id),
@@ -308,11 +328,12 @@ export class StorageService {
     });
     return preview;
   }
-
-  cleanup(id: string): Promise<StorageCleanupResult> {
+  async cleanup(id: string, audience?: string): Promise<StorageCleanupResult> {
     if (this.stopping) throw new AppError(ErrorCode.ServiceUnavailable, "存储服务正在关闭。");
     if (this.running) throw new AppError(ErrorCode.Conflict, "已有清理正在进行。");
     const plan = this.plans.get(id);
+    if (plan && plan.audience !== audience)
+      throw new AppError(ErrorCode.Forbidden, "清理预览属于其他登录会话，请重新预览。");
     this.plans.delete(id);
     if (
       !plan ||
@@ -325,7 +346,6 @@ export class StorageService {
     });
     return this.running;
   }
-
   private async apply(plan: Plan): Promise<StorageCleanupResult> {
     const result: StorageCleanupResult = {
       files: 0,
@@ -337,7 +357,11 @@ export class StorageService {
     };
     const root = join(await realpath(this.dataDir), "browser-shots");
     for (const file of plan.files) {
-      if (this.stopping || JSON.stringify(this.policy()) !== plan.policy || this.filesBusy()) {
+      if (
+        this.stopping ||
+        JSON.stringify(this.policy()) !== plan.policy ||
+        (await this.filesBusy())
+      ) {
         result.skipped++;
         continue;
       }
@@ -365,8 +389,8 @@ export class StorageService {
           info.ino !== file.ino ||
           info.dev !== file.dev ||
           info.mtimeMs >= plan.screenshotCutoff ||
-          this.filesBusy() ||
-          this.store.referencesFile(basename(file.path))
+          (await this.filesBusy()) ||
+          (await this.store.referencesFile(basename(file.path)))
         ) {
           result.skipped++;
           continue;
@@ -381,26 +405,32 @@ export class StorageService {
     const traced = new Set<string>();
     for (const taskId of plan.taskIds) {
       const cutoff = plan.eventCutoff < plan.traceCutoff ? plan.eventCutoff : plan.traceCutoff;
-      const task =
-        !this.stopping && JSON.stringify(this.policy()) === plan.policy
-          ? this.eligibleTasks(cutoff).find((t) => t.id === taskId)
-          : undefined;
-      if (!task) {
+      const deleted = await this.tasks.withHistoryMaintenance(taskId, () =>
+        this.tasks.transaction(async () => {
+          const task =
+            !this.stopping && JSON.stringify(this.policy()) === plan.policy
+              ? (await this.eligibleTasks(cutoff)).find((t) => t.id === taskId)
+              : undefined;
+          if (!task) return undefined;
+          const result = await this.store.prune(
+            taskId,
+            traced.has(task.conversationId) ? "" : task.conversationId,
+            plan.eventCutoff,
+            plan.traceCutoff,
+          );
+          traced.add(task.conversationId);
+          return result;
+        }),
+      );
+      if (!deleted) {
         result.skipped++;
         continue;
       }
-      const deleted = this.store.prune(
-        taskId,
-        traced.has(task.conversationId) ? "" : task.conversationId,
-        plan.eventCutoff,
-        plan.traceCutoff,
-      );
-      traced.add(task.conversationId);
       result.events += deleted.events;
       result.traces += deleted.traces;
       await new Promise<void>((done) => setImmediate(done));
     }
-    if (result.events || result.traces) this.store.checkpoint();
+    if (result.events || result.traces) await this.store.checkpoint();
     result.completedAt = new Date().toISOString();
     this.lastAutomaticError = false;
     return result;

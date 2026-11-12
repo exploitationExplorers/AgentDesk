@@ -4,7 +4,6 @@ import type { AutomationCard } from "@agentdesk/shared";
 import type { TaskService } from "../tasks";
 import { nowIso } from "../../util";
 import { stableId, type AutoloopStore } from "./store";
-
 const remoteCard = z.object({
   id: z.number().int().positive(),
   version: z.number().int().positive(),
@@ -20,10 +19,13 @@ const remoteCard = z.object({
   choice: z.number().nullable(),
   created_at: z.string(),
 });
-
 /** 白名单映射与事实游标原子保存，不把上游 token、配置或原始日志传到客户端。 */
-export function projectFact(store: AutoloopStore, tasks: TaskService, fact: HubFact): void {
-  store.db.transaction(() => {
+export async function projectFact(
+  store: AutoloopStore,
+  tasks: TaskService,
+  fact: HubFact,
+): Promise<void> {
+  await tasks.transaction(async () => {
     store.assertEpoch();
     if (fact.seq <= (store.state.get("cursor")?.value ?? 0)) return;
     for (const change of fact.changes) {
@@ -79,7 +81,7 @@ export function projectFact(store: AutoloopStore, tasks: TaskService, fact: HubF
         });
       }
       if (card.taskId && link) {
-        tasks.appendEvent({
+        await tasks.appendEvent({
           taskId: card.taskId,
           runId: link.runId,
           event: {
@@ -91,9 +93,9 @@ export function projectFact(store: AutoloopStore, tasks: TaskService, fact: HubF
           card.state === "open" &&
           card.kind === "ask" &&
           !store.stopped.get(card.taskId) &&
-          tasks.get(card.taskId)?.currentRunId === link.runId
+          (await tasks.get(card.taskId))?.currentRunId === link.runId
         )
-          tasks.setAutomationStatus(
+          await tasks.setAutomationStatus(
             card.taskId,
             card.interactionKind === "authorization" ? "waiting_authorization" : "waiting_input",
           );

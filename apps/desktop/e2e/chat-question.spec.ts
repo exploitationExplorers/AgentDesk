@@ -238,6 +238,6 @@ test("主题切换在全局生效", async ({ page }) => {
   });
   await page.goto("/");
   await expect(page.locator("html.dark")).toHaveCount(0);
-  await page.getByRole("button", { name: "切换主题" }).first().click();
+  await page.getByRole("switch", { name: "浅色主题" }).first().click();
   await expect(page.locator("html.dark")).toHaveCount(1);
 });

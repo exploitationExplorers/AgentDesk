@@ -15,6 +15,8 @@ export interface CloudConfig extends SidecarConfig {
   ownerUserId: string;
   allowedProviderHosts: string[];
   allowServerProviderCredentials?: boolean;
+  databaseUrl?: string;
+  databaseSchema?: string;
 }
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -26,6 +28,32 @@ function requiredFile(path: string, name: string): string {
 }
 
 export function loadCloudConfig(env: NodeJS.ProcessEnv = process.env): CloudConfig {
+  if (env.DATABASE_URL && env.DATABASE_URL_FILE)
+    throw new Error("Configure only one Runner database URL source");
+  const databaseUrl = env.DATABASE_URL_FILE
+    ? readFileSync(env.DATABASE_URL_FILE, "utf8").trim()
+    : env.DATABASE_URL;
+  if (env.DATABASE_URL !== undefined || env.DATABASE_URL_FILE !== undefined) {
+    try {
+      const url = new URL(databaseUrl ?? "");
+      if (
+        !["postgres:", "postgresql:"].includes(url.protocol) ||
+        !url.hostname ||
+        url.pathname.length < 2 ||
+        url.searchParams.has("options")
+      )
+        throw new Error();
+    } catch {
+      throw new Error("Invalid Runner PostgreSQL configuration");
+    }
+  }
+  const databaseSchema = env.DATABASE_SCHEMA ?? "runner";
+  if (env.NODE_ENV === "production" && !databaseUrl)
+    throw new Error("Production cloud Runner requires PostgreSQL");
+  if (!/^[a-z][a-z0-9_]{0,62}$/.test(databaseSchema))
+    throw new Error("Invalid Runner database schema");
+  if (env.DATABASE_SCHEMA !== undefined && !databaseUrl)
+    throw new Error("Runner database schema requires a PostgreSQL URL");
   const dataDir = resolve(env.AGENTDESK_DATA_DIR ?? "/var/lib/agentdesk-cloud");
   const workspaceRoot = resolve(env.WORKSPACE_ROOT ?? "");
   const masterKeyFile = resolve(env.AGENTDESK_MASTER_KEY_FILE ?? "");
@@ -44,6 +72,8 @@ export function loadCloudConfig(env: NodeJS.ProcessEnv = process.env): CloudConf
   )
     throw new Error("Master key file must contain a base64 encoded 32-byte key");
   return {
+    databaseUrl,
+    databaseSchema,
     version: env.AGENTDESK_VERSION ?? "0.1.0",
     host: "0.0.0.0",
     port: z.coerce

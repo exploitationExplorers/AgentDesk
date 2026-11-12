@@ -49,8 +49,9 @@ export class HostRunnerClient extends RunnerClient {
   }
   override forHost(hostId: string): RunnerClient {
     if (hostId === "cloud") return this;
-    const device = this.relay.store.get(hostId);
-    if (device.state !== "active") throw new AppError(ErrorCode.NotFound, "设备未配对或已撤销");
+    // 数据库授权在 relay.request 中异步核验；此处只选择传输客户端。
+    if (!/^office-[a-zA-Z0-9-]+$/.test(hostId))
+      throw new AppError(ErrorCode.NotFound, "设备未配对或已撤销");
     let client = this.offices.get(hostId);
     if (!client) {
       client = new OfficeClient(hostId, this.relay, this.hostConfig);

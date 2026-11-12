@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import Database from "better-sqlite3";
+import { StoragePolicy } from "@agentdesk/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createGatewayApp } from "../src/app";
 import { createGatewayAuth } from "../src/auth/service";
@@ -10,7 +11,6 @@ import { RunnerClient } from "../src/remote/client";
 import { RemoteGatewayService } from "../src/remote/service";
 import { RemoteRoutingStore } from "../src/remote/store";
 import { SESSION_ABSOLUTE_MS, SESSION_IDLE_MS } from "../src/auth/session-policy";
-
 let db: Database.Database;
 let app: ReturnType<typeof createGatewayApp>;
 let config: GatewayConfig;
@@ -67,7 +67,6 @@ beforeEach(async () => {
   };
 });
 afterEach(() => db.close());
-
 function request(path: string, body?: unknown, headers: Record<string, string> = {}) {
   return app.request(`${config.publicOrigin}/api/v1/${path}`, {
     method: body === undefined ? "GET" : "POST",
@@ -94,7 +93,80 @@ async function login() {
   const cookie = setCookie.split(";")[0]!;
   return { cookie, setCookie, response };
 }
-
+it("云存储仅 owner 可访问，写操作验证 CSRF 且只转发服务端身份", async () => {
+  const { cookie } = await login();
+  const session = await (await request("session", undefined, { cookie })).json();
+  const calls: Array<{
+    url: string;
+    body: Record<string, unknown>;
+    method: string;
+  }> = [];
+  runnerResponder = (url, init) => {
+    calls.push({ url, body: JSON.parse(String(init?.body)), method: init?.method ?? "GET" });
+    return Response.json({ hostId: "cloud" });
+  };
+  expect((await request("hosts/cloud/storage")).status).toBe(401);
+  expect((await request("hosts/cloud/storage", undefined, { cookie })).status).toBe(200);
+  expect(calls[0]).toMatchObject({
+    url: "http://runner:17893/remote-api/v1/host/storage/status",
+    method: "POST",
+    body: { actor: { userId: session.user.id, sessionId: session.session.id } },
+  });
+  expect((await request("hosts/office/storage", undefined, { cookie })).status).toBe(403);
+  expect((await request("hosts/cloud/storage/cleanup/preview", {}, { cookie })).status).toBe(403);
+  const headers = { cookie, "x-csrf-token": session.csrfToken };
+  expect(
+    (await request("hosts/cloud/storage/cleanup/preview", { actor: { userId: "forged" } }, headers))
+      .status,
+  ).toBe(400);
+  const previewId = crypto.randomUUID();
+  expect(
+    (await request("hosts/cloud/storage/cleanup", { previewId, path: "/private" }, headers)).status,
+  ).toBe(400);
+  expect(calls).toHaveLength(1);
+  expect((await request("hosts/cloud/storage/cleanup/preview", {}, headers)).status).toBe(200);
+  expect((await request("hosts/cloud/storage/cleanup", { previewId }, headers)).status).toBe(200);
+  const policy = StoragePolicy.parse({ automaticCleanup: true, eventDays: 45 });
+  const response = await app.request(`${config.publicOrigin}/api/v1/hosts/cloud/storage/policy`, {
+    method: "PUT",
+    headers: {
+      ...headers,
+      host: "agent.example.test",
+      origin: config.publicOrigin,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(policy),
+  });
+  expect(response.status).toBe(200);
+  expect(calls.at(-1)).toMatchObject({
+    method: "PUT",
+    body: { policy, actor: { userId: session.user.id, sessionId: session.session.id } },
+  });
+  expect(calls).toHaveLength(4);
+});
+it("云存储修改要求近期认证，过期会话只能读取容量", async () => {
+  const { cookie } = await login();
+  const session = await (await request("session", undefined, { cookie })).json();
+  let calls = 0;
+  runnerResponder = () => {
+    calls++;
+    return Response.json({});
+  };
+  db.prepare("UPDATE gateway_session_auth SET authenticated_at=?").run(
+    new Date(Date.now() - 16 * 60000).toISOString(),
+  );
+  expect((await request("hosts/cloud/storage", undefined, { cookie })).status).toBe(200);
+  expect(
+    (
+      await request(
+        "hosts/cloud/storage/cleanup/preview",
+        {},
+        { cookie, "x-csrf-token": session.csrfToken },
+      )
+    ).status,
+  ).toBe(401);
+  expect(calls).toBe(1);
+});
 it("凭证输入仅在 Gateway 和 Runner 同时启用时开放", async () => {
   const { cookie } = await login();
   let runnerEnabled = true;
@@ -112,7 +184,6 @@ it("凭证输入仅在 Gateway 和 Runner 同时启用时开放", async () => {
   runnerEnabled = false;
   expect(await read()).toMatchObject({ allowServerCredentials: false });
 });
-
 it("Gateway 默认拒绝上传个人 Key，启用后还要求服务器凭证用途，拒绝请求不转发", async () => {
   const { cookie } = await login();
   const session = await (await request("session", undefined, { cookie })).json();
@@ -151,7 +222,6 @@ it("Gateway 默认拒绝上传个人 Key，启用后还要求服务器凭证用�
   expect((await write({ ...input, credentialPurpose: "server-service" })).status).toBe(200);
   expect(forwarded).toHaveLength(1);
 });
-
 describe("Gateway 身份与会话", () => {
   it("项目任务列表保留 projectId 筛选，未知宿主不能读取云端项目", async () => {
     const { cookie } = await login();
@@ -213,7 +283,9 @@ describe("Gateway 身份与会话", () => {
   });
   it("验证码 HMAC 与会话摘要落库，安全 Cookie 登录且响应无 bearer", async () => {
     await send();
-    const challenge = db.prepare("SELECT value FROM verification").get() as { value: string };
+    const challenge = db.prepare("SELECT value FROM verification").get() as {
+      value: string;
+    };
     expect(challenge.value).toMatch(/^[a-f0-9]{64}:0$/);
     expect(challenge.value).not.toContain(sent[0]);
     const response = await verify();
@@ -225,7 +297,9 @@ describe("Gateway 身份与会话", () => {
     for (const attribute of ["Secure", "HttpOnly", "SameSite=Lax", "Path=/"])
       expect(cookie).toContain(attribute);
     expect(cookie).not.toContain("Domain=");
-    const record = db.prepare('SELECT token FROM "session"').get() as { token: string };
+    const record = db.prepare('SELECT token FROM "session"').get() as {
+      token: string;
+    };
     expect(record.token).toMatch(/^[a-f0-9]{64}$/);
     expect(decodeURIComponent(cookie)).not.toContain(record.token);
     const session = await request("session", undefined, { cookie: cookie.split(";")[0]! });
@@ -397,7 +471,9 @@ describe("Gateway 身份与会话", () => {
       peerAddress: () => peer,
     });
     expect((await request("session", undefined, { cookie })).status).toBe(200);
-    const { token } = db.prepare('SELECT token FROM "session"').get() as { token: string };
+    const { token } = db.prepare('SELECT token FROM "session"').get() as {
+      token: string;
+    };
     const context = await auth.$context;
     expect(await context.internalAdapter.findSession(token)).toBeNull();
     expect(
@@ -406,13 +482,15 @@ describe("Gateway 身份与会话", () => {
   });
   it("服务器恢复保留 userId，撤销会话和验证码，并拒绝配置静默换 owner", async () => {
     const { cookie } = await login();
-    const owner = db.prepare('SELECT id FROM "user"').get() as { id: string };
+    const owner = db.prepare('SELECT id FROM "user"').get() as {
+      id: string;
+    };
     await expect(
       createGatewayAuth({ ...config, ownerEmail: "new@example.test" }, db, async () => undefined),
     ).rejects.toThrow(/recovery/);
     db.prepare("DELETE FROM gateway_limits").run();
     await send();
-    expect(recoverOwner(db, " New@Example.Test ")).toBe(owner.id);
+    expect(await recoverOwner(db, " New@Example.Test ")).toBe(owner.id);
     expect(db.prepare('SELECT id,email FROM "user"').get()).toEqual({
       id: owner.id,
       email: "new@example.test",
@@ -461,9 +539,22 @@ describe("Gateway 身份与会话", () => {
       .find((value) => value.startsWith("__Host-agentdesk_session="))!
       .split(";")[0]!;
     const memberSession = await request("session", undefined, { cookie: memberCookie });
-    expect(await memberSession.json()).toMatchObject({
+    const memberData = await memberSession.json();
+    expect(memberData).toMatchObject({
       user: { email: "member@example.test", role: "member" },
     });
+    expect((await request("hosts/cloud/storage", undefined, { cookie: memberCookie })).status).toBe(
+      403,
+    );
+    expect(
+      (
+        await request(
+          "hosts/cloud/storage/cleanup/preview",
+          {},
+          { cookie: memberCookie, "x-csrf-token": memberData.csrfToken },
+        )
+      ).status,
+    ).toBe(403);
     db.prepare("DELETE FROM gateway_limits").run();
     const owner = await login();
     const ownerSession = await request("session", undefined, { cookie: owner.cookie });

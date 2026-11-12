@@ -6,6 +6,14 @@ import { messages } from "../db/schema";
 import { toJsonSafe } from "../util";
 import { summarizeToolCalls } from "./run-tool-history";
 import { Collection } from "../db/collection";
+import { businessDatabase } from "../db/business-database";
+import type Database from "better-sqlite3";
+
+export interface MessageRepository {
+  list(conversationId: string): Promise<ChatMessage[]>;
+  insert(message: ChatMessage): Promise<void>;
+  deleteProgress(conversationId: string): Promise<void>;
+}
 
 /** 历史消息只回放文本；工具调用细节以摘要附在助手消息后，控制上下文长度。 */
 function toPiMessages(history: ChatMessage[]): Message[] {
@@ -41,35 +49,51 @@ export class ConversationStore {
     id: string;
     blocks: NonNullable<ChatMessage["display"]>;
   }>;
-  constructor(private readonly db: Db) {
+  constructor(
+    private readonly db: Db,
+    private readonly repository?: MessageRepository,
+  ) {
     this.progress = new Collection(db, "message_progress");
   }
 
-  deleteProgress(conversationId: string): void {
-    for (const message of this.listMessages(conversationId)) this.progress.delete(message.id);
+  async deleteProgress(conversationId: string): Promise<void> {
+    if (this.repository) return this.repository.deleteProgress(conversationId);
+    await businessDatabase((this.db as Db & { $client: Database.Database }).$client).exclusive(
+      async () => {
+        for (const message of await this.listMessages(conversationId))
+          this.progress.delete(message.id);
+      },
+    );
   }
 
-  listMessages(conversationId: string): ChatMessage[] {
-    return this.db
-      .select()
-      .from(messages)
-      .where(eq(messages.conversationId, conversationId))
-      .orderBy(asc(messages.createdAt))
-      .all()
-      .map((r) => ({
-        ...r,
-        agent: r.agent as AgentName | null,
-        toolCalls: r.toolCalls as ChatMessage["toolCalls"],
-        display: this.progress.get(r.id)?.blocks,
-      }));
+  async listMessages(conversationId: string): Promise<ChatMessage[]> {
+    if (this.repository) return this.repository.list(conversationId);
+    return businessDatabase((this.db as Db & { $client: Database.Database }).$client).exclusive(
+      async () =>
+        this.db
+          .select()
+          .from(messages)
+          .where(eq(messages.conversationId, conversationId))
+          .orderBy(asc(messages.createdAt))
+          .all()
+          .map((r) => ({
+            ...r,
+            agent: r.agent as AgentName | null,
+            toolCalls: r.toolCalls as ChatMessage["toolCalls"],
+            display: this.progress.get(r.id)?.blocks,
+          })),
+    );
   }
 
-  insertMessage(message: ChatMessage): void {
+  async insertMessage(message: ChatMessage): Promise<void> {
+    if (this.repository) return this.repository.insert(message);
     const { display, ...record } = message;
-    this.db.transaction(() => {
-      this.db.insert(messages).values(toJsonSafe(record)).run();
-      if (display?.length) this.progress.put({ id: message.id, blocks: display });
-    });
+    await businessDatabase((this.db as Db & { $client: Database.Database }).$client)
+      .transaction(async () => {
+        this.db.insert(messages).values(toJsonSafe(record)).run();
+        if (display?.length) this.progress.put({ id: message.id, blocks: display });
+      })
+      .immediate();
   }
 
   toPiMessages(history: ChatMessage[]): Message[] {

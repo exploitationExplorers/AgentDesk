@@ -6,7 +6,6 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import { loadConfig } from "../src/config";
 import { createContainer, type Container } from "../src/container";
 import { createApp } from "../src/http/app";
-
 let container: Container;
 let provider: Provider;
 let other: Provider;
@@ -17,7 +16,6 @@ const call = (path: string, body?: unknown, method = "POST") =>
     headers: { "Content-Type": "application/json", "X-AgentDesk-Token": "selection-test" },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
-
 beforeAll(async () => {
   const config = {
     ...loadConfig({ AGENTDESK_DATA_DIR: mkdtempSync(join(tmpdir(), "agentdesk-model-test-")) }),
@@ -48,7 +46,6 @@ beforeAll(async () => {
 });
 afterEach(() => vi.restoreAllMocks());
 afterAll(async () => container.dispose());
-
 describe("会话模型选择", () => {
   it("选择精确 Provider 和模型，不改变全局绑定或其他请求的默认解析", async () => {
     const binding = [
@@ -77,9 +74,11 @@ describe("会话模型选择", () => {
     expect(defaults[0]).toMatchObject({ providerId: provider.id, model: { id: "default" } });
     expect(container.providers.listBindings()).toEqual(binding);
   });
-
   it("两个并发 /chat 请求分别传递模型，普通请求继续使用默认值", async () => {
-    const seen: { message: string; selection: ModelSelection | undefined }[] = [];
+    const seen: {
+      message: string;
+      selection: ModelSelection | undefined;
+    }[] = [];
     vi.spyOn(container.memory, "captureFromTurn").mockResolvedValue([]);
     vi.spyOn(container.orchestrator, "run").mockImplementation(async (options) => {
       seen.push({ message: options.userMessage, selection: options.modelSelection });
@@ -126,10 +125,9 @@ describe("会话模型选择", () => {
       ["default", "default"],
     ]) {
       const conversation = conversations.find((item) => item.title === title)!;
-      expect(container.chat.messages(conversation.id).at(-1)?.content).toBe(text);
+      expect((await container.chat.messages(conversation.id)).at(-1)?.content).toBe(text);
     }
   });
-
   it("停用、无密钥或不存在的 Provider 在 SSE 开始前被拒绝且不创建会话", async () => {
     const noKey = container.providers.create({
       name: "No key",
@@ -166,7 +164,6 @@ describe("会话模型选择", () => {
     expect(malformed.status).toBe(400);
     expect(container.chat.listConversations()).toHaveLength(before);
   });
-
   it("重命名会话持久化标题，拒绝空标题和未知会话", async () => {
     vi.spyOn(container.memory, "captureFromTurn").mockResolvedValue([]);
     vi.spyOn(container.orchestrator, "run").mockResolvedValue({
@@ -194,6 +191,6 @@ describe("会话模型选择", () => {
       400,
     );
     expect((await call("/conversations/unknown", { title: "名称" }, "PATCH")).status).toBe(404);
-    expect(container.chat.messages(conversationId)).toHaveLength(2);
+    expect(await container.chat.messages(conversationId)).toHaveLength(2);
   });
 });

@@ -16,7 +16,6 @@ import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { createContainer, type Container } from "../src/container";
 import { loadConfig } from "../src/config";
 import { createApp } from "../src/http/app";
-
 let container: Container;
 let faux: FauxProviderRegistration;
 let project: string;
@@ -29,7 +28,7 @@ beforeAll(async () => {
     { inMemory: true },
   );
   await container.projects.add(project);
-  faux = registerFauxProvider({ tokensPerSecond: 100_000 });
+  faux = registerFauxProvider({ tokensPerSecond: 100000 });
   container.providers.resolve = async () => [
     { providerId: "faux", providerName: "faux", model: faux.getModel(), apiKey: "x" },
   ];
@@ -41,21 +40,22 @@ afterAll(async () => {
 afterEach(async () => {
   // 断言失败也要收尾执行，避免上一项的待审批任务消费下一项的模型响应。
   await container.chat.dispose();
-  const activeRuns = () =>
-    container.tasks
-      .list()
-      .flatMap((task) =>
-        container.tasks
-          .listRuns(task.id)
-          .filter((run) => ["queued", "running"].includes(run.status)),
-      );
-  for (const run of activeRuns()) container.tasks.requestCancel(run.id);
-  await waitFor(() => activeRuns().length === 0);
+  const activeRuns = async () =>
+    (
+      await Promise.all(
+        (await container.tasks.list()).map(async (task) =>
+          (await container.tasks.listRuns(task.id)).filter((run) =>
+            ["queued", "running"].includes(run.status),
+          ),
+        ),
+      )
+    ).flat();
+  for (const run of await activeRuns()) await container.tasks.requestCancel(run.id);
+  await waitFor(async () => (await activeRuns()).length === 0);
 });
-
-async function waitFor(predicate: () => boolean) {
+async function waitFor(predicate: () => boolean | Promise<boolean>) {
   const deadline = Date.now() + 5000;
-  while (!predicate()) {
+  while (!(await predicate())) {
     if (Date.now() > deadline) throw new Error("等待编码任务超时");
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
@@ -68,7 +68,6 @@ const request = (path: string, body?: unknown) =>
     headers: { "Content-Type": "application/json", "X-AgentDesk-Token": "test-token" },
     body: body ? JSON.stringify(body) : undefined,
   });
-
 it("提交前的组合 Git 查询无需审批，实际提交仅在批准后执行", async () => {
   const repo = mkdtempSync(join(tmpdir(), "agentdesk-git-approval-"));
   const git = (args: string[]) =>
@@ -88,7 +87,7 @@ it("提交前的组合 Git 查询无需审批，实际提交仅在批准后执�
     "git status --short; git branch --show-current; git rev-parse HEAD; git diff --stat; git diff --cached --stat; git ls-files --others --exclude-standard";
   const commit =
     'git add -- "example file.txt" && git -c user.name=Test -c user.email=test@example.invalid commit -m "update fixture"';
-  const approvalCount = container.approvals.list().length;
+  const approvalCount = (await container.approvals.list()).length;
   faux.setResponses([
     tool("shell.run", { cwd: repo, command: query }),
     tool("shell.run", {
@@ -110,8 +109,8 @@ it("提交前的组合 Git 查询无需审批，实际提交仅在批准后执�
     workspace: repo,
   });
   const stream = response.text();
-  await waitFor(() => container.approvals.list("pending").length > 0);
-  const pending = container.approvals.list("pending");
+  await waitFor(async () => (await container.approvals.list("pending")).length > 0);
+  const pending = await container.approvals.list("pending");
   expect(pending).toHaveLength(1);
   expect(pending[0]!.detail).toContain(commit);
   expect(pending[0]!.payload).toMatchObject({
@@ -123,11 +122,10 @@ it("提交前的组合 Git 查询无需审批，实际提交仅在批准后执�
   const events = await stream;
   expect(events).toContain("+after");
   expect(events).toContain(before);
-  expect(container.approvals.list().length - approvalCount).toBe(1);
+  expect((await container.approvals.list()).length - approvalCount).toBe(1);
   expect(git(["rev-parse", "HEAD"]).trim()).not.toBe(before);
   expect(git(["status", "--short"]).trim()).toBe("");
 });
-
 it("实际修改项目：审批前不落盘，审批后差异、命令输出和运行记录可查询", async () => {
   writeFileSync(join(project, "main.ts"), "export const count = 1;\n");
   const { hash } = await fsRead(project, "main.ts");
@@ -149,14 +147,18 @@ it("实际修改项目：审批前不落盘，审批后差异、命令输出和�
   const task = (await (
     await request("/tasks", { goal: "修复 count", agent: "code" })
   ).json()) as Task;
-  await waitFor(() => container.approvals.list("pending").length > 0);
-  expect(container.tasks.get(task.id)?.status).toBe("running");
+  await waitFor(async () => (await container.approvals.list("pending")).length > 0);
+  expect((await container.tasks.get(task.id))?.status).toBe("running");
   expect(readFileSync(join(project, "main.ts"), "utf8")).toContain("count = 1");
-  expect(container.tasks.listArtifacts(task.id)).toHaveLength(0);
-  await request(`/approvals/${container.approvals.list("pending")[0]!.id}`, { approved: true });
-  await waitFor(() => container.approvals.list("pending").length > 0);
-  await request(`/approvals/${container.approvals.list("pending")[0]!.id}`, { approved: true });
-  await waitFor(() => container.tasks.get(task.id)?.status === "awaiting_review");
+  expect(await container.tasks.listArtifacts(task.id)).toHaveLength(0);
+  await request(`/approvals/${(await container.approvals.list("pending"))[0]!.id}`, {
+    approved: true,
+  });
+  await waitFor(async () => (await container.approvals.list("pending")).length > 0);
+  await request(`/approvals/${(await container.approvals.list("pending"))[0]!.id}`, {
+    approved: true,
+  });
+  await waitFor(async () => (await container.tasks.get(task.id))?.status === "awaiting_review");
   expect(readFileSync(join(project, "main.ts"), "utf8")).toContain("count = 2");
   const events = (await (
     await request(`/tasks/${task.id}/events?limit=500`)
@@ -182,7 +184,6 @@ it("实际修改项目：审批前不落盘，审批后差异、命令输出和�
     await (await request(`/tasks/${task.id}/events?after=${events.at(-1)!.seq}`)).json(),
   ).toEqual([]);
 });
-
 it("聊天产生可观察的运行，拒绝编辑不会生成成功差异", async () => {
   faux.setResponses([
     tool("fs.write", { project, path: "rejected.ts", content: "bad", expectedHash: "" }),
@@ -191,21 +192,22 @@ it("聊天产生可观察的运行，拒绝编辑不会生成成功差异", asyn
   ]);
   const response = await request("/chat", { message: "创建拒绝测试文件", agent: "code" });
   const text = response.text();
-  await waitFor(() => container.approvals.list("pending").length > 0);
-  const task = container.tasks.list().find((t) => t.goal === "创建拒绝测试文件")!;
+  await waitFor(async () => (await container.approvals.list("pending")).length > 0);
+  const task = (await container.tasks.list()).find((t) => t.goal === "创建拒绝测试文件")!;
   expect(task.status).toBe("running");
-  expect(container.tasks.listRuns(task.id)[0]?.status).toBe("running");
-  await request(`/approvals/${container.approvals.list("pending")[0]!.id}`, { approved: false });
+  expect((await container.tasks.listRuns(task.id))[0]?.status).toBe("running");
+  await request(`/approvals/${(await container.approvals.list("pending"))[0]!.id}`, {
+    approved: false,
+  });
   await text;
-  expect(container.tasks.get(task.id)?.status).toBe("awaiting_review");
-  expect(container.tasks.listArtifacts(task.id)).toHaveLength(0);
-  const events = container.tasks.eventsAfter({ taskId: task.id, after: 0, limit: 500 });
+  expect((await container.tasks.get(task.id))?.status).toBe("awaiting_review");
+  expect(await container.tasks.listArtifacts(task.id)).toHaveLength(0);
+  const events = await container.tasks.eventsAfter({ taskId: task.id, after: 0, limit: 500 });
   expect(events.map((e) => e.event.type)).toEqual(
     expect.arrayContaining(["run_started", "approval_required", "run_ended"]),
   );
   expect(events.some((e) => e.event.type === "file_change")).toBe(false);
 });
-
 for (const source of ["task", "chat"] as const) {
   it(`${source} 的文档写入自动登记可预览成果，项目后续修改不覆盖快照`, async () => {
     const path = `report-${source}.md`;
@@ -223,13 +225,15 @@ for (const source of ["task", "chat"] as const) {
     );
     const stream = source === "chat" ? response.text() : undefined;
     const task = source === "task" ? ((await response.json()) as Task) : undefined;
-    await waitFor(() => container.approvals.list("pending").length > 0);
-    await request(`/approvals/${container.approvals.list("pending")[0]!.id}`, { approved: true });
+    await waitFor(async () => (await container.approvals.list("pending")).length > 0);
+    await request(`/approvals/${(await container.approvals.list("pending"))[0]!.id}`, {
+      approved: true,
+    });
     if (stream) await stream;
     const taskId =
-      task?.id ?? container.tasks.list().find((item) => item.goal === `创建 ${path}`)!.id;
-    await waitFor(() => container.tasks.get(taskId)?.status === "awaiting_review");
-    const artifacts = container.tasks.listArtifacts(taskId);
+      task?.id ?? (await container.tasks.list()).find((item) => item.goal === `创建 ${path}`)!.id;
+    await waitFor(async () => (await container.tasks.get(taskId))?.status === "awaiting_review");
+    const artifacts = await container.tasks.listArtifacts(taskId);
     const artifact = artifacts.find((item) => item.kind === "file")!;
     expect(artifact).toMatchObject({
       title: path,
@@ -250,7 +254,6 @@ for (const source of ["task", "chat"] as const) {
     });
   });
 }
-
 for (const decision of ["approve", "reject", "cancel"] as const) {
   it(`聊天委派的文件编辑在当前 SSE 显示审批并支持 ${decision}`, async () => {
     const path = `delegated-${decision}.ts`;
@@ -290,7 +293,7 @@ for (const decision of ["approve", "reject", "cancel"] as const) {
       }
     })();
     try {
-      await waitFor(() => container.approvals.list("pending").length > 0);
+      await waitFor(async () => (await container.approvals.list("pending")).length > 0);
       expect(readFileSync(join(project, path), "utf8")).toBe(original);
       // 只通过当前聊天流接收审批，不能用后台审批列表替终端绕过缺失的事件。
       await expect
@@ -303,36 +306,38 @@ for (const decision of ["approve", "reject", "cancel"] as const) {
           expect.objectContaining({ type: "tool_call", agent: "code", name: "fs.patch" }),
         ]),
       );
-      const task = container.tasks.list().find((item) => item.goal === `委派编辑 ${path}`)!;
+      const task = (await container.tasks.list()).find((item) => item.goal === `委派编辑 ${path}`)!;
       if (decision === "cancel") {
         await reader.cancel();
         await consume;
         // SSE 断连只结束观察；用户通过停止接口明确取消父子执行与待处理授权。
-        expect(container.tasks.listRuns(task.id).some((run) => run.status === "running")).toBe(
-          true,
-        );
-        expect(container.approvals.list("pending")).toHaveLength(1);
+        expect(
+          (await container.tasks.listRuns(task.id)).some((run) => run.status === "running"),
+        ).toBe(true);
+        expect(await container.approvals.list("pending")).toHaveLength(1);
         expect((await request(`/conversations/${task.conversationId}/stop`, {})).status).toBe(204);
       } else {
         await request(`/approvals/${approval.approvalId}`, { approved: decision === "approve" });
         await consume;
       }
-      await waitFor(() =>
-        container.tasks.listRuns(task.id).every((run) => run.status !== "running"),
+      await waitFor(async () =>
+        (await container.tasks.listRuns(task.id)).every((run) => run.status !== "running"),
       );
       expect(readFileSync(join(project, path), "utf8")).toBe(
         decision === "approve" ? original.replace("count = 1", "count = 2") : original,
       );
-      expect(container.approvals.list("pending")).toHaveLength(0);
-      const records = container.tasks.eventsAfter({ taskId: task.id, after: 0, limit: 500 });
+      expect(await container.approvals.list("pending")).toHaveLength(0);
+      const records = await container.tasks.eventsAfter({ taskId: task.id, after: 0, limit: 500 });
       const approvals = records.filter((record) => record.event.type === "approval_required");
       expect(approvals).toHaveLength(1);
       expect(approvals[0]?.parentRunId).not.toBeNull();
-      expect(container.tasks.listArtifacts(task.id)).toHaveLength(decision === "approve" ? 1 : 0);
+      expect(await container.tasks.listArtifacts(task.id)).toHaveLength(
+        decision === "approve" ? 1 : 0,
+      );
       if (decision === "cancel") {
-        expect(container.tasks.listRuns(task.id).every((run) => run.status === "cancelled")).toBe(
-          true,
-        );
+        expect(
+          (await container.tasks.listRuns(task.id)).every((run) => run.status === "cancelled"),
+        ).toBe(true);
       } else {
         expect(events.filter((event) => event.type === "done")).toHaveLength(1);
         expect(events.filter((event) => event.type === "file_change")).toHaveLength(
@@ -341,8 +346,8 @@ for (const decision of ["approve", "reject", "cancel"] as const) {
         expect(events.some((event) => event.type === "error")).toBe(false);
       }
     } finally {
-      for (const approval of container.approvals.list("pending")) {
-        container.approvals.resolve(approval.id, false);
+      for (const approval of await container.approvals.list("pending")) {
+        await container.approvals.resolve(approval.id, false);
       }
       await consume;
       reader.releaseLock();

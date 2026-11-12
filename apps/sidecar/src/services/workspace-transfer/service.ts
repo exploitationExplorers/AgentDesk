@@ -1,3 +1,4 @@
+import { businessDatabase, type BusinessDatabase } from "../../db/business-database";
 import { createHash, randomUUID } from "node:crypto";
 import {
   chmod,
@@ -29,7 +30,6 @@ import { gitValue, repositoryGit } from "../remote/repository-git";
 import { payloadDigest } from "../remote/digest";
 import type { RepositoryLockManager } from "../remote/repository-locks";
 import type { ProjectService } from "../projects";
-
 const CHUNK = 48 * 1024;
 const hash = (bytes: Uint8Array | string) => createHash("sha256").update(bytes).digest("hex");
 const excluded = (path: string) =>
@@ -76,62 +76,68 @@ const currentState = async (workspace: string) => ({
     ])
   ).stdout,
 });
-
 export class WorkspaceTransferService {
+  private readonly db: BusinessDatabase;
+  readonly ready: Promise<void>;
   private readonly active = new Set<string>();
   private cleanupTimer?: ReturnType<typeof setInterval>;
   private cleaning?: Promise<void>;
-
-  startCleanup(intervalMs = 60 * 60_000) {
+  async startCleanup(intervalMs = 60 * 60000) {
     if (this.cleanupTimer) return;
-    const sweep = () =>
+    const sweep = async () =>
       void this.cleanup().catch(() =>
         console.warn("[workspace-transfer] Temporary storage cleanup failed"),
       );
     this.cleanupTimer = setInterval(sweep, intervalMs);
     this.cleanupTimer.unref();
-    sweep();
+    await sweep();
   }
-
   async dispose() {
     clearInterval(this.cleanupTimer);
     this.cleanupTimer = undefined;
+    await this.ready;
     await this.cleaning;
   }
   constructor(
-    private readonly db: Database.Database,
+    db: Database.Database | BusinessDatabase,
     private readonly directory: string,
     private readonly resolveWorkspace: (scope: RemoteScope) => Promise<string>,
     private readonly locks: RepositoryLockManager,
     private readonly projects: ProjectService,
     private readonly workspaceRoot: string,
   ) {
-    // 重启后无法证明未完成导入的完整性，保留现场供核对。
-    this.db
-      .prepare("UPDATE workspace_transfers SET status='failed' WHERE status='importing'")
-      .run();
-    this.db
-      .prepare("UPDATE workspace_snapshots SET status='failed' WHERE status='capturing'")
-      .run();
+    this.db = businessDatabase(db);
+    this.ready = Promise.resolve().then(async () => {
+      // 重启后无法证明未完成导入的完整性，保留现场供核对。
+      await this.db
+        .prepare("UPDATE workspace_transfers SET status='failed' WHERE status='importing'")
+        .run();
+      await this.db
+        .prepare("UPDATE workspace_snapshots SET status='failed' WHERE status='capturing'")
+        .run();
+    });
   }
   private async initialize() {
+    await this.ready;
     await mkdir(this.directory, { recursive: true, mode: 0o700 });
   }
   private async quota(bytes: number) {
     await this.initialize();
     await this.cleanup();
     const disk = await statfs(this.directory);
-    this.checkQuota();
+    await this.checkQuota();
     if (disk.bavail * disk.bsize < bytes + 128 * 1024 * 1024)
       throw new AppError(ErrorCode.TransferQuotaExceeded, "Snapshot storage disk reserve exceeded");
   }
-  private checkQuota() {
+  private async checkQuota() {
     const count = (
-      this.db
+      (await this.db
         .prepare(
           "SELECT (SELECT count(*) FROM workspace_snapshots WHERE status!='expired')+(SELECT count(*) FROM workspace_transfers WHERE created_at>?) AS count",
         )
-        .get(Date.now() - 86_400_000) as { count: number }
+        .get(Date.now() - 86400000)) as {
+        count: number;
+      }
     ).count;
     if (count >= 32)
       throw new AppError(
@@ -140,20 +146,23 @@ export class WorkspaceTransferService {
       );
   }
   /** 仅回收私有暂存目录，已恢复的工作区与幂等记录继续保留。 */
-  cleanup(): Promise<void> {
+  async cleanup(): Promise<void> {
+    await this.ready;
     return (this.cleaning ??= this.sweep().finally(() => {
       this.cleaning = undefined;
     }));
   }
-
   private async sweep() {
     for (const [table, folder] of [
       ["workspace_snapshots", "snapshots"],
       ["workspace_transfers", "transfers"],
     ] as const) {
-      const rows = this.db
+      const rows = (await this.db
         .prepare(`SELECT id,status FROM ${table} WHERE created_at<? AND status!='expired'`)
-        .all(Date.now() - 86_400_000) as { id: string; status: string }[];
+        .all(Date.now() - 86400000)) as {
+        id: string;
+        status: string;
+      }[];
       for (const row of rows) {
         if (this.active.has(row.id)) continue;
         const root = resolve(this.directory, folder),
@@ -162,21 +171,21 @@ export class WorkspaceTransferService {
         // 所有目标由服务生成；不遍历 workspaces，也不拼接用户文件名。
         await rm(path, { recursive: true, force: true });
         if (row.status !== "verified")
-          this.db.prepare(`UPDATE ${table} SET status='expired' WHERE id=?`).run(row.id);
+          await this.db.prepare(`UPDATE ${table} SET status='expired' WHERE id=?`).run(row.id);
       }
     }
   }
-  private own<T extends SnapshotRow | TransferRow>(
+  private async own<T extends SnapshotRow | TransferRow>(
     table: "workspace_snapshots" | "workspace_transfers",
     scope: RemoteScope,
     id: string,
-  ): T {
+  ): Promise<T> {
     RemoteId.parse(id);
-    const row = this.db
+    const row = (await this.db
       .prepare(`SELECT * FROM ${table} WHERE id=? AND user_id=? AND host_id=? AND project_id=?`)
-      .get(id, scope.userId, scope.hostId, scope.projectId) as T | undefined;
+      .get(id, scope.userId, scope.hostId, scope.projectId)) as T | undefined;
     if (!row) throw new AppError(ErrorCode.NotFound, "Snapshot or transfer not found");
-    if (Date.now() - row.created_at > 86_400_000 && row.status !== "verified")
+    if (Date.now() - row.created_at > 86400000 && row.status !== "verified")
       throw new AppError(ErrorCode.Conflict, "Snapshot or transfer expired");
     return row;
   }
@@ -232,11 +241,11 @@ export class WorkspaceTransferService {
       })
       .parse(raw);
     const digest = payloadDigest(input);
-    const old = this.db
+    const old = (await this.db
       .prepare(
         "SELECT * FROM workspace_snapshots WHERE user_id=? AND host_id=? AND project_id=? AND request_id=?",
       )
-      .get(scope.userId, scope.hostId, scope.projectId, input.clientRequestId) as
+      .get(scope.userId, scope.hostId, scope.projectId, input.clientRequestId)) as
       SnapshotRow | undefined;
     if (old) {
       if (old.payload_hash !== digest)
@@ -246,13 +255,13 @@ export class WorkspaceTransferService {
           ErrorCode.Conflict,
           "Previous snapshot is incomplete; inspect it before creating a new request",
         );
-      return this.describe(scope, old.id);
+      return await this.describe(scope, old.id);
     }
     await this.quota(SNAPSHOT_MAX_BYTES);
     const workspace = await this.resolveWorkspace(scope),
       id = randomUUID();
-    this.checkQuota();
-    this.db
+    await this.checkQuota();
+    await this.db
       .prepare("INSERT INTO workspace_snapshots VALUES(?,?,?,?,?,?,'capturing',NULL,?)")
       .run(
         id,
@@ -271,7 +280,10 @@ export class WorkspaceTransferService {
         for (const row of before.status.split("\0").filter(Boolean))
           status.set(row.slice(3), row.slice(0, 2));
         const entries: SnapshotEntry[] = [],
-          exclusions: { path: string; reason: string }[] = [];
+          exclusions: {
+            path: string;
+            reason: string;
+          }[] = [];
         const directory = join(this.directory, "snapshots", id);
         await mkdir(directory, { recursive: true, mode: 0o700 });
         let bytes = 0;
@@ -368,20 +380,20 @@ export class WorkspaceTransferService {
           throw new AppError(ErrorCode.StalePreview, "Repository changed during snapshot capture");
         const text = JSON.stringify(manifest);
         await writeFile(join(directory, "manifest.json"), text, { mode: 0o600 });
-        this.db
+        await this.db
           .prepare("UPDATE workspace_snapshots SET status='ready',manifest_json=? WHERE id=?")
           .run(text, id);
-        return this.describe(scope, id);
+        return await this.describe(scope, id);
       });
     } catch (error) {
-      this.db.prepare("UPDATE workspace_snapshots SET status='failed' WHERE id=?").run(id);
+      await this.db.prepare("UPDATE workspace_snapshots SET status='failed' WHERE id=?").run(id);
       throw error;
     } finally {
       this.active.delete(id);
     }
   }
-  describe(scope: RemoteScope, id: string) {
-    const row = this.own<SnapshotRow>("workspace_snapshots", scope, id);
+  async describe(scope: RemoteScope, id: string) {
+    const row = await this.own<SnapshotRow>("workspace_snapshots", scope, id);
     if (row.status !== "ready" || !row.manifest_json)
       throw new AppError(ErrorCode.Conflict, "Snapshot is not ready");
     return {
@@ -400,7 +412,7 @@ export class WorkspaceTransferService {
         offset: z.number().int().min(0),
       })
       .parse(raw);
-    const row = this.own<SnapshotRow>("workspace_snapshots", scope, input.snapshotId);
+    const row = await this.own<SnapshotRow>("workspace_snapshots", scope, input.snapshotId);
     if (!row.manifest_json || row.status !== "ready")
       throw new AppError(ErrorCode.Conflict, "Snapshot not ready");
     const manifest = SnapshotManifest.parse(JSON.parse(row.manifest_json));
@@ -437,16 +449,16 @@ export class WorkspaceTransferService {
     const text = JSON.stringify(input.manifest);
     if (hash(text) !== input.manifestDigest)
       throw new AppError(ErrorCode.BadRequest, "Manifest digest does not match");
-    const old = this.db
+    const old = (await this.db
       .prepare(
         "SELECT * FROM workspace_transfers WHERE user_id=? AND host_id=? AND project_id=? AND request_id=?",
       )
-      .get(scope.userId, scope.hostId, scope.projectId, input.clientRequestId) as
+      .get(scope.userId, scope.hostId, scope.projectId, input.clientRequestId)) as
       TransferRow | undefined;
     if (old) {
       if (old.manifest_hash !== input.manifestDigest)
         throw new AppError(ErrorCode.IdempotencyConflict, "Transfer request changed");
-      return this.transfer(scope, old.id);
+      return await this.transfer(scope, old.id);
     }
     const workspace = await this.resolveWorkspace(scope);
     const base = await repositoryGit(
@@ -468,8 +480,8 @@ export class WorkspaceTransferService {
     await this.quota(SNAPSHOT_MAX_BYTES);
     const id = randomUUID();
     await mkdir(join(this.directory, "transfers", id), { recursive: true, mode: 0o700 });
-    this.checkQuota();
-    this.db
+    await this.checkQuota();
+    await this.db
       .prepare("INSERT INTO workspace_transfers VALUES(?,?,?,?,?,?,?,'transferring',NULL,?)")
       .run(
         id,
@@ -481,10 +493,10 @@ export class WorkspaceTransferService {
         input.manifestDigest,
         Date.now(),
       );
-    return this.transfer(scope, id);
+    return await this.transfer(scope, id);
   }
-  transfer(scope: RemoteScope, id: string) {
-    const row = this.own<TransferRow>("workspace_transfers", scope, id);
+  async transfer(scope: RemoteScope, id: string) {
+    const row = await this.own<TransferRow>("workspace_transfers", scope, id);
     return {
       id,
       status: row.status,
@@ -500,11 +512,11 @@ export class WorkspaceTransferService {
         transferId: RemoteId,
         file: z.number().int().min(0),
         offset: z.number().int().min(0),
-        data: z.string().max(65_536),
+        data: z.string().max(65536),
         sha256: z.string().regex(/^[a-f0-9]{64}$/),
       })
       .parse(raw);
-    const row = this.own<TransferRow>("workspace_transfers", scope, input.transferId);
+    const row = await this.own<TransferRow>("workspace_transfers", scope, input.transferId);
     if (row.status !== "transferring" || this.active.has(row.id))
       throw new AppError(ErrorCode.Conflict, "Transfer no longer accepts chunks");
     const entry = SnapshotManifest.parse(JSON.parse(row.manifest_json)).entries[input.file];
@@ -539,10 +551,10 @@ export class WorkspaceTransferService {
     const input = z
       .strictObject({ kind: z.literal("import"), transferId: RemoteId, manifestDigest: z.string() })
       .parse(raw);
-    const row = this.own<TransferRow>("workspace_transfers", scope, input.transferId);
+    const row = await this.own<TransferRow>("workspace_transfers", scope, input.transferId);
     if (input.manifestDigest !== row.manifest_hash)
       throw new AppError(ErrorCode.StalePreview, "Manifest changed");
-    if (row.status === "verified") return this.transfer(scope, row.id);
+    if (row.status === "verified") return await this.transfer(scope, row.id);
     if (row.status !== "transferring" || this.active.has(row.id))
       throw new AppError(ErrorCode.Conflict, "Transfer requires reconciliation");
     this.active.add(row.id);
@@ -592,7 +604,9 @@ export class WorkspaceTransferService {
             );
           keys.set(path.toLowerCase(), path);
         }
-        this.db.prepare("UPDATE workspace_transfers SET status='importing' WHERE id=?").run(row.id);
+        await this.db
+          .prepare("UPDATE workspace_transfers SET status='importing' WHERE id=?")
+          .run(row.id);
         // 恢复不运行仓库 hooks 或 checkout filters；它们可执行任意本机命令。
         const filters = (
           await repositoryGit(
@@ -674,13 +688,13 @@ export class WorkspaceTransferService {
             sourceHead: manifest.sourceHead,
             files: manifest.entries.length,
           };
-        this.db
+        await this.db
           .prepare("UPDATE workspace_transfers SET status='verified',result_json=? WHERE id=?")
           .run(JSON.stringify(result), row.id);
-        return this.transfer(scope, row.id);
+        return await this.transfer(scope, row.id);
       });
     } catch (error) {
-      this.db
+      await this.db
         .prepare("UPDATE workspace_transfers SET status='failed' WHERE id=? AND status='importing'")
         .run(row.id);
       throw error;

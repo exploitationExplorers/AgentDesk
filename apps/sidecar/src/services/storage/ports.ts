@@ -39,14 +39,14 @@ export interface RetentionStore {
     conversationIds: string[],
     eventCutoff: string,
     traceCutoff: string,
-  ): { events: number; traces: number };
+  ): { events: number; traces: number } | Promise<{ events: number; traces: number }>;
   prune(
     taskId: string,
     conversationId: string,
     eventCutoff: string,
     traceCutoff: string,
-  ): { events: number; traces: number };
-  referencesFile(name: string): boolean;
-  hasPendingApproval(taskId: string, conversationId: string): boolean;
-  checkpoint(): void;
+  ): { events: number; traces: number } | Promise<{ events: number; traces: number }>;
+  referencesFile(name: string): boolean | Promise<boolean>;
+  hasPendingApproval(taskId: string, conversationId: string): boolean | Promise<boolean>;
+  checkpoint(): void | Promise<void>;
 }

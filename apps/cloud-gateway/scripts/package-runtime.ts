@@ -64,6 +64,6 @@ async function copy(name: string, parent: string, linkRoot: string) {
   await mkdir(dirname(link), { recursive: true });
   await symlink(relative(dirname(link), target), link, "dir");
 }
-for (const dependency of ["better-auth", "better-sqlite3", "nodemailer"])
+for (const dependency of ["better-auth", "better-sqlite3", "nodemailer", "pg"])
   await copy(dependency, process.cwd(), join(destination, "node_modules"));
 console.info(`Packaged ${copied.size} runtime dependencies from the installed lockfile`);

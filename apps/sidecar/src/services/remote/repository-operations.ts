@@ -18,7 +18,6 @@ import type { RemoteOperationStore } from "./operations";
 import { payloadDigest } from "./digest";
 import { gitValue, repositoryGit } from "./repository-git";
 import { RepositoryLockManager } from "./repository-locks";
-
 const FilePath = z
   .string()
   .min(1)
@@ -57,7 +56,6 @@ export const RepositoryExecuteInput = z.strictObject({
   actionDigest: Sha256Digest,
 });
 export type RepositoryExecuteInput = z.infer<typeof RepositoryExecuteInput>;
-
 const State = z.object({
   head: z.string(),
   branch: z.string(),
@@ -101,7 +99,6 @@ export interface RepositoryStatus {
     kind: "modified" | "added" | "deleted" | "renamed" | "untracked" | "conflicted";
   }>;
 }
-
 interface Dependencies {
   grants: RemoteGrantStore;
   operations: RemoteOperationStore;
@@ -114,7 +111,6 @@ interface Dependencies {
   /** Only for host-controlled, local bare repository integration tests. Never exposed in HTTP input. */
   allowLocalRemotes?: boolean;
 }
-
 const bytesHash = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
 const scopeOf = (command: RemoteCommand): RemoteScope => ({
   userId: command.userId,
@@ -128,18 +124,16 @@ const stale = () =>
     ErrorCode.StalePreview,
     "Repository state changed; create and approve a new preview",
   );
-
 export class RepositoryOperationService {
   readonly locks: RepositoryLockManager;
   constructor(private readonly deps: Dependencies) {
     this.locks = deps.locks ?? new RepositoryLockManager();
   }
-
   async status(command: RemoteCommand, raw: unknown): Promise<RepositoryStatus> {
     const input = z
       .strictObject({ kind: z.literal("git-status").optional(), clientRequestId: RemoteId })
       .parse(raw);
-    const scope = this.authorize(command, input, "project.read");
+    const scope = await this.authorize(command, input, "project.read");
     const workspace = await this.deps.resolveWorkspace(scope);
     const state = await this.state(workspace, []);
     const output = (
@@ -181,19 +175,20 @@ export class RepositoryOperationService {
       files: files.sort((a, b) => a.path.localeCompare(b.path)),
     };
   }
-
-  private authorize(
+  private async authorize(
     command: RemoteCommand,
-    input: { clientRequestId: string },
+    input: {
+      clientRequestId: string;
+    },
     action: "project.read" | "git.preview" | "git.commit" | "git.push",
   ) {
     if (command.action !== action || command.requestId !== input.clientRequestId)
       throw new AppError(ErrorCode.Forbidden, "Git action or request identity does not match");
-    this.deps.grants.authorize(command, input);
+    await this.deps.grants.authorize(command, input);
     const authAge = Date.now() - Date.parse(command.actor.recentAuthAt);
     if (
       (action === "git.commit" || action === "git.push") &&
-      (authAge < -5_000 || authAge > 15 * 60_000)
+      (authAge < -5000 || authAge > 15 * 60000)
     )
       throw new AppError(
         ErrorCode.Unauthorized,
@@ -201,11 +196,10 @@ export class RepositoryOperationService {
       );
     return scopeOf(command);
   }
-
   async preview(command: RemoteCommand, raw: unknown): Promise<RepositoryOperationResult> {
     const input = RepositoryPreviewInput.parse(raw);
-    const scope = this.authorize(command, input, "git.preview");
-    const accepted = this.deps.operations.accept(
+    const scope = await this.authorize(command, input, "git.preview");
+    const accepted = await this.deps.operations.accept(
       scope,
       "git.preview",
       input.clientRequestId,
@@ -215,7 +209,7 @@ export class RepositoryOperationService {
     try {
       const workspace = await this.deps.resolveWorkspace(scope);
       return await this.locks.withLock(workspace, accepted.operation.operationId, async () => {
-        this.authorize(command, input, "git.preview");
+        await this.authorize(command, input, "git.preview");
         const files = input.kind === "commit" ? [...new Set(input.files)].sort() : [];
         const state = await this.state(workspace, files);
         let tree = "",
@@ -281,7 +275,7 @@ export class RepositoryOperationService {
         }
         if (payloadDigest(state) !== payloadDigest(await this.state(workspace, files)))
           throw stale();
-        const expiresAt = new Date(Date.now() + 300_000).toISOString();
+        const expiresAt = new Date(Date.now() + 300000).toISOString();
         const content = {
           previewId: accepted.operation.operationId,
           ...scope,
@@ -300,7 +294,7 @@ export class RepositoryOperationService {
           commits,
         };
         const actionDigest = payloadDigest(content);
-        const { approval } = this.deps.approvals.create({
+        const { approval } = await this.deps.approvals.create({
           kind: "tool",
           risk: "dangerous",
           title: input.kind === "commit" ? "Commit selected files" : "Push reviewed commits",
@@ -310,7 +304,7 @@ export class RepositoryOperationService {
               : `${input.remote}: ${input.ref}`,
           payload: { ...content, actionDigest },
         });
-        this.deps.remoteApprovals.attach({
+        await this.deps.remoteApprovals.attach({
           ...scope,
           approvalId: approval.id,
           operationId: accepted.operation.operationId,
@@ -323,7 +317,7 @@ export class RepositoryOperationService {
           decision: null,
         });
         return {
-          operation: this.deps.operations.transition(
+          operation: await this.deps.operations.transition(
             scope,
             accepted.operation.operationId,
             "succeeded",
@@ -333,31 +327,29 @@ export class RepositoryOperationService {
         };
       });
     } catch (error) {
-      this.deps.operations.transition(scope, accepted.operation.operationId, "failed", {
+      await this.deps.operations.transition(scope, accepted.operation.operationId, "failed", {
         error: error instanceof AppError ? error.code : ErrorCode.Internal,
       });
       throw error;
     }
   }
-
-  commit(command: RemoteCommand, input: unknown) {
-    return this.execute(command, input, "commit");
+  async commit(command: RemoteCommand, input: unknown) {
+    return await this.execute(command, input, "commit");
   }
-  push(command: RemoteCommand, input: unknown) {
-    return this.execute(command, input, "push");
+  async push(command: RemoteCommand, input: unknown) {
+    return await this.execute(command, input, "push");
   }
-
-  private approvedPreview(
+  private async approvedPreview(
     scope: RemoteScope,
     input: RepositoryExecuteInput,
     kind: "commit" | "push",
-  ): RepositoryPreview {
-    const operation = this.deps.operations.get(scope, input.previewId);
+  ): Promise<RepositoryPreview> {
+    const operation = await this.deps.operations.get(scope, input.previewId);
     if (!operation || operation.action !== "git.preview" || operation.status !== "succeeded")
       throw new AppError(ErrorCode.NotFound, "Git preview does not exist");
     const preview = Preview.parse(operation.result);
-    const context = this.deps.remoteApprovals.get(scope, input.approvalId);
-    const approval = this.deps.approvals.get(input.approvalId);
+    const context = await this.deps.remoteApprovals.get(scope, input.approvalId);
+    const approval = await this.deps.approvals.get(input.approvalId);
     if (Date.parse(preview.expiresAt) <= Date.now())
       throw new AppError(ErrorCode.ApprovalExpired, "Git preview has expired");
     if (
@@ -376,15 +368,14 @@ export class RepositoryOperationService {
       throw new AppError(ErrorCode.Forbidden, "This Git action has not been approved");
     return preview;
   }
-
   private async execute(
     command: RemoteCommand,
     raw: unknown,
     kind: "commit" | "push",
   ): Promise<RepositoryOperationResult> {
     const input = RepositoryExecuteInput.parse(raw);
-    const scope = this.authorize(command, input, `git.${kind}`);
-    const accepted = this.deps.operations.accept(
+    const scope = await this.authorize(command, input, `git.${kind}`);
+    const accepted = await this.deps.operations.accept(
       scope,
       `git.${kind}`,
       input.clientRequestId,
@@ -393,7 +384,7 @@ export class RepositoryOperationService {
     if (accepted.replayed) return accepted;
     let running = false;
     try {
-      const preview = this.approvedPreview(scope, input, kind);
+      const preview = await this.approvedPreview(scope, input, kind);
       const workspace = await this.deps.resolveWorkspace(scope);
       return await this.locks.withLock(workspace, accepted.operation.operationId, async () => {
         if (
@@ -407,8 +398,8 @@ export class RepositoryOperationService {
               preview.remoteHead)
         )
           throw stale();
-        this.authorize(command, input, `git.${kind}`);
-        this.approvedPreview(scope, input, kind);
+        await this.authorize(command, input, `git.${kind}`);
+        await this.approvedPreview(scope, input, kind);
         const before = {
           kind,
           previewId: preview.previewId,
@@ -422,12 +413,19 @@ export class RepositoryOperationService {
           remoteHead: preview.remoteHead,
           indexHash: preview.state.indexHash,
         };
-        this.deps.operations.transition(scope, accepted.operation.operationId, "running", before);
+        await this.deps.operations.transition(
+          scope,
+          accepted.operation.operationId,
+          "running",
+          before,
+        );
         running = true;
         let result: RemoteOperation["result"];
         if (kind === "commit")
-          result = await this.commitTree(workspace, preview, () =>
-            this.authorize(command, input, "git.commit"),
+          result = await this.commitTree(
+            workspace,
+            preview,
+            async () => await this.authorize(command, input, "git.commit"),
           );
         else {
           if (
@@ -436,8 +434,8 @@ export class RepositoryOperationService {
               preview.remoteHead
           )
             throw stale();
-          this.authorize(command, input, "git.push");
-          this.approvedPreview(scope, input, "push");
+          await this.authorize(command, input, "git.push");
+          await this.approvedPreview(scope, input, "push");
           const push = await repositoryGit(
             workspace,
             [
@@ -450,7 +448,7 @@ export class RepositoryOperationService {
               `${preview.state.head}:${preview.ref}`,
             ],
             {
-              timeoutMs: 180_000,
+              timeoutMs: 180000,
               allowFailure: true,
               config: this.deps.gitConfig?.(preview.remoteUrl),
             },
@@ -459,7 +457,7 @@ export class RepositoryOperationService {
           if (actual !== preview.state.head) {
             if (actual === preview.remoteHead && push.code !== 0)
               return {
-                operation: this.deps.operations.transition(
+                operation: await this.deps.operations.transition(
                   scope,
                   accepted.operation.operationId,
                   "failed",
@@ -478,7 +476,7 @@ export class RepositoryOperationService {
           };
         }
         return {
-          operation: this.deps.operations.transition(
+          operation: await this.deps.operations.transition(
             scope,
             accepted.operation.operationId,
             "succeeded",
@@ -488,8 +486,8 @@ export class RepositoryOperationService {
         };
       });
     } catch (error) {
-      const current = this.deps.operations.get(scope, accepted.operation.operationId)!;
-      const operation = this.deps.operations.transition(
+      const current = (await this.deps.operations.get(scope, accepted.operation.operationId))!;
+      const operation = await this.deps.operations.transition(
         scope,
         current.operationId,
         running ? "needs_reconciliation" : "failed",
@@ -501,7 +499,6 @@ export class RepositoryOperationService {
       throw error;
     }
   }
-
   private async commitTree(
     workspace: string,
     preview: RepositoryPreview,
@@ -538,7 +535,7 @@ export class RepositoryOperationService {
           throw stale();
         const result = await repositoryGit(workspace, ["commit", "-m", preview.message], {
           index,
-          timeoutMs: 180_000,
+          timeoutMs: 180000,
           allowFailure: true,
         });
         const sha = await gitValue(workspace, ["rev-parse", "HEAD"]);
@@ -580,10 +577,9 @@ export class RepositoryOperationService {
       }
     });
   }
-
   /** Never re-executes an uncertain external operation. Only exact ref/tree evidence can complete it. */
   async reconcile(scope: RemoteScope, operationId: string): Promise<RemoteOperation> {
-    const operation = this.deps.operations.get(scope, operationId);
+    const operation = await this.deps.operations.get(scope, operationId);
     if (!operation) throw new AppError(ErrorCode.NotFound, "Git operation does not exist");
     if (operation.status !== "needs_reconciliation") return operation;
     const record = z
@@ -602,7 +598,7 @@ export class RepositoryOperationService {
     const workspace = await this.deps.resolveWorkspace(scope);
     if (record.kind === "push") {
       if ((await this.remoteHead(workspace, record.remoteUrl, record.ref)) === record.beforeHead)
-        return this.deps.operations.transition(scope, operationId, "succeeded", {
+        return await this.deps.operations.transition(scope, operationId, "succeeded", {
           kind: "push",
           commitSha: record.beforeHead,
           ref: record.ref,
@@ -612,7 +608,7 @@ export class RepositoryOperationService {
     }
     const sha = await gitValue(workspace, ["rev-parse", record.branch]);
     if (sha === record.beforeHead)
-      return this.deps.operations.transition(scope, operationId, "failed", {
+      return await this.deps.operations.transition(scope, operationId, "failed", {
         ...record,
         error: "NO_COMMIT_CREATED",
         reconciled: true,
@@ -626,7 +622,7 @@ export class RepositoryOperationService {
       parents === record.beforeHead &&
       message === record.expectedMessage.trim()
     )
-      return this.deps.operations.transition(scope, operationId, "succeeded", {
+      return await this.deps.operations.transition(scope, operationId, "succeeded", {
         kind: "commit",
         commitSha: sha,
         tree,
@@ -636,7 +632,6 @@ export class RepositoryOperationService {
       });
     return operation;
   }
-
   private async withIndex<T>(workspace: string, action: (index: string) => Promise<T>): Promise<T> {
     const gitDir = await gitValue(workspace, ["rev-parse", "--absolute-git-dir"]);
     const dir = await mkdtemp(join(gitDir, "agentdesk-index-"));
@@ -646,7 +641,6 @@ export class RepositoryOperationService {
       await rm(dir, { recursive: true, force: true });
     }
   }
-
   private async state(workspace: string, files: string[]): Promise<z.infer<typeof State>> {
     const root = await realpath(workspace);
     if ((await realpath(await gitValue(root, ["rev-parse", "--show-toplevel"]))) !== root)
@@ -699,7 +693,11 @@ export class RepositoryOperationService {
         (await repositoryGit(root, ["config", "--null", "--list", "--show-origin"])).stdout,
       ),
     );
-    const hashes: Array<{ path: string; hash: string; mode: number }> = [];
+    const hashes: Array<{
+      path: string;
+      hash: string;
+      mode: number;
+    }> = [];
     for (const path of files) {
       const full = resolve(root, path);
       const rel = relative(root, full);
@@ -741,7 +739,6 @@ export class RepositoryOperationService {
       filesHash: payloadDigest(hashes),
     };
   }
-
   private async ensureSelectedIndex(workspace: string, files: string[]): Promise<void> {
     const staged = (
       await repositoryGit(workspace, ["diff", "--cached", "--name-only", "--no-renames", "-z"])
@@ -754,7 +751,6 @@ export class RepositoryOperationService {
         "Unselected files are already staged; explicitly include them or inspect the index locally",
       );
   }
-
   private async remoteUrl(workspace: string, remote: string): Promise<string> {
     const urls = (
       await gitValue(workspace, ["remote", "get-url", "--push", "--all", remote])
@@ -797,7 +793,6 @@ export class RepositoryOperationService {
       throw new AppError(ErrorCode.Forbidden, "Remote host is not approved");
     return value;
   }
-
   private async remoteHead(workspace: string, url: string, ref: string): Promise<string | null> {
     const output = (
       await repositoryGit(workspace, ["ls-remote", "--refs", "--", url, ref], {

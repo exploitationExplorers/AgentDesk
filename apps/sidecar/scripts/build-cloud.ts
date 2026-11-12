@@ -10,8 +10,12 @@ rmSync(dist, { recursive: true, force: true });
 mkdirSync(dist, { recursive: true });
 
 await build({
-  entryPoints: [join(root, "src/cloud.ts")],
-  outfile: join(dist, "cloud.mjs"),
+  entryPoints: {
+    cloud: join(root, "src/cloud.ts"),
+    "migrate-runner": join(root, "src/migrate-runner.ts"),
+  },
+  outdir: dist,
+  outExtension: { ".js": ".mjs" },
   bundle: true,
   platform: "node",
   target: "node22",

@@ -1,4 +1,4 @@
-﻿import { randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 import { realpath } from "node:fs/promises";
 import {
@@ -39,7 +39,6 @@ import { settleReceipt } from "./receipts";
 import { ConversationStore } from "../conversation-store";
 import { suspensionTimer } from "./timers";
 import { checkpointUsage } from "./budgets";
-
 interface ServiceDeps extends Omit<AutomationExecutorDeps, "store"> {
   store: AutoloopStore;
   secrets: SecretStore;
@@ -57,7 +56,11 @@ export class AutoloopService {
   private ticking = false;
   private tickFinished: Promise<void> = Promise.resolve();
   private closing = false;
-  private active?: { link: RunLink; controller: AbortController; promise: Promise<void> };
+  private active?: {
+    link: RunLink;
+    controller: AbortController;
+    promise: Promise<void>;
+  };
   private sending = new Map<string, Promise<OutboxCommand>>();
   private configTail: Promise<unknown> = Promise.resolve();
   private health: "unknown" | "healthy" | "degraded" | "unavailable" = "unknown";
@@ -93,8 +96,8 @@ export class AutoloopService {
   getBinding(id: string) {
     return this.store.bindings.get(id);
   }
-  listTasks(id: string) {
-    return this.tasks.list().filter((t) => t.automationId === id);
+  async listTasks(id: string) {
+    return (await this.tasks.list()).filter((t) => t.automationId === id);
   }
   listInteractions(taskId?: string) {
     return this.store.cards.list().filter((c) => !taskId || c.taskId === taskId);
@@ -102,7 +105,6 @@ export class AutoloopService {
   async start(): Promise<void> {
     if (this.listBindings().length) await this.ensureRuntime();
   }
-
   private rules(bindings = this.listBindings()) {
     const scheduled = bindings.find((b) => b.enabled && b.schedule);
     return {
@@ -172,7 +174,7 @@ export class AutoloopService {
       await this.client.health();
       this.health = "healthy";
       this.stream = this.observe();
-      this.timer = setInterval(() => {
+      this.timer = setInterval(async () => {
         void this.tick();
       }, 1000);
       this.timer.unref();
@@ -212,7 +214,7 @@ export class AutoloopService {
       await this.deps.projectInstructions.validateWorkspace(root);
       if (
         input.projectId &&
-        this.deps.projects.get(input.projectId).path.toLowerCase() !== root.toLowerCase()
+        (await this.deps.projects.get(input.projectId)).path.toLowerCase() !== root.toLowerCase()
       )
         throw new AppError(ErrorCode.BadRequest, "项目与工作区不一致");
       const timezone = this.listBindings().find((b) => b.enabled && b.schedule)?.schedule?.timezone;
@@ -254,7 +256,12 @@ export class AutoloopService {
       return next;
     });
   }
-  async trigger(id: string, input: { eventId: string }) {
+  async trigger(
+    id: string,
+    input: {
+      eventId: string;
+    },
+  ) {
     await this.ensureRuntime();
     const binding = this.requireBinding(id);
     if (!binding.enabled) throw new AppError(ErrorCode.Conflict, "自动化已停用");
@@ -271,7 +278,13 @@ export class AutoloopService {
     void this.tick();
     return { commandId };
   }
-  async followupTask(taskId: string, input: { message: string; eventId: string }) {
+  async followupTask(
+    taskId: string,
+    input: {
+      message: string;
+      eventId: string;
+    },
+  ) {
     await this.ensureRuntime();
     const eventId = stableId("followup", taskId, input.eventId);
     const existing = this.store.followups.get(eventId);
@@ -281,7 +294,7 @@ export class AutoloopService {
       await this.deliver(existing.commandId);
       return { taskId };
     }
-    const task = this.tasks.get(taskId);
+    const task = await this.tasks.get(taskId);
     if (!task?.automationId) throw new AppError(ErrorCode.NotFound, "自动化任务不存在");
     if (task.automationStatus !== "completed" || this.store.stopped.get(taskId))
       throw new AppError(ErrorCode.Conflict, "请等待任务完成后再修改");
@@ -318,7 +331,7 @@ export class AutoloopService {
   }
   async resumeTask(taskId: string) {
     await this.ensureRuntime();
-    const task = this.tasks.get(taskId);
+    const task = await this.tasks.get(taskId);
     if (!task?.automationId || this.store.stopped.get(taskId))
       throw new AppError(ErrorCode.Conflict, "已停止的任务不能恢复");
     const checkpoint = this.store.checkpoints.get(taskId)?.checkpoint;
@@ -338,7 +351,7 @@ export class AutoloopService {
     if (this.store.outbox.list().some((c) => c.linkId === link.id && c.status === "conflict"))
       throw new AppError(ErrorCode.Conflict, "执行回执有冲突，请核实后创建新任务");
     this.store.links.put({ ...link, state: "prepared" });
-    this.tasks.setAutomationStatus(taskId, "queued");
+    await this.tasks.setAutomationStatus(taskId, "queued");
     void this.tick();
     return { taskId };
   }
@@ -393,7 +406,7 @@ export class AutoloopService {
   }
   async cancelTask(taskId: string) {
     await this.ensureRuntime();
-    const task = this.tasks.get(taskId);
+    const task = await this.tasks.get(taskId);
     if (!task?.automationId) throw new AppError(ErrorCode.NotFound, "自动化任务不存在");
     this.store.stopTask(taskId);
     if (this.active?.link.taskId === taskId) this.active.controller.abort();
@@ -423,11 +436,11 @@ export class AutoloopService {
       });
       await this.deliver(id);
     }
-    this.tasks.setAutomationStatus(taskId, "cancelled");
+    await this.tasks.setAutomationStatus(taskId, "cancelled");
     this.store.stoppedSynced.put({ id: taskId });
     return { requested: true };
   }
-  private deliver(id: string): Promise<OutboxCommand> {
+  private async deliver(id: string): Promise<OutboxCommand> {
     const pending = this.sending.get(id);
     if (pending) return pending;
     const promise = this.send(id).finally(() => this.sending.delete(id));
@@ -438,7 +451,7 @@ export class AutoloopService {
     this.store.assertEpoch();
     const entry = this.store.outbox.get(id)!;
     if (entry.status === "delivered") {
-      settleReceipt(this.store, this.tasks, entry);
+      await settleReceipt(this.store, this.tasks, entry);
       return entry;
     }
     if (entry.status === "conflict")
@@ -448,13 +461,22 @@ export class AutoloopService {
       if (entry.operation === "event") response = await this.client!.sendEvent(entry.body);
       else if (entry.operation === "answer") {
         response = await this.client!.answerCard(entry.target!, entry.body);
-        if (!(response as { changed: boolean }).changed) {
+        if (
+          !(
+            response as {
+              changed: boolean;
+            }
+          ).changed
+        ) {
           const observed = this.store.interactionKeys.get(String(entry.target!));
           const card =
             observed && (observed.choice !== null || observed.answer !== null)
               ? observed
               : await this.client!.getCard(entry.target!);
-          const answer = JSON.parse(entry.body) as { choice?: number; text?: string };
+          const answer = JSON.parse(entry.body) as {
+            choice?: number;
+            text?: string;
+          };
           if (
             !card ||
             card.choice !== (answer.choice ?? null) ||
@@ -465,7 +487,11 @@ export class AutoloopService {
       } else if (entry.operation === "resolve") {
         await this.client!.resolveCard(
           entry.target!,
-          (JSON.parse(entry.body) as { reason: string }).reason,
+          (
+            JSON.parse(entry.body) as {
+              reason: string;
+            }
+          ).reason,
         );
         response = { ok: true };
       } else if (entry.operation === "cancel") {
@@ -478,21 +504,31 @@ export class AutoloopService {
           await this.client!.started(
             entry.target!,
             token,
-            (JSON.parse(entry.body) as { session: string }).session,
+            (
+              JSON.parse(entry.body) as {
+                session: string;
+              }
+            ).session,
           );
           response = { ok: true };
         } else {
           response = await this.client!.result(entry.target!, token, entry.body);
-          if ((response as { rejected: unknown[] }).rejected.length)
+          if (
+            (
+              response as {
+                rejected: unknown[];
+              }
+            ).rejected.length
+          )
             throw new AppError(ErrorCode.Conflict, "Hub 拒绝部分回执，请核实任务");
         }
       }
       this.store.assertEpoch();
       this.health = "healthy";
       this.syncedAt = nowIso();
-      const delivered = this.store.db.transaction(() => {
+      const delivered = await this.tasks.transaction(async () => {
         const confirmed = this.store.outbox.put({ ...entry, status: "delivered", response });
-        settleReceipt(this.store, this.tasks, confirmed);
+        await settleReceipt(this.store, this.tasks, confirmed);
         return confirmed;
       });
       if (entry.operation === "answer") {
@@ -511,7 +547,7 @@ export class AutoloopService {
         this.store.outbox.put({ ...entry, status: "conflict" });
         if (entry.linkId) {
           const link = this.store.links.get(entry.linkId);
-          if (link) this.tasks.setAutomationStatus(link.taskId, "needs_attention");
+          if (link) await this.tasks.setAutomationStatus(link.taskId, "needs_attention");
         }
       }
       throw new AppError(
@@ -527,7 +563,7 @@ export class AutoloopService {
           this.store.state.get("cursor")?.value ?? 0,
           this.controller.signal,
         ))
-          projectFact(this.store, this.tasks, fact);
+          await projectFact(this.store, this.tasks, fact);
       } catch {
         if (!this.controller.signal.aborted) this.health = "degraded";
       }
@@ -547,7 +583,7 @@ export class AutoloopService {
       for (const stopped of this.store.stopped.list()) {
         if (this.store.stoppedSynced.get(stopped.id) || this.active?.link.taskId === stopped.id)
           continue;
-        const task = this.tasks.get(stopped.id);
+        const task = await this.tasks.get(stopped.id);
         if (!task) continue;
         await this.runtime!.cancelSession(task.conversationId);
         const pending = this.store.links
@@ -564,14 +600,14 @@ export class AutoloopService {
             });
         }
         if (!this.store.links.list().some((l) => l.taskId === task.id && l.state !== "submitted")) {
-          this.tasks.setAutomationStatus(task.id, "cancelled");
+          await this.tasks.setAutomationStatus(task.id, "cancelled");
           this.store.stoppedSynced.put({ id: task.id });
         }
       }
       for (const entry of this.store.outbox
         .list()
         .filter((e) => e.status === "delivered" && e.operation === "result"))
-        settleReceipt(this.store, this.tasks, entry);
+        await settleReceipt(this.store, this.tasks, entry);
       for (const entry of this.store.outbox.list().filter((e) => e.status === "pending")) {
         try {
           await this.deliver(entry.id);
@@ -605,18 +641,18 @@ export class AutoloopService {
       if (recoverable) {
         const token = this.deps.secrets.get(`autoloop:run:${recoverable.id}`);
         if (!token) {
-          this.attention(recoverable);
+          await this.attention(recoverable);
           return;
         }
         const release = slot;
         slot = undefined;
-        this.launch(recoverable, { ...recoverable.job, token }, release);
+        await this.launch(recoverable, { ...recoverable.job, token }, release);
         return;
       }
-      const claims = new Collection<{ id: string; claim: string }>(
-        this.store.db,
-        "autoloop_claim_v1",
-      );
+      const claims = new Collection<{
+        id: string;
+        claim: string;
+      }>(this.store.db, "autoloop_claim_v1");
       let claim = claims.get("pending");
       if (!claim) {
         claim = { id: "pending", claim: newId() };
@@ -631,11 +667,11 @@ export class AutoloopService {
       const job = response.job;
       // 凭据先于映射写入；崩溃后相同 claim 可取回工作，不能丢失执行权。
       this.deps.secrets.set(`autoloop:run:${stableId("local", job.run, job.attempt)}`, job.token);
-      const link = this.accept(job, claim.claim);
+      const link = await this.accept(job, claim.claim);
       claims.delete("pending");
       const release = slot;
       slot = undefined;
-      this.launch(link, job, release);
+      await this.launch(link, job, release);
     } catch {
       if (!this.closing) this.health = "degraded";
     } finally {
@@ -644,7 +680,7 @@ export class AutoloopService {
       finishTick();
     }
   }
-  private launch(link: RunLink, job: HubJob, release: () => void): void {
+  private async launch(link: RunLink, job: HubJob, release: () => void): Promise<void> {
     const controller = new AbortController();
     const promise = this.execute(link, job, controller.signal).finally(() => {
       release();
@@ -653,10 +689,10 @@ export class AutoloopService {
     this.active = { link, controller, promise };
     void promise;
   }
-  private attention(link: RunLink, error?: unknown): void {
+  private async attention(link: RunLink, error?: unknown): Promise<void> {
     this.store.assertEpoch();
     this.store.links.put({ ...link, state: "attention" });
-    this.tasks.finalizeRunDirect(link.runId, {
+    await this.tasks.finalizeRunDirect(link.runId, {
       status: "failed",
       resultError:
         error instanceof AppError
@@ -669,9 +705,9 @@ export class AutoloopService {
                 : error.message
               : "执行已停止，已有结果已保留，请核实后续操作",
     });
-    this.tasks.setAutomationStatus(link.taskId, "needs_attention");
+    await this.tasks.setAutomationStatus(link.taskId, "needs_attention");
   }
-  private accept(job: HubJob, claim: string): RunLink {
+  private async accept(job: HubJob, claim: string): Promise<RunLink> {
     const binding = this.listBindings().find(
       (b) => job.rule.name === b.ruleName || job.rule.name === `${b.ruleName}-schedule`,
     );
@@ -679,14 +715,14 @@ export class AutoloopService {
     const id = stableId("local", job.run, job.attempt);
     const existing = this.store.links.get(id);
     if (existing) return existing;
-    return this.store.db.transaction(() => {
+    return await this.tasks.transaction(async () => {
       const followup = this.store.followups
         .list()
         .find((f) => !f.consumed && job.context.events.some((e) => e.id === f.id));
       let task = job.session
-        ? this.tasks.findByConversation(job.session)
+        ? await this.tasks.findByConversation(job.session)
         : followup
-          ? this.tasks.get(followup.taskId)
+          ? await this.tasks.get(followup.taskId)
           : undefined;
       if (job.session && !task)
         throw new AppError(ErrorCode.Conflict, "原会话不存在，不能从头重做");
@@ -698,14 +734,14 @@ export class AutoloopService {
           createdAt: nowIso(),
           updatedAt: nowIso(),
         });
-        task = this.tasks.create({
+        task = await this.tasks.create({
           goal: binding.goal,
           title: binding.title,
           conversationId,
           requiresPlanApproval: false,
           automationId: binding.id,
         });
-        new ConversationStore(this.store.db).insertMessage({
+        await new ConversationStore(this.store.db).insertMessage({
           id: newId(),
           conversationId,
           role: "user",
@@ -734,7 +770,7 @@ export class AutoloopService {
             { role: "user", content: followup.message, timestamp: Date.now() },
           ],
         });
-        new ConversationStore(this.store.db).insertMessage({
+        await new ConversationStore(this.store.db).insertMessage({
           id: newId(),
           conversationId: task.conversationId,
           role: "user",
@@ -746,14 +782,14 @@ export class AutoloopService {
         this.store.followups.put({ ...followup, consumed: true });
       }
       for (const old of previous) {
-        const run = this.tasks.getRun(old.runId);
+        const run = await this.tasks.getRun(old.runId);
         if (run && ["queued", "running"].includes(run.status))
-          this.tasks.finalizeRunDirect(run.id, {
+          await this.tasks.finalizeRunDirect(run.id, {
             status: "failed",
             resultError: "上一轮执行已交由后台恢复核实",
           });
       }
-      const run = this.tasks.createRun({
+      const run = await this.tasks.createRun({
         taskId: task.id,
         kind: "root",
         agent: "orchestrator",
@@ -781,8 +817,8 @@ export class AutoloopService {
     let began: number | undefined;
     try {
       const binding = this.requireBinding(link.bindingId);
-      const run = this.tasks.getRun(link.runId)!;
-      const task = this.tasks.get(link.taskId)!;
+      const run = (await this.tasks.getRun(link.runId))!;
+      const task = (await this.tasks.get(link.taskId))!;
       const resultId = stableId("result", link.id);
       const recorded = this.store.outbox.get(resultId);
       if (recorded) {
@@ -805,8 +841,10 @@ export class AutoloopService {
       if (rounds > binding.maxRounds)
         throw new AppError(ErrorCode.Conflict, "已达到自动化轮次预算");
       const remaining =
-        binding.maxMinutes * 60_000 - (this.store.budgets.get(task.id)?.elapsedMs ?? 0);
+        binding.maxMinutes * 60000 - (this.store.budgets.get(task.id)?.elapsedMs ?? 0);
       if (remaining <= 0) throw new AppError(ErrorCode.Conflict, "已达到自动化执行时长预算");
+      await this.tasks.assertStorageAvailable(binding.workspacePolicy.root);
+      signal.throwIfAborted();
       const startedId = stableId("started", link.id);
       this.store.enqueue({
         id: startedId,
@@ -816,8 +854,8 @@ export class AutoloopService {
         body: JSON.stringify({ session: link.session }),
       });
       await this.deliver(startedId);
-      if (run.status !== "running") this.tasks.startRunDirect(run.id);
-      this.tasks.setAutomationStatus(task.id, "running");
+      if (run.status !== "running") await this.tasks.startRunDirect(run.id);
+      await this.tasks.setAutomationStatus(task.id, "running");
       this.store.links.put({ ...link, state: "running" });
       const saved = this.store.checkpoints.get(task.id)?.checkpoint;
       let resume: DurableAgentOptions["resume"];
@@ -916,7 +954,7 @@ export class AutoloopService {
         }
         return;
       }
-      this.attention(link, error);
+      await this.attention(link, error);
       // 结果未知不提交 failed，避免 Hub 将可能已产生副作用的步骤自动重跑。
     } finally {
       if (began !== undefined && this.store.ownsEpoch()) {
@@ -939,7 +977,9 @@ export class AutoloopService {
         summary: `等待至 ${timer.at}`,
         later: [{ key: stableId(link.taskId, suspension.id), ...timer }],
       };
-    const payload = suspension.request.payload as { options?: unknown };
+    const payload = suspension.request.payload as {
+      options?: unknown;
+    };
     const provided = Array.isArray(payload?.options)
       ? payload.options.filter((v): v is string => typeof v === "string").slice(0, 5)
       : [];

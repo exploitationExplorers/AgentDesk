@@ -1,7 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import type { Container } from "../../container";
-
 export function projectInsightRoutes({ insights }: Container) {
   const app = new Hono();
   app.get("/project-insights", (c) => c.json(insights.list(c.req.query("projectId"))));
@@ -13,7 +12,7 @@ export function projectInsightRoutes({ insights }: Container) {
     const body = z
       .object({ ids: z.array(z.string().min(1)).min(1).max(12) })
       .parse(await c.req.json());
-    return c.json(insights.createTasks(c.req.param("id"), body.ids), 201);
+    return c.json(await insights.createTasks(c.req.param("id"), body.ids), 201);
   });
   return app;
 }

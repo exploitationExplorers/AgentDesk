@@ -22,8 +22,11 @@ import {
   type ModelSelection,
 } from "@agentdesk/shared";
 import type { Db } from "../db/client";
-import { Collection } from "../db/collection";
 import { ConversationStore } from "./conversation-store";
+import { sqliteDocuments } from "./storage/async-documents";
+import type { AsyncDocumentRepository } from "./storage/async-ports";
+import { businessDatabase, type BusinessDatabase } from "../db/business-database";
+import type Database from "better-sqlite3";
 
 interface StoredContext {
   id: string;
@@ -59,6 +62,9 @@ export interface SummaryInput {
 }
 
 export interface ContextServiceOptions {
+  business?: BusinessDatabase;
+  store?: ConversationStore;
+  summaries?: AsyncDocumentRepository<StoredContext>;
   summarize?: (input: SummaryInput) => Promise<ContextSummary>;
   maskFactory?: () => MaskStore | undefined;
 }
@@ -101,8 +107,9 @@ function nextTurnStart(history: ChatMessage[], boundary: number, limit: number):
 
 /** 按预算压缩消息前缀；原始消息永远保留，模型失败或并发修改时不发布新摘要。 */
 export class ConversationContextService {
+  private readonly business: BusinessDatabase;
   private readonly store: ConversationStore;
-  private readonly summaries: Collection<StoredContext>;
+  private readonly summaries: AsyncDocumentRepository<StoredContext>;
   private readonly locks = new Set<string>();
   private readonly summarize: (input: SummaryInput) => Promise<ContextSummary>;
 
@@ -111,8 +118,10 @@ export class ConversationContextService {
     private readonly resolver: ModelResolver,
     private readonly options: ContextServiceOptions = {},
   ) {
-    this.store = new ConversationStore(db);
-    this.summaries = new Collection(db, "conversationContexts");
+    this.business =
+      options.business ?? businessDatabase((db as Db & { $client: Database.Database }).$client);
+    this.store = options.store ?? new ConversationStore(db);
+    this.summaries = options.summaries ?? sqliteDocuments(db, "conversationContexts");
     this.summarize =
       options.summarize ??
       ((input) =>
@@ -142,16 +151,23 @@ export class ConversationContextService {
         }));
   }
 
-  forget(conversationId: string): void {
-    this.summaries.delete(conversationId);
+  async forget(conversationId: string): Promise<void> {
+    await this.business
+      .transaction(async () => {
+        await this.summaries.delete(conversationId);
+      })
+      .immediate();
   }
 
   isCompacting(conversationId: string): boolean {
     return this.locks.has(conversationId);
   }
 
-  private validSummary(history: ChatMessage[], conversationId: string): StoredContext | null {
-    const saved = this.summaries.get(conversationId);
+  private async validSummary(
+    history: ChatMessage[],
+    conversationId: string,
+  ): Promise<StoredContext | null> {
+    const saved = await this.summaries.get(conversationId);
     if (!saved) return null;
     const boundary = history.findIndex((message) => message.id === saved.throughMessageId);
     if (boundary < 0 || historyHash(history.slice(0, boundary + 1)) !== saved.prefixHash)
@@ -243,11 +259,11 @@ export class ConversationContextService {
       request.agent ?? "orchestrator",
       request.modelSelection,
     );
-    const history = request.history ?? this.store.listMessages(request.conversationId);
+    const history = request.history ?? (await this.store.listMessages(request.conversationId));
     return this.status(
       request,
       history,
-      this.validSummary(history, request.conversationId),
+      await this.validSummary(history, request.conversationId),
       models,
     );
   }
@@ -273,13 +289,13 @@ export class ConversationContextService {
         request.agent ?? "orchestrator",
         request.modelSelection,
       );
-      const allAtStart = this.store.listMessages(request.conversationId);
+      const allAtStart = await this.store.listMessages(request.conversationId);
       const history = request.history ?? allAtStart;
       if (historyHash(history) !== historyHash(allAtStart.slice(0, history.length))) {
         throw new AppError(ErrorCode.BadRequest, "会话历史已经变化，请刷新后重试");
       }
-      const saved = this.validSummary(history, request.conversationId);
-      const revision = this.summaries.get(request.conversationId)?.version ?? 0;
+      const saved = await this.validSummary(history, request.conversationId);
+      const revision = (await this.summaries.get(request.conversationId))?.version ?? 0;
       const before = this.status(request, history, saved, models);
       if (!force && before.estimatedInputTokens <= before.inputBudgetTokens) {
         return { history: this.messages(history, saved), status: before, compacted: false };
@@ -439,14 +455,21 @@ export class ConversationContextService {
             );
             continue;
           }
-          if (
-            historyHash(this.store.listMessages(request.conversationId)) !==
-              historyHash(allAtStart) ||
-            (this.summaries.get(request.conversationId)?.version ?? 0) !== revision
-          ) {
-            throw new AppError(ErrorCode.BadRequest, "压缩期间会话发生变化，已放弃旧摘要，请重试");
-          }
-          this.summaries.put(next);
+          await this.business
+            .transaction(async () => {
+              if (
+                historyHash(await this.store.listMessages(request.conversationId)) !==
+                  historyHash(allAtStart) ||
+                ((await this.summaries.get(request.conversationId))?.version ?? 0) !== revision
+              ) {
+                throw new AppError(
+                  ErrorCode.BadRequest,
+                  "压缩期间会话发生变化，已放弃旧摘要，请重试",
+                );
+              }
+              await this.summaries.put(next);
+            })
+            .immediate();
           request.emit?.({
             type: "context_compaction",
             phase: "complete",

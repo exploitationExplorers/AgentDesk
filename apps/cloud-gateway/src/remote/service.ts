@@ -10,7 +10,6 @@ import { commandDigest } from "./client";
 import type { RunnerClient } from "./client";
 import type { RemoteRoutingStore } from "./store";
 import type { RemoteSubmission } from "./store";
-
 export interface CloudProject {
   id: string;
   name: string;
@@ -18,17 +17,28 @@ export interface CloudProject {
   workspaceMode?: string;
 }
 export interface TaskSnapshot {
-  task: { id: string; status: string; [key: string]: unknown };
+  task: {
+    id: string;
+    status: string;
+    [key: string]: unknown;
+  };
   runs?: Array<Record<string, unknown>>;
   approvals?: ApprovalSnapshot[];
-  context?: RemoteScope & { actor: RemoteActor };
+  context?: RemoteScope & {
+    actor: RemoteActor;
+  };
   [key: string]: unknown;
 }
 export interface ApprovalSnapshot {
-  approval: { id: string; [key: string]: unknown };
-  context: RemoteScope & { approvalId: string; [key: string]: unknown };
+  approval: {
+    id: string;
+    [key: string]: unknown;
+  };
+  context: RemoteScope & {
+    approvalId: string;
+    [key: string]: unknown;
+  };
 }
-
 export class RemoteGatewayService {
   private timer: ReturnType<typeof setInterval> | undefined;
   private renewing?: Promise<void>;
@@ -36,16 +46,16 @@ export class RemoteGatewayService {
     readonly client: RunnerClient,
     readonly store: RemoteRoutingStore,
   ) {}
-
   requireCloud(hostId: string): void {
     this.client.forHost(hostId);
   }
-
   async projects(actor: RemoteActor, hostId = "cloud"): Promise<CloudProject[]> {
-    if (!this.store.sessionAlive(actor)) throw new AppError(ErrorCode.Unauthorized, "请重新登录");
-    const result = await this.client
-      .forHost(hostId)
-      .json<{ hostId: string; projects: CloudProject[] }>("/host/projects");
+    if (!(await this.store.sessionAlive(actor)))
+      throw new AppError(ErrorCode.Unauthorized, "请重新登录");
+    const result = await this.client.forHost(hostId).json<{
+      hostId: string;
+      projects: CloudProject[];
+    }>("/host/projects");
     if (result.hostId !== hostId)
       throw new AppError(ErrorCode.ServiceUnavailable, "云端宿主身份不匹配");
     return result.projects.map((p) => ({
@@ -55,7 +65,6 @@ export class RemoteGatewayService {
       workspaceMode: p.workspaceMode,
     }));
   }
-
   async scope(
     actor: RemoteActor,
     hostId: string,
@@ -73,7 +82,6 @@ export class RemoteGatewayService {
       workspaceId: project.workspaceId,
     };
   }
-
   async tasks(
     actor: RemoteActor,
     hostId: string,
@@ -86,12 +94,9 @@ export class RemoteGatewayService {
     const tasks: Array<Record<string, unknown>> = [];
     for (const p of selected) {
       const scope = { userId: actor.userId, hostId, projectId: p.id, workspaceId: p.workspaceId };
-      const result = await this.client.execute<{ tasks: Array<Record<string, unknown>> }>(
-        scope,
-        actor,
-        "task.read",
-        {},
-      );
+      const result = await this.client.execute<{
+        tasks: Array<Record<string, unknown>>;
+      }>(scope, actor, "task.read", {});
       tasks.push(
         ...result.tasks.map((task) => ({
           ...task,
@@ -103,7 +108,6 @@ export class RemoteGatewayService {
     }
     return tasks;
   }
-
   async taskScope(actor: RemoteActor, hostId: string, taskId: string): Promise<RemoteScope> {
     RemoteId.parse(taskId);
     const task = (await this.tasks(actor, hostId)).find((task) => task.id === taskId);
@@ -115,7 +119,6 @@ export class RemoteGatewayService {
       workspaceId: String(task.workspaceId),
     };
   }
-
   async submit(
     actor: RemoteActor,
     hostId: string,
@@ -124,7 +127,7 @@ export class RemoteGatewayService {
   ): Promise<Record<string, unknown>> {
     const body = RemoteTaskInput.parse(input);
     const scope = await this.scope(actor, hostId, projectId, body.workspaceId);
-    const submission = this.store.claim({
+    const submission = await this.store.claim({
       scope,
       actor,
       requestId: body.clientRequestId,
@@ -139,13 +142,16 @@ export class RemoteGatewayService {
       body,
       body.clientRequestId,
     );
-    const task = result.task as { id?: string } | undefined;
+    const task = result.task as
+      | {
+          id?: string;
+        }
+      | undefined;
     if (task?.id) {
-      this.store.accept(submission, RemoteId.parse(task.id));
+      await this.store.accept(submission, RemoteId.parse(task.id));
     }
     return result;
   }
-
   async approvals(actor: RemoteActor, hostId = "cloud"): Promise<ApprovalSnapshot[]> {
     const all: ApprovalSnapshot[] = [];
     for (const p of await this.projects(actor, hostId)) {
@@ -155,17 +161,13 @@ export class RemoteGatewayService {
         projectId: p.id,
         workspaceId: p.workspaceId,
       };
-      const result = await this.client.execute<{ approvals: ApprovalSnapshot[] }>(
-        scope,
-        actor,
-        "project.read",
-        { kind: "approvals" },
-      );
+      const result = await this.client.execute<{
+        approvals: ApprovalSnapshot[];
+      }>(scope, actor, "project.read", { kind: "approvals" });
       all.push(...result.approvals.filter((item) => item.context?.userId === actor.userId));
     }
     return all;
   }
-
   async approvalScope(actor: RemoteActor, hostId: string, id: string): Promise<RemoteScope> {
     this.requireCloud(hostId);
     RemoteId.parse(id);
@@ -190,7 +192,6 @@ export class RemoteGatewayService {
     }
     throw new AppError(ErrorCode.NotFound, "审批不存在");
   }
-
   async followup(
     actor: RemoteActor,
     scope: RemoteScope,
@@ -199,7 +200,7 @@ export class RemoteGatewayService {
     requestId: string,
   ) {
     const payload = { taskId, message, clientRequestId: RemoteId.parse(requestId) };
-    const submission = this.store.claim({
+    const submission = await this.store.claim({
       scope,
       actor,
       requestId,
@@ -209,17 +210,15 @@ export class RemoteGatewayService {
       action: "task.followup",
       accepted: false,
     });
-    const result = await this.client.execute<{ task: { id: string }; [key: string]: unknown }>(
-      scope,
-      actor,
-      "task.followup",
-      payload,
-      requestId,
-    );
-    this.store.accept(submission, RemoteId.parse(result.task.id));
+    const result = await this.client.execute<{
+      task: {
+        id: string;
+      };
+      [key: string]: unknown;
+    }>(scope, actor, "task.followup", payload, requestId);
+    await this.store.accept(submission, RemoteId.parse(result.task.id));
     return result;
   }
-
   async operation(actor: RemoteActor, hostId: string, id: string) {
     this.requireCloud(hostId);
     RemoteId.parse(id);
@@ -227,41 +226,37 @@ export class RemoteGatewayService {
       const scope = { userId: actor.userId, hostId, projectId: p.id, workspaceId: p.workspaceId };
       await this.client.grant(scope);
       const payload = { operationId: id };
-      const result = await this.client.json<{ operation: Record<string, unknown> | null }>(
-        `/operations/${id}`,
-        {
-          command: this.client.command(scope, actor, "task.read", payload),
-          payload,
-        },
-      );
+      const result = await this.client.json<{
+        operation: Record<string, unknown> | null;
+      }>(`/operations/${id}`, {
+        command: this.client.command(scope, actor, "task.read", payload),
+        payload,
+      });
       if (result.operation) return result;
     }
     throw new AppError(ErrorCode.NotFound, "操作不存在");
   }
-
-  start(): void {
+  async start(): Promise<void> {
     if (this.timer) return;
-    this.timer = setInterval(() => {
+    this.timer = setInterval(async () => {
       void this.renew();
-    }, 15_000);
+    }, 15000);
     this.timer.unref();
     void this.renew();
   }
-
   async stop(): Promise<void> {
     if (this.timer) clearInterval(this.timer);
     this.timer = undefined;
     await this.renewing;
   }
-
   /** 会话存续期间独立续租，完全不依赖手机 SSE 连接；进程重启从 SQLite 恢复。 */
-  renew(): Promise<void> {
+  async renew(): Promise<void> {
     return (this.renewing ??= this.renewActive().finally(() => {
       this.renewing = undefined;
     }));
   }
   private async renewActive(): Promise<void> {
-    for (const submission of this.store.active()) {
+    for (const submission of await this.store.active()) {
       try {
         await this.renewOne(submission);
       } catch {
@@ -269,12 +264,11 @@ export class RemoteGatewayService {
       }
     }
   }
-
   private async renewOne(submission: RemoteSubmission): Promise<void> {
     const { scope, actor } = submission;
-    if (!this.store.sessionAlive(actor)) {
+    if (!(await this.store.sessionAlive(actor))) {
       submission.active = false;
-      this.store.save(submission);
+      await this.store.save(submission);
       if (submission.taskId && submission.accepted) {
         const payload = { taskId: submission.taskId, leaseExpiresAt: new Date().toISOString() };
         await this.client.grant(scope);
@@ -292,7 +286,12 @@ export class RemoteGatewayService {
         requestId: submission.requestId,
       };
       const result = await this.client.json<{
-        operation: { result: { taskId?: string } | null; status: string } | null;
+        operation: {
+          result: {
+            taskId?: string;
+          } | null;
+          status: string;
+        } | null;
       }>("/operations/lookup", {
         command: this.client.command(scope, actor, "task.read", payload),
         payload,
@@ -303,14 +302,14 @@ export class RemoteGatewayService {
         });
         if (snapshot.context && snapshot.context.actor.sessionId !== actor.sessionId) {
           submission.active = false;
-          this.store.save(submission);
+          await this.store.save(submission);
           return;
         }
-        this.store.accept(submission, RemoteId.parse(result.operation.result.taskId));
+        await this.store.accept(submission, RemoteId.parse(result.operation.result.taskId));
       } else {
-        if (Date.now() - (submission.createdAt ?? 0) > 60_000) {
+        if (Date.now() - (submission.createdAt ?? 0) > 60000) {
           submission.active = false;
-          this.store.save(submission);
+          await this.store.save(submission);
         }
         return;
       }
@@ -320,19 +319,19 @@ export class RemoteGatewayService {
     });
     if (snapshot.context && snapshot.context.actor.sessionId !== actor.sessionId) {
       submission.active = false;
-      this.store.save(submission);
+      await this.store.save(submission);
       return;
     }
     if (
       ["succeeded", "failed", "cancelled", "completed", "closed"].includes(snapshot.task.status)
     ) {
       submission.active = false;
-      this.store.save(submission);
+      await this.store.save(submission);
       return;
     }
     const payload = {
       taskId: submission.taskId,
-      leaseExpiresAt: new Date(Date.now() + 40_000).toISOString(),
+      leaseExpiresAt: new Date(Date.now() + 40000).toISOString(),
     };
     await this.client.json(`/tasks/${submission.taskId}/lease`, {
       command: this.client.command(scope, actor, "task.read", payload),

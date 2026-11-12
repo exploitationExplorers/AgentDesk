@@ -12,7 +12,6 @@ import {
 } from "../src/services/remote/repository-setup";
 import type { ProjectService } from "../src/services/projects";
 import type * as RepositoryGit from "../src/services/remote/repository-git";
-
 const transport = vi.hoisted(() => ({ remote: "", clones: 0, fail: false }));
 vi.mock("../src/services/remote/repository-git", async (original) => {
   const actual = await original<typeof RepositoryGit>();
@@ -100,22 +99,25 @@ it("encrypts tokens and exposes only credential presence, scoped to the exact re
   expect(service.gitConfig(input.url)).toHaveProperty(`http.${input.url}.git.extraHeader`);
 });
 it("clones once after repeated submissions, registers only the completed checkout, and persists identity", async () => {
-  const first = service.begin(input);
-  expect(service.begin(input).id).toBe(first.id);
+  const first = await service.begin(input);
+  expect((await service.begin(input)).id).toBe(first.id);
   await service.dispose();
-  expect(service.get(first.id)).toMatchObject({ status: "succeeded", projectId: "project-1" });
+  expect(await service.get(first.id)).toMatchObject({
+    status: "succeeded",
+    projectId: "project-1",
+  });
   expect(transport.clones).toBe(1);
   const cwd = join(root, "workspaces", `cloud-${first.id}`);
   expect(execFileSync("git", ["config", "user.email"], { cwd, encoding: "utf8" }).trim()).toBe(
     input.email,
   );
-  expect(() => service.begin({ ...input, name: "Changed" })).toThrow("请求编号");
+  await expect(service.begin({ ...input, name: "Changed" })).rejects.toThrow("请求编号");
 });
 it("preserves failed operations and does not retry a clone after a lost response", async () => {
   transport.fail = true;
-  const first = service.begin(input);
+  const first = await service.begin(input);
   await service.dispose();
-  expect(service.get(first.id).status).toBe("failed");
-  expect(service.begin(input).id).toBe(first.id);
+  expect((await service.get(first.id)).status).toBe("failed");
+  expect((await service.begin(input)).id).toBe(first.id);
   expect(transport.clones).toBe(1);
 });

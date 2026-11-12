@@ -150,7 +150,7 @@ test("设置分类保留路由、键盘与模型绑定保存，窄屏字段可�
       await page.locator(".ad-page").evaluate((el) => el.scrollWidth <= el.clientWidth + 1),
     ).toBe(true);
   }
-  await page.getByRole("button", { name: "切换主题" }).first().click();
+  await page.getByRole("switch", { name: "浅色主题" }).first().click();
   await page.screenshot({ path: info.outputPath("settings-mobile-dark.png") });
 });
 
@@ -189,11 +189,11 @@ test("管理页面在明暗主题与窄屏下无横向溢出", async ({ page }, 
     await page.goto(`/#/${path}`);
     await expect(page.getByRole("heading", { level: 1, name: title, exact: true })).toBeVisible();
     if (await page.locator("html").evaluate((el) => el.classList.contains("dark"))) {
-      await page.getByRole("button", { name: "切换主题" }).first().click();
+      await page.getByRole("switch", { name: "浅色主题" }).first().click();
     }
     await expect(page.locator("html")).not.toHaveClass(/dark/);
     await page.screenshot({ path: info.outputPath(`${path}-light.png`) });
-    await page.getByRole("button", { name: "切换主题" }).first().click();
+    await page.getByRole("switch", { name: "浅色主题" }).first().click();
     await expect(page.locator("html")).toHaveClass(/dark/);
     await page.screenshot({ path: info.outputPath(`${path}-dark.png`) });
     await page.setViewportSize({ width: 390, height: 844 });

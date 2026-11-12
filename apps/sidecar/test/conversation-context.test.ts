@@ -20,15 +20,17 @@ import {
   type ContextServiceOptions,
   type SummaryInput,
 } from "../src/services/conversation-context";
-
 let database: DbHandle | undefined;
 let faux: FauxProviderRegistration | undefined;
 afterEach(() => {
   database?.close();
   faux?.unregister();
 });
-
-function setup(options: ContextServiceOptions & { window?: number } = {}) {
+function setup(
+  options: ContextServiceOptions & {
+    window?: number;
+  } = {},
+) {
   database = openDatabase(":memory:");
   const store = new ConversationStore(database.db);
   const model = buildModel(
@@ -64,7 +66,7 @@ function setup(options: ContextServiceOptions & { window?: number } = {}) {
         }),
   );
   const service = new ConversationContextService(database.db, resolver, { ...options, summarize });
-  const add = (index: number, content = `第 ${index} 条消息`) => {
+  const add = async (index: number, content = `第 ${index} 条消息`) => {
     const message: ChatMessage = {
       id: `m${index}`,
       conversationId: "conversation",
@@ -74,17 +76,16 @@ function setup(options: ContextServiceOptions & { window?: number } = {}) {
       agent: null,
       createdAt: new Date(1700000000000 + index * 1000).toISOString(),
     };
-    store.insertMessage(message);
+    await store.insertMessage(message);
     return message;
   };
   return { store, service, add, summarize, resolver };
 }
-
 describe("会话上下文预算与摘要", () => {
   it("按当前输入和系统内容的总预算压缩，仍保留最新完整问答", async () => {
     const { service, add, store } = setup();
     for (let i = 0; i < 12; i++) add(i, `第 ${i} 条：${"资料".repeat(300)}`);
-    const original = store.listMessages("conversation");
+    const original = await store.listMessages("conversation");
     const result = await service.prepare({
       conversationId: "conversation",
       userMessage: "当前请求".repeat(250),
@@ -95,9 +96,8 @@ describe("会话上下文预算与摘要", () => {
     expect(result.status.retainedMessages).toBeGreaterThanOrEqual(2);
     expect(result.status.estimatedInputTokens).toBeLessThanOrEqual(result.status.inputBudgetTokens);
     expect(result.history.slice(-2)).toEqual(store.toPiMessages(original.slice(-2)));
-    expect(store.listMessages("conversation")).toEqual(original);
+    expect(await store.listMessages("conversation")).toEqual(original);
   });
-
   it("首轮摘要偏长时继续增量压缩，完成前不发布中间结果", async () => {
     const { service, add, summarize, store } = setup();
     for (let i = 0; i < 12; i++) add(i, `第 ${i} 条：${"资".repeat(490)}`);
@@ -119,9 +119,8 @@ describe("会话上下文预算与摘要", () => {
     expect(summarize.mock.calls[1]?.[0].text).not.toContain("第 0 条");
     expect(result.status.retainedMessages).toBe(4);
     expect(result.status.estimatedInputTokens).toBeLessThanOrEqual(result.status.inputBudgetTokens);
-    expect(store.listMessages("conversation")).toHaveLength(12);
+    expect(await store.listMessages("conversation")).toHaveLength(12);
   });
-
   it("压缩至最后完整问答仍无法容纳时保留旧摘要，后续未回复输入也不被压缩", async () => {
     const { service, add, store, summarize } = setup();
     for (let i = 0; i < 10; i++) add(i);
@@ -145,9 +144,8 @@ describe("会话上下文预算与摘要", () => {
     expect((await service.inspect({ conversationId: "conversation" })).updatedAt).toBe(
       first.updatedAt,
     );
-    expect(store.listMessages("conversation")).toHaveLength(13);
+    expect(await store.listMessages("conversation")).toHaveLength(13);
   });
-
   it("默认主模型窗口不足时允许备用模型，显式选择仍只用指定模型", async () => {
     const { service, add, summarize, resolver } = setup();
     add(0, "保留之前的目标");
@@ -205,7 +203,6 @@ describe("会话上下文预算与摘要", () => {
       }),
     ).rejects.toThrow(/超出模型预算/);
   });
-
   it("长历史先整体脱敏，分块保留完整占位符且不丢失原文", async () => {
     const maskFactory = vi.fn(createMaskStore);
     const { service, add, store, summarize } = setup({ maskFactory });
@@ -218,8 +215,7 @@ describe("会话上下文预算与摘要", () => {
       expect(input.text.replace(/\{\{MASK_EMAIL_\d+\}\}/g, "")).not.toContain("MASK_");
       restored += unmaskText(input.text, input.mask!);
     }
-    const original = store
-      .listMessages("conversation")
+    const original = (await store.listMessages("conversation"))
       .slice(0, result.summarizedMessages)
       .map((message) =>
         JSON.stringify({ role: message.role, text: message.content, tools: message.toolCalls }),
@@ -228,7 +224,6 @@ describe("会话上下文预算与摘要", () => {
     expect(restored).toBe(original);
     expect(maskFactory).toHaveBeenCalledOnce();
   });
-
   it("摘要调用遵循脱敏设置，恢复本地摘要并报告真实用量", async () => {
     const { add, resolver } = setup();
     for (let i = 0; i < 10; i++) add(i, `请联系 contact@example.com，记录 ${i}`);
@@ -267,7 +262,6 @@ describe("会话上下文预算与摘要", () => {
     expect(usage).toMatchObject({ purpose: "compaction", providerId: "faux" });
     expect(usage?.totalTokens).toBeGreaterThan(0);
   });
-
   it("预算充足时回放超过20条消息，原始目标不会静默丢弃", async () => {
     const { service, add, summarize } = setup();
     for (let i = 0; i < 30; i++) add(i);
@@ -282,7 +276,6 @@ describe("会话上下文预算与摘要", () => {
       contextWindow: 8192,
     });
   });
-
   it("自动压缩保存目标约束及边界，保留所有原文和最近消息", async () => {
     const { service, add, store, summarize } = setup();
     for (let i = 0; i < 30; i++)
@@ -293,9 +286,9 @@ describe("会话上下文预算与摘要", () => {
     expect(result.status.summarizedMessages).toBeGreaterThan(0);
     expect(result.status.estimatedInputTokens).toBeLessThanOrEqual(result.status.inputBudgetTokens);
     expect(result.history.at(-1)?.content).toEqual(
-      store.toPiMessages(store.listMessages("conversation")).at(-1)?.content,
+      store.toPiMessages(await store.listMessages("conversation")).at(-1)?.content,
     );
-    expect(store.listMessages("conversation")).toHaveLength(30);
+    expect(await store.listMessages("conversation")).toHaveLength(30);
     expect(summarize.mock.calls.length).toBeGreaterThan(1);
     for (const [input] of summarize.mock.calls)
       expect(estimateTokens(input.text)).toBeLessThanOrEqual(6000);
@@ -304,7 +297,6 @@ describe("会话上下文预算与摘要", () => {
       "开发项目",
     );
   });
-
   it("手动压缩只摘要新增的历史前缀，并合并已有摘要", async () => {
     const { service, add, summarize } = setup();
     for (let i = 0; i < 10; i++) add(i);
@@ -316,7 +308,6 @@ describe("会话上下文预算与摘要", () => {
     expect(summarize.mock.calls[1]?.[0].text).not.toContain("第 0 条消息");
     expect(summarize.mock.calls[1]?.[0].text).toContain("第 4 条消息");
   });
-
   it("摘要失败和取消保留此前有效摘要与原文", async () => {
     const { service, add, summarize, store } = setup();
     for (let i = 0; i < 10; i++) add(i);
@@ -340,9 +331,8 @@ describe("会话上下文预算与摘要", () => {
     expect((await service.inspect({ conversationId: "conversation" })).updatedAt).toBe(
       first.updatedAt,
     );
-    expect(store.listMessages("conversation")).toHaveLength(14);
+    expect(await store.listMessages("conversation")).toHaveLength(14);
   });
-
   it("压缩期间历史变化或并发压缩不会发布陈旧摘要", async () => {
     const { service, add, summarize } = setup();
     for (let i = 0; i < 10; i++) add(i);
@@ -355,11 +345,10 @@ describe("会话上下文预算与摘要", () => {
     expect((await service.inspect({ conversationId: "conversation" })).summary).toBeNull();
     expect(service.isCompacting("conversation")).toBe(false);
   });
-
   it("传入已存储当前消息之前的历史不会重复本轮输入", async () => {
     const { service, store, add } = setup();
     for (let i = 0; i < 10; i++) add(i);
-    const history = store.listMessages("conversation");
+    const history = await store.listMessages("conversation");
     add(10, "当前请求");
     const result = await service.prepare({
       conversationId: "conversation",
@@ -369,7 +358,6 @@ describe("会话上下文预算与摘要", () => {
     expect(result.history).toHaveLength(10);
     expect(JSON.stringify(result.history)).not.toContain("当前请求");
   });
-
   it("无法压缩的超长当前输入明确失败而不丢弃消息", async () => {
     const { service, add, store, summarize } = setup();
     add(0, "目标不能丢失");
@@ -377,6 +365,6 @@ describe("会话上下文预算与摘要", () => {
       service.prepare({ conversationId: "conversation", userMessage: "资料".repeat(10000) }),
     ).rejects.toThrow(/超出模型预算/);
     expect(summarize).not.toHaveBeenCalled();
-    expect(store.listMessages("conversation")).toHaveLength(1);
+    expect(await store.listMessages("conversation")).toHaveLength(1);
   });
 });

@@ -12,7 +12,6 @@ import type { ProjectService } from "../src/services/projects";
 import { CloudRepositorySetup } from "../src/services/remote/repository-setup";
 import { SecretStore } from "../src/secrets";
 import type * as RepositoryGitModule from "../src/services/remote/repository-git";
-
 const fetchTransport = vi.hoisted(() => ({ remote: "" }));
 vi.mock("../src/services/remote/repository-git", async (original) => {
   const actual = await original<typeof RepositoryGitModule>();
@@ -34,7 +33,6 @@ vi.mock("../src/services/remote/repository-git", async (original) => {
       ),
   };
 });
-
 const hash = (value: Uint8Array | string) => createHash("sha256").update(value).digest("hex");
 const git = (cwd: string, ...args: string[]) =>
   execFileSync("git", args, { cwd, encoding: "utf8", stdio: "pipe" }).trim();
@@ -113,7 +111,7 @@ it("captures selected changes and binaries, resumes verified chunks, imports int
     git(f.source, "add", "code.txt");
     writeFileSync(join(f.source, "code.txt"), "unstaged final\n");
     rmSync(join(f.source, "deleted.txt"));
-    writeFileSync(join(f.source, "binary.dat"), Buffer.alloc(130_000, 0x99));
+    writeFileSync(join(f.source, "binary.dat"), Buffer.alloc(130000, 0x99));
     writeFileSync(join(f.source, ".env"), "SECRET=not transferred");
     writeFileSync(join(f.source, "unselected.txt"), "untouched");
     const before = git(f.source, "status", "--porcelain"),
@@ -175,7 +173,7 @@ it("captures selected changes and binaries, resumes verified chunks, imports int
     expect(imported.status).toBe("verified");
     expect(git(f.recovered(), "rev-parse", "HEAD")).toBe(head);
     expect(readFileSync(join(f.recovered(), "code.txt"), "utf8")).toBe("unstaged final\n");
-    expect(readFileSync(join(f.recovered(), "binary.dat"))).toEqual(Buffer.alloc(130_000, 0x99));
+    expect(readFileSync(join(f.recovered(), "binary.dat"))).toEqual(Buffer.alloc(130000, 0x99));
     expect(existsSync(join(f.recovered(), "deleted.txt"))).toBe(false);
     expect(existsSync(join(f.recovered(), ".env"))).toBe(false);
     expect(git(f.source, "status", "--porcelain")).toBe(before);
@@ -190,8 +188,7 @@ it("captures selected changes and binaries, resumes verified chunks, imports int
   } finally {
     f.dispose();
   }
-}, 30_000);
-
+}, 30000);
 it("rejects a missing source commit, invalid chunk bytes and unsafe snapshot paths", async () => {
   const f = fixture();
   try {
@@ -229,8 +226,7 @@ it("rejects a missing source commit, invalid chunk bytes and unsafe snapshot pat
   } finally {
     f.dispose();
   }
-}, 30_000);
-
+}, 30000);
 it("cleans expired temporary snapshots on schedule without deleting the workspace", async () => {
   const f = fixture();
   try {
@@ -241,11 +237,11 @@ it("cleans expired temporary snapshots on schedule without deleting the workspac
     });
     f.db.raw
       .prepare("UPDATE workspace_snapshots SET created_at=? WHERE id=?")
-      .run(Date.now() - 90_000_000, snapshot.snapshotId);
+      .run(Date.now() - 90000000, snapshot.snapshotId);
     const temporary = join(f.root, "storage", "snapshots", snapshot.snapshotId);
     expect(existsSync(temporary)).toBe(true);
     vi.useFakeTimers();
-    f.service.startCleanup(1000);
+    await f.service.startCleanup(1000);
     await f.service.cleanup();
     expect(existsSync(temporary)).toBe(false);
     expect(
@@ -262,8 +258,7 @@ it("cleans expired temporary snapshots on schedule without deleting the workspac
     await f.service.dispose();
     f.dispose();
   }
-}, 30_000);
-
+}, 30000);
 it("recovers an unpublished base after explicit temporary-branch push and cloud fetch", async () => {
   const f = fixture();
   try {
@@ -334,4 +329,4 @@ it("recovers an unpublished base after explicit temporary-branch push and cloud 
   } finally {
     f.dispose();
   }
-}, 30_000);
+}, 30000);

@@ -10,19 +10,18 @@ import { TaskService } from "../src/services/tasks";
 import { EventHub } from "../src/events";
 import { PresentationDrafts } from "../src/services/presentation-drafts";
 import { registerDocumentTools } from "../src/agents/document-tools";
-
 let db: DbHandle;
 afterEach(() => db?.close());
-function setup() {
+async function setup() {
   const root = mkdtempSync(join(tmpdir(), "agentdesk-drafts-"));
   db = openDatabase(":memory:");
   const tasks = new TaskService(db.db, new EventHub(), { artifactRoot: root });
-  const task = tasks.create({
+  const task = await tasks.create({
     goal: "生成文稿",
     conversationId: "drafts",
     requiresPlanApproval: false,
   });
-  const run = tasks.createRun({
+  const run = await tasks.createRun({
     taskId: task.id,
     kind: "root",
     trigger: "create",
@@ -38,13 +37,13 @@ function setup() {
     requestApproval: async () => {
       throw new Error("不应弹出审批");
     },
-    recordArtifact: (input) => tasks.recordArtifact({ ...input, taskId: task.id, runId: run.id }),
+    recordArtifact: async (input) =>
+      await tasks.recordArtifact({ ...input, taskId: task.id, runId: run.id }),
   };
   return { root, tasks, task, run, events, ctx, controller };
 }
-
 it("PPT 按批次发布页面，拒绝重复追加和跨会话草稿引用，完成后可读取文件", async () => {
-  const { root, tasks, task, events, ctx } = setup();
+  const { root, tasks, task, events, ctx } = await setup();
   const drafts = new PresentationDrafts(root);
   const draft = drafts.start({ title: "安全试点", total: 2 }, ctx);
   const first = await drafts.append(
@@ -75,9 +74,8 @@ it("PPT 按批次发布页面，拒绝重复追加和跨会话草稿引用，完
   ).toBe(true);
   expect(content.artifact.version).toBe(3);
 });
-
 it("文档分章节预览且导出真实 Word，停止后保留已经写好的内容", async () => {
-  const { root, tasks, task, events, ctx, controller } = setup();
+  const { root, tasks, task, events, ctx, controller } = await setup();
   const registry = new ToolRegistry();
   registerDocumentTools(registry, root);
   const call = (name: string, input: unknown) => registry.get(name)!.execute(input, ctx);
@@ -103,17 +101,22 @@ it("文档分章节预览且导出真实 Word，停止后保留已经写好的�
     afterSection: 1,
     sections: [{ heading: "复盘", paragraphs: ["第一周结束与导师复盘。"] }],
   });
-  const finished = (await call("documents.finish", start)) as { artifactId: string };
+  const finished = (await call("documents.finish", start)) as {
+    artifactId: string;
+  };
   const file = await tasks.readArtifact(task.id, finished.artifactId);
   expect(file.mimeType).toContain("wordprocessingml");
   expect(Buffer.from(file.content, "base64").includes(Buffer.from("word/document.xml"))).toBe(true);
-  const previewId = (file.artifact.metadata as { previewArtifactId: string }).previewArtifactId;
+  const previewId = (
+    file.artifact.metadata as {
+      previewArtifactId: string;
+    }
+  ).previewArtifactId;
   expect((await tasks.readArtifact(task.id, previewId)).content).toContain("导师复盘");
   controller.abort();
   await expect(call("documents.start", { title: "停止后", total: 1 })).rejects.toThrow();
   expect((await tasks.readArtifact(task.id, previewId)).content).toContain("开通工作账号");
 });
-
 it("公开阶段按事件排序，只有等待模型时显示思考，展示记录没有内部工具参数", () => {
   const events: AgentStreamEvent[] = [
     { type: "agent_start", agent: "orchestrator" },
@@ -147,10 +150,12 @@ it("公开阶段按事件排序，只有等待模型时显示思考，展示记�
   expect(state.blocks.map((block) => block.kind)).toEqual(["text", "activity", "text"]);
   expect(JSON.stringify(state.blocks)).not.toMatch(/private|raw-internal/);
 });
-
 it("PPT 和 Word 草稿按任务持久化，换服务和回调后继续生成，其他任务无法读取", async () => {
-  const { root, tasks, task, ctx } = setup();
-  const store = new Collection<{ id: string; value: unknown }>(db.db, "test_draft_state");
+  const { root, tasks, task, ctx } = await setup();
+  const store = new Collection<{
+    id: string;
+    value: unknown;
+  }>(db.db, "test_draft_state");
   const stateFor = (taskId: string): NonNullable<ToolContext["durableState"]> => ({
     get: (key) => store.get(`${taskId}:${key}`)?.value,
     set: (key, value) => {
@@ -171,7 +176,9 @@ it("PPT 和 Word 草稿按任务持久化，换服务和回调后继续生成，
   registerDocumentTools(firstRegistry, root);
   const documentDraft = (await firstRegistry
     .get("documents.start")!
-    .execute({ title: "续办文档", total: 2 }, firstContext)) as { draftId: string };
+    .execute({ title: "续办文档", total: 2 }, firstContext)) as {
+    draftId: string;
+  };
   await firstRegistry.get("documents.append")!.execute(
     {
       ...documentDraft,
@@ -180,7 +187,6 @@ it("PPT 和 Word 草稿按任务持久化，换服务和回调后继续生成，
     },
     firstContext,
   );
-
   // 新的服务实例与回调能力模拟下一轮；状态来自 SQLite，旧 WeakMap 无法提供数据。
   const resumedContext: ToolContext = {
     ...ctx,
@@ -201,7 +207,6 @@ it("PPT 和 Word 草稿按任务持久化，换服务和回调后继续生成，
   );
   const ppt = await resumedPresentation.finish(slideDraft.draftId, resumedContext);
   expect((await tasks.readArtifact(task.id, ppt.artifactId)).mimeType).toContain("presentationml");
-
   const resumedRegistry = new ToolRegistry();
   registerDocumentTools(resumedRegistry, root);
   await expect(
@@ -224,7 +229,9 @@ it("PPT 和 Word 草稿按任务持久化，换服务和回调后继续生成，
   );
   const doc = (await resumedRegistry
     .get("documents.finish")!
-    .execute(documentDraft, resumedContext)) as { artifactId: string };
+    .execute(documentDraft, resumedContext)) as {
+    artifactId: string;
+  };
   expect((await tasks.readArtifact(task.id, doc.artifactId)).mimeType).toContain(
     "wordprocessingml",
   );

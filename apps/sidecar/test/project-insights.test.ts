@@ -20,7 +20,6 @@ import {
   publicSourceUrl,
   readPublicArticle,
 } from "../src/services/insight-source";
-
 let container: Container;
 let project: Project;
 let faux: FauxProviderRegistration;
@@ -55,7 +54,7 @@ beforeAll(async () => {
     { inMemory: true },
   );
   project = await container.projects.add(root);
-  faux = registerFauxProvider({ tokensPerSecond: 100_000 });
+  faux = registerFauxProvider({ tokensPerSecond: 100000 });
   container.providers.resolve = async () => [
     { providerId: "faux", providerName: "faux", model: faux.getModel(), apiKey: "test" },
   ];
@@ -82,23 +81,23 @@ async function analyze(payload = result()) {
   await vi.waitFor(() => expect(container.insights.get(started.id).status).not.toBe("analyzing"));
   return container.insights.get(started.id);
 }
-
 it("只读分析留下来源和成果，不执行工具或读取隐藏凭据", async () => {
   const record = await analyze();
   expect(record.status).toBe("ready");
   expect(record.reviewedFiles).toEqual(["README.md"]);
   expect(record.suggestions[0]?.sourceQuote).toBe("保留任务目标、约束与未完成事项");
-  expect(container.tasks.get(record.analysisTaskId)?.purpose).toBe("reference_analysis");
-  const events = container.tasks.eventsAfter({
+  expect((await container.tasks.get(record.analysisTaskId))?.purpose).toBe("reference_analysis");
+  const events = await container.tasks.eventsAfter({
     taskId: record.analysisTaskId,
     after: 0,
     limit: 500,
   });
   expect(events.some(({ event }) => event.type === "tool_call")).toBe(false);
-  expect(container.tasks.listArtifacts(record.analysisTaskId)[0]?.content).toContain("README.md");
+  expect((await container.tasks.listArtifacts(record.analysisTaskId))[0]?.content).toContain(
+    "README.md",
+  );
   expect(readFileSync(join(project.path, "README.md"), "utf8")).toContain("提供聊天功能");
 });
-
 it("无法核对原文或代码路径的建议不会发布", async () => {
   for (const invalid of [result("missing.ts"), result("README.md", "并不存在的文章原文")]) {
     const record = await analyze(invalid);
@@ -107,17 +106,16 @@ it("无法核对原文或代码路径的建议不会发布", async () => {
     expect(record.suggestions).toEqual([]);
   }
 });
-
 it("勾选建议只创建一次开发任务，保留来源与验收条件", async () => {
   const record = await analyze();
   faux.setResponses([fauxAssistantMessage(fauxText("已核实任务"))]);
   const suggestion = record.suggestions[0]!;
-  const count = container.tasks.list().length;
+  const count = (await container.tasks.list()).length;
   expect(
     (await request(`/project-insights/${record.id}/tasks`, { ids: [suggestion.id, "foreign"] }))
       .status,
   ).toBe(400);
-  expect(container.tasks.list()).toHaveLength(count);
+  expect(await container.tasks.list()).toHaveLength(count);
   const first = (await (
     await request(`/project-insights/${record.id}/tasks`, { ids: [suggestion.id, suggestion.id] })
   ).json()) as Task[];
@@ -126,13 +124,14 @@ it("勾选建议只创建一次开发任务，保留来源与验收条件", asyn
   ).json()) as Task[];
   expect(first).toHaveLength(1);
   expect(second[0]?.id).toBe(first[0]?.id);
-  expect(container.tasks.list()).toHaveLength(count + 1);
+  expect(await container.tasks.list()).toHaveLength(count + 1);
   expect(first[0]?.goal).toContain(suggestion.sourceQuote);
   expect(first[0]?.goal).toContain(suggestion.acceptance[0]);
-  await vi.waitFor(() => expect(container.tasks.get(first[0]!.id)?.status).toBe("awaiting_review"));
-  expect(container.tasks.listRuns(first[0]!.id)[0]?.input.workspace).toBe(project.path);
+  await vi.waitFor(async () =>
+    expect((await container.tasks.get(first[0]!.id))?.status).toBe("awaiting_review"),
+  );
+  expect((await container.tasks.listRuns(first[0]!.id))[0]?.input.workspace).toBe(project.path);
 });
-
 it("资料分析记录不能经通用任务续跑获得工具权限", async () => {
   const record = await analyze();
   const response = await request(`/tasks/${record.analysisTaskId}/runs`, {
@@ -140,22 +139,21 @@ it("资料分析记录不能经通用任务续跑获得工具权限", async () =
     message: "修改文件",
   });
   if (response.status === 201 || response.status === 200) {
-    await vi.waitFor(() =>
-      expect(container.tasks.get(record.analysisTaskId)?.status).toBe("failed"),
+    await vi.waitFor(async () =>
+      expect((await container.tasks.get(record.analysisTaskId))?.status).toBe("failed"),
     );
-    expect(container.tasks.listRuns(record.analysisTaskId).at(-1)?.resultError).toContain(
+    expect((await container.tasks.listRuns(record.analysisTaskId)).at(-1)?.resultError).toContain(
       "资料分析",
     );
   } else {
     expect(response.status).toBe(409);
   }
   expect(
-    container.tasks
-      .eventsAfter({ taskId: record.analysisTaskId, after: 0, limit: 500 })
-      .some(({ event }) => event.type === "tool_call"),
+    (
+      await container.tasks.eventsAfter({ taskId: record.analysisTaskId, after: 0, limit: 500 })
+    ).some(({ event }) => event.type === "tool_call"),
   ).toBe(false);
 });
-
 it("公开文章读取拒绝本机和内网，失败后仍支持粘贴正文分析", async () => {
   for (const address of ["127.0.0.1", "10.1.2.3", "192.168.1.1", "::1", "::ffff:127.0.0.1"])
     expect(isPublicAddress(address)).toBe(false);
@@ -165,7 +163,6 @@ it("公开文章读取拒绝本机和内网，失败后仍支持粘贴正文分�
   await expect(readPublicArticle("http://127.0.0.1/article")).rejects.toThrow("公网");
   expect((await analyze()).status).toBe("ready");
 });
-
 it("取消分析不发布建议，重启后中断记录可恢复正文重试", async () => {
   faux.setResponses([fauxAssistantMessage(fauxText(JSON.stringify(result())))]);
   const started = await container.insights.start({ projectId: project.id, sourceText });
@@ -173,7 +170,7 @@ it("取消分析不发布建议，重启后中断记录可恢复正文重试", a
   await vi.waitFor(() => expect(container.insights.get(started.id).status).toBe("failed"));
   expect(container.insights.get(started.id).suggestions).toEqual([]);
   expect(container.insights.get(started.id).sourceText).toBe(sourceText);
-  expect(container.tasks.getRun(started.analysisRunId)?.status).toBe("cancelled");
+  expect((await container.tasks.getRun(started.analysisRunId))?.status).toBe("cancelled");
   const records = new Collection<ProjectInsight>(container.dbHandle.db, "projectInsights");
   records.put({ ...started, id: "interrupted-record", status: "analyzing" });
   const restarted = new ProjectInsightService(

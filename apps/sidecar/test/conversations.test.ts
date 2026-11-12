@@ -10,14 +10,12 @@ import { Collection } from "../src/db/collection";
 import { messages } from "../src/db/schema";
 import { createApp } from "../src/http/app";
 import { ConversationService } from "../src/services/conversations";
-
 const oldConversation = (id: string, title = id): Conversation => ({
   id,
   title,
   createdAt: "2025-01-01T00:00:00.000Z",
   updatedAt: "2025-01-01T00:00:00.000Z",
 });
-
 const project = (id: string, path: string): Project => ({
   id,
   path,
@@ -38,7 +36,6 @@ const project = (id: string, path: string): Project => ({
   stars: null,
   prevStars: null,
 });
-
 describe("会话组织", () => {
   let db: DbHandle;
   let conversations: ConversationService;
@@ -47,7 +44,6 @@ describe("会话组织", () => {
     conversations = new ConversationService(db.db);
   });
   afterEach(() => db.close());
-
   it("旧会话补全默认值，分组、置顶和归档由存储重新读取", () => {
     const collection = new Collection<Conversation>(db.db, "conversations");
     collection.put(oldConversation("old"));
@@ -70,7 +66,6 @@ describe("会话组织", () => {
     restored.patch("old", { archived: false });
     expect(restored.list()[0]?.id).toBe("old");
   });
-
   it("搜索标题和正文，按分组与归档范围过滤，百分号按普通字符匹配", () => {
     conversations.put(oldConversation("title", "升级 AgentDesk"));
     conversations.put(oldConversation("body", "另一段会话"));
@@ -100,7 +95,6 @@ describe("会话组织", () => {
       conversations.list({ archived: "all", groupId: "ungrouped" }).map((item) => item.id),
     ).toEqual(["title"]);
   });
-
   it("分组可改名且删除不会删除会话或消息", () => {
     const group = conversations.createGroup({ name: "第一组" });
     conversations.put({ ...oldConversation("a"), groupId: group.id });
@@ -124,7 +118,6 @@ describe("会话组织", () => {
     expect(conversations.list({ archived: "all", groupId: "ungrouped" })).toHaveLength(2);
     expect(db.db.select().from(messages).all()).toHaveLength(1);
   });
-
   it("拒绝无效项目与分组，项目删除后给出明确提示", () => {
     conversations.put(oldConversation("c"));
     expect(() => conversations.patch("c", { groupId: "missing" })).toThrow(/分组不存在/);
@@ -138,7 +131,6 @@ describe("会话组织", () => {
     conversations.patch("c", { projectId: null });
     expect(conversations.projectWorkspace("c")).toBeUndefined();
   });
-
   it("整理旧会话不意外清除其尚未迁移的工作区继承", () => {
     new Collection<Conversation>(db.db, "conversations").put(oldConversation("legacy"));
     conversations.patch("legacy", { pinned: true });
@@ -147,7 +139,6 @@ describe("会话组织", () => {
     expect(conversations.hasProjectBinding("legacy")).toBe(true);
   });
 });
-
 describe("会话管理 API", () => {
   let container: Container;
   let root: string;
@@ -171,7 +162,6 @@ describe("会话管理 API", () => {
       headers: { "Content-Type": "application/json", "X-AgentDesk-Token": "test-conversations" },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
-
   it("管理路由支持旧的重命名请求、分组CRUD和归档过滤", async () => {
     container.chat.conversations.put(oldConversation("route", "原名称"));
     const created = await call("/conversation-groups", { name: "API分组" }, "POST");
@@ -204,7 +194,6 @@ describe("会话管理 API", () => {
     expect((await call("/conversations/missing")).status).toBe(404);
     expect((await call("/conversations?archived=invalid")).status).toBe(400);
   });
-
   it("关联项目实际注入后续聊天的工作区，解除关联后不沿用旧项目", async () => {
     const workspace = join(root, "project");
     mkdirSync(workspace);
@@ -236,7 +225,6 @@ describe("会话管理 API", () => {
     expect(await second.text()).toContain('"type":"done"');
     expect(contexts[1] ?? "").not.toContain("conversation-project-rule");
   });
-
   it("生成期间调整置顶不会被完成事件覆盖，更换项目会被拒绝", async () => {
     let started!: () => void;
     let finish!: () => void;
@@ -271,8 +259,7 @@ describe("会话管理 API", () => {
       pinned: true,
     });
   });
-
-  it("一键清空删除列表会话，进行中的收尾不会把会话写回", { timeout: 15_000 }, async () => {
+  it("一键清空删除列表会话，进行中的收尾不会把会话写回", { timeout: 15000 }, async () => {
     let started!: () => void;
     let finish!: () => void;
     const didStart = new Promise<void>((resolve) => {

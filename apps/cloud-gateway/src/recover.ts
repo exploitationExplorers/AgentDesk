@@ -1,4 +1,6 @@
 import { join, resolve } from "node:path";
+import { loadDatabaseConfig } from "./config";
+import { createPostgresDatabase, gatewayDatabase } from "./db/database";
 import Database from "better-sqlite3";
 import { recoverOwner } from "./auth/recovery";
 
@@ -12,16 +14,21 @@ if (
   throw new Error(
     "Set GATEWAY_DATA_DIR; usage: recover.mjs revoke-sessions | set-owner-email <email>. Stop gateway before recovery.",
   );
-const db = new Database(join(resolve(process.env.GATEWAY_DATA_DIR), "gateway.db"), {
-  fileMustExist: true,
-});
+const config = loadDatabaseConfig();
+const db = config.databaseUrl
+  ? await createPostgresDatabase(config.databaseUrl, config.databaseSchema)
+  : gatewayDatabase(
+      new Database(join(resolve(process.env.GATEWAY_DATA_DIR), "gateway.db"), {
+        fileMustExist: true,
+      }),
+    );
 try {
-  recoverOwner(db, email);
+  await recoverOwner(db, email);
   console.info(
     email
       ? "Owner updated; update OWNER_EMAIL before restarting gateway. All sessions revoked."
       : "All sessions and pending codes revoked.",
   );
 } finally {
-  db.close();
+  await db.close();
 }

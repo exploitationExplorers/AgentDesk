@@ -18,12 +18,10 @@ import { openDatabase, type DbHandle } from "../src/db/client";
 import { EventHub } from "../src/events";
 import { createApp } from "../src/http/app";
 import { ApprovalService } from "../src/services/approvals";
-
 let container: Container;
 let app: Hono;
 let faux: FauxProviderRegistration;
 const TOKEN = "test-token";
-
 const call = (path: string, init: RequestInit = {}) =>
   app.request(`/api${path}`, {
     ...init,
@@ -33,36 +31,34 @@ const call = (path: string, init: RequestInit = {}) =>
       ...(init.headers ?? {}),
     },
   });
-
 const json = async <T = unknown>(path: string, init?: RequestInit): Promise<T> => {
   const res = await call(path, init);
   return (await res.json()) as T;
 };
-
-async function waitFor(predicate: () => boolean, timeoutMs = 3000): Promise<void> {
+async function waitFor(
+  predicate: () => boolean | Promise<boolean>,
+  timeoutMs = 3000,
+): Promise<void> {
   const start = Date.now();
-  while (!predicate()) {
+  while (!(await predicate())) {
     if (Date.now() - start > timeoutMs) throw new Error("等待条件超时");
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
 }
-
 beforeAll(async () => {
   const dataDir = mkdtempSync(join(tmpdir(), "agentdesk-task-followup-"));
   const config = { ...loadConfig({ AGENTDESK_DATA_DIR: dataDir }), token: TOKEN };
   container = await createContainer(config, { inMemory: true });
   app = createApp(container);
-  faux = registerFauxProvider({ tokensPerSecond: 100_000 });
+  faux = registerFauxProvider({ tokensPerSecond: 100000 });
   container.providers.resolve = async () => [
     { providerId: "faux", providerName: "faux", model: faux.getModel(), apiKey: "x" },
   ];
 });
-
 afterAll(async () => {
   faux.unregister();
   await container.dispose();
 });
-
 describe("tasks.ask_user 追问阻塞与回答", () => {
   it("模型调用 tasks.ask_user 后只创建一条追问，回答后继续推理", async () => {
     faux.setResponses([
@@ -72,30 +68,34 @@ describe("tasks.ask_user 追问阻塞与回答", () => {
       ),
       fauxAssistantMessage(fauxText("已确认，继续执行")),
     ]);
-
-    const task = await json<{ id: string }>("/tasks", {
+    const task = await json<{
+      id: string;
+    }>("/tasks", {
       method: "POST",
       body: JSON.stringify({ goal: "需要澄清的任务" }),
     });
-
-    await waitFor(() => container.approvals.list("pending").length >= 1);
-    const question = container.approvals.list("pending")[0]!;
+    await waitFor(async () => (await container.approvals.list("pending")).length >= 1);
+    const question = (await container.approvals.list("pending"))[0]!;
     expect(question.kind).toBe("question");
-    expect(question.conversationId).toBe(container.tasks.get(task.id)?.conversationId);
+    expect(question.conversationId).toBe((await container.tasks.get(task.id))?.conversationId);
     expect(question.detail).toBe("请提供数据库密码");
-    expect(container.approvals.list().filter((item) => item.kind === "tool")).toHaveLength(0);
+    expect((await container.approvals.list()).filter((item) => item.kind === "tool")).toHaveLength(
+      0,
+    );
     const answerRes = await call(`/approvals/${question.id}/answer`, {
       method: "POST",
       body: JSON.stringify({ text: "密码是 s3cr3t" }),
     });
     expect(answerRes.status).toBe(200);
-    expect((await answerRes.json()) as { status: string }).toMatchObject({ status: "approved" });
-
-    await waitFor(() => container.tasks.get(task.id)?.status === "awaiting_review");
-    const [run] = container.tasks.listRuns(task.id);
+    expect(
+      (await answerRes.json()) as {
+        status: string;
+      },
+    ).toMatchObject({ status: "approved" });
+    await waitFor(async () => (await container.tasks.get(task.id))?.status === "awaiting_review");
+    const [run] = await container.tasks.listRuns(task.id);
     expect(run!.status).toBe("succeeded");
     expect(run!.resultText).toBe("已确认，继续执行");
-
     const askCall = (run!.toolCalls as Array<{
       name: string;
       result: unknown;
@@ -104,7 +104,6 @@ describe("tasks.ask_user 追问阻塞与回答", () => {
     expect(askCall?.isError).toBe(false);
     expect(askCall?.result).toBe("密码是 s3cr3t");
   });
-
   it("追问被拒绝时工具执行失败，Run 仍能正常结束（不会无限阻塞）", async () => {
     faux.setResponses([
       fauxAssistantMessage(
@@ -113,29 +112,28 @@ describe("tasks.ask_user 追问阻塞与回答", () => {
       ),
       fauxAssistantMessage(fauxText("好吧，那我先不继续了")),
     ]);
-
-    const task = await json<{ id: string }>("/tasks", {
+    const task = await json<{
+      id: string;
+    }>("/tasks", {
       method: "POST",
       body: JSON.stringify({ goal: "会被拒绝的追问" }),
     });
-
-    await waitFor(() => container.approvals.list("pending").length >= 1);
-    const question = container.approvals.list("pending")[0]!;
+    await waitFor(async () => (await container.approvals.list("pending")).length >= 1);
+    const question = (await container.approvals.list("pending"))[0]!;
     expect(question.kind).toBe("question");
     await call(`/approvals/${question.id}`, {
       method: "POST",
       body: JSON.stringify({ approved: false }),
     });
-
-    await waitFor(() => container.tasks.get(task.id)?.status === "awaiting_review");
-    const [run] = container.tasks.listRuns(task.id);
+    await waitFor(async () => (await container.tasks.get(task.id))?.status === "awaiting_review");
+    const [run] = await container.tasks.listRuns(task.id);
     expect(run!.status).toBe("succeeded");
-    const askCall = (run!.toolCalls as Array<{ name: string; isError: boolean }>)!.find(
-      (c) => c.name === "tasks.ask_user",
-    );
+    const askCall = (run!.toolCalls as Array<{
+      name: string;
+      isError: boolean;
+    }>)!.find((c) => c.name === "tasks.ask_user");
     expect(askCall?.isError).toBe(true);
   });
-
   it("一组选择题逐题等待，返回带问题上下文的回答", async () => {
     faux.setResponses([
       fauxAssistantMessage(
@@ -149,12 +147,14 @@ describe("tasks.ask_user 追问阻塞与回答", () => {
       ),
       fauxAssistantMessage(fauxText("已记录约束")),
     ]);
-    const task = await json<{ id: string }>("/tasks", {
+    const task = await json<{
+      id: string;
+    }>("/tasks", {
       method: "POST",
       body: JSON.stringify({ goal: "规划知识库" }),
     });
-    await waitFor(() => container.approvals.list("pending").length === 1);
-    const first = container.approvals.list("pending")[0]!;
+    await waitFor(async () => (await container.approvals.list("pending")).length === 1);
+    const first = (await container.approvals.list("pending"))[0]!;
     expect(first.kind).toBe("question");
     expect(first.payload).toMatchObject({
       index: 1,
@@ -165,40 +165,44 @@ describe("tasks.ask_user 追问阻塞与回答", () => {
       method: "POST",
       body: JSON.stringify({ text: "50-150 万" }),
     });
-    await waitFor(() => container.approvals.list("pending").some((item) => item.id !== first.id));
-    const second = container.approvals.list("pending")[0]!;
+    await waitFor(async () =>
+      (await container.approvals.list("pending")).some((item) => item.id !== first.id),
+    );
+    const second = (await container.approvals.list("pending"))[0]!;
     expect(second.payload).toMatchObject({ index: 2, total: 2 });
     await call(`/approvals/${second.id}/answer`, {
       method: "POST",
       body: JSON.stringify({ text: "3-5 人" }),
     });
-    await waitFor(() => container.tasks.get(task.id)?.status === "awaiting_review");
-    const [run] = container.tasks.listRuns(task.id);
-    const askCall = (run!.toolCalls as Array<{ name: string; result: unknown }>)!.find(
-      (item) => item.name === "tasks.ask_user",
-    );
+    await waitFor(async () => (await container.tasks.get(task.id))?.status === "awaiting_review");
+    const [run] = await container.tasks.listRuns(task.id);
+    const askCall = (run!.toolCalls as Array<{
+      name: string;
+      result: unknown;
+    }>)!.find((item) => item.name === "tasks.ask_user");
     expect(askCall?.result).toBe("1. 预算范围？: 50-150 万\n2. 团队规模？: 3-5 人");
-    expect(container.approvals.list().filter((item) => item.kind === "tool")).toHaveLength(0);
+    expect((await container.approvals.list()).filter((item) => item.kind === "tool")).toHaveLength(
+      0,
+    );
   });
 });
-
 describe("resume：续跑拼装上次失败摘要", () => {
   it("trigger='resume' 时，orchestrator.run 收到的 system prompt 包含上次失败的工具调用与错误摘要", async () => {
-    const task = container.tasks.create({
+    const task = await container.tasks.create({
       goal: "续跑测试",
       conversationId: "conv-resume-test",
       requiresPlanApproval: false,
     });
-    const failedRun = container.tasks.createRun({
+    const failedRun = await container.tasks.createRun({
       taskId: task.id,
       kind: "root",
       agent: "orchestrator",
       trigger: "create",
       input: { userMessage: "第一次尝试" },
     });
-    container.tasks.transition(task.id, "queued");
-    container.tasks.transition(task.id, "running");
-    container.tasks.finalizeRunDirect(failedRun.id, {
+    await container.tasks.transition(task.id, "queued");
+    await container.tasks.transition(task.id, "running");
+    await container.tasks.finalizeRunDirect(failedRun.id, {
       status: "failed",
       resultError: "连接数据库超时",
       toolCalls: [
@@ -212,8 +216,7 @@ describe("resume：续跑拼装上次失败摘要", () => {
         },
       ],
     });
-    expect(container.tasks.get(task.id)!.status).toBe("failed");
-
+    expect((await container.tasks.get(task.id))!.status).toBe("failed");
     let capturedSystemPrompt = "";
     faux.setResponses([
       (context: Context) => {
@@ -221,97 +224,92 @@ describe("resume：续跑拼装上次失败摘要", () => {
         return fauxAssistantMessage(fauxText("继续执行完成"));
       },
     ]);
-
-    const resumeRun = await json<{ id: string }>(`/tasks/${task.id}/runs`, {
+    const resumeRun = await json<{
+      id: string;
+    }>(`/tasks/${task.id}/runs`, {
       method: "POST",
       body: JSON.stringify({ trigger: "resume", message: "继续" }),
     });
-
-    await waitFor(() => container.tasks.getRun(resumeRun.id)?.status === "succeeded");
-
+    await waitFor(async () => (await container.tasks.getRun(resumeRun.id))?.status === "succeeded");
     expect(capturedSystemPrompt).toContain("连接数据库超时");
     expect(capturedSystemPrompt).toContain("shell.run");
   });
 });
-
 describe("幂等：HTTP 层重复请求只产生一条 Run", () => {
   it("POST /tasks/:id/runs 带同一个 idempotencyKey 连续调用两次，只产生一条新 Run", async () => {
     faux.setResponses([fauxAssistantMessage(fauxText("创建任务的首次响应"))]);
-    const task = await json<{ id: string }>("/tasks", {
+    const task = await json<{
+      id: string;
+    }>("/tasks", {
       method: "POST",
       body: JSON.stringify({ goal: "幂等测试任务" }),
     });
-    await waitFor(() => container.tasks.get(task.id)?.status === "awaiting_review");
-
+    await waitFor(async () => (await container.tasks.get(task.id))?.status === "awaiting_review");
     const key = "idem-followup-key-1";
     faux.setResponses([fauxAssistantMessage(fauxText("追加指令的响应"))]);
-    const run1 = await json<{ id: string }>(`/tasks/${task.id}/runs`, {
+    const run1 = await json<{
+      id: string;
+    }>(`/tasks/${task.id}/runs`, {
       method: "POST",
       body: JSON.stringify({ trigger: "followup", message: "追加指令", idempotencyKey: key }),
     });
-    await waitFor(() => container.tasks.getRun(run1.id)?.status === "succeeded");
-
-    const run2 = await json<{ id: string }>(`/tasks/${task.id}/runs`, {
+    await waitFor(async () => (await container.tasks.getRun(run1.id))?.status === "succeeded");
+    const run2 = await json<{
+      id: string;
+    }>(`/tasks/${task.id}/runs`, {
       method: "POST",
       body: JSON.stringify({ trigger: "followup", message: "追加指令", idempotencyKey: key }),
     });
-
     expect(run2.id).toBe(run1.id);
-    expect(container.tasks.listRuns(task.id).length).toBe(2);
+    expect((await container.tasks.listRuns(task.id)).length).toBe(2);
   });
-
   it("POST /tasks 带 idempotencyKey 时会正确透传到创建的 Run 上", async () => {
     faux.setResponses([fauxAssistantMessage(fauxText("带幂等键创建任务的响应"))]);
     const key = "idem-create-key-1";
-    const task = await json<{ id: string }>("/tasks", {
+    const task = await json<{
+      id: string;
+    }>("/tasks", {
       method: "POST",
       body: JSON.stringify({ goal: "带幂等键的任务", idempotencyKey: key }),
     });
-    await waitFor(() => container.tasks.get(task.id)?.status === "awaiting_review");
-    const [run] = container.tasks.listRuns(task.id);
+    await waitFor(async () => (await container.tasks.get(task.id))?.status === "awaiting_review");
+    const [run] = await container.tasks.listRuns(task.id);
     expect(run!.idempotencyKey).toBe(key);
   });
 });
-
 describe("ApprovalService.answer 幂等语义", () => {
   let handle: DbHandle | undefined;
-
   afterEach(() => {
     handle?.close();
     handle = undefined;
   });
-
-  it("已经被 resolve 过的审批再次调用 answer 是 no-op：不报错、不改变状态与 payload", () => {
+  it("已经被 resolve 过的审批再次调用 answer 是 no-op：不报错、不改变状态与 payload", async () => {
     handle = openDatabase(":memory:");
     const approvals = new ApprovalService(handle.db, new EventHub());
-    const { approval } = approvals.create({
+    const { approval } = await approvals.create({
       kind: "question",
       title: "需要你补充信息",
       detail: "问题",
       risk: "confirm",
       payload: { kind: "question", question: "问题" },
     });
-
-    const rejected = approvals.resolve(approval.id, false);
+    const rejected = await approvals.resolve(approval.id, false);
     expect(rejected.status).toBe("rejected");
-
-    const afterAnswer = approvals.answer(approval.id, "迟来的回答");
+    const afterAnswer = await approvals.answer(approval.id, "迟来的回答");
     expect(afterAnswer.status).toBe("rejected");
     expect(afterAnswer.payload).toEqual(approval.payload);
   });
-
-  it("pending 状态下 answer 把回答写入 payload 并等价于 approve", () => {
+  it("pending 状态下 answer 把回答写入 payload 并等价于 approve", async () => {
     handle = openDatabase(":memory:");
     const approvals = new ApprovalService(handle.db, new EventHub());
-    const { approval } = approvals.create({
+    const { approval } = await approvals.create({
       kind: "question",
       title: "需要你补充信息",
       detail: "问题",
       risk: "confirm",
       payload: { kind: "question", question: "问题" },
     });
-
-    const answered = approvals.answer(approval.id, "我的回答");
+    const answered = await approvals.answer(approval.id, "我的回答");
     expect(answered.status).toBe("approved");
     expect(answered.payload).toMatchObject({ answer: "我的回答" });
   });

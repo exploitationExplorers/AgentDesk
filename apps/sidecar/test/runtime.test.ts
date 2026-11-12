@@ -6,7 +6,6 @@ import { describe, expect, it } from "vitest";
 import { loadConfig } from "../src/config";
 import { startSidecar } from "../src/runtime";
 import { aiCommitWorkerArgs, aiCommitWorkerPath } from "../src/worker-path";
-
 function config() {
   return loadConfig({
     AGENTDESK_DATA_DIR: mkdtempSync(join(tmpdir(), "agentdesk-runtime-")),
@@ -14,7 +13,6 @@ function config() {
     AGENTDESK_TOKEN: "runtime-test-token",
   });
 }
-
 describe("独立运行服务", () => {
   it("真实监听、沿用认证、扩展路由并可重复关闭", async () => {
     const runtime = await startSidecar(config(), {
@@ -41,7 +39,6 @@ describe("独立运行服务", () => {
       await first;
     }
   });
-
   it("端口占用时启动失败并释放数据库", async () => {
     const first = await startSidecar(config(), { schedule: false });
     const next = { ...config(), port: first.port };
@@ -53,13 +50,11 @@ describe("独立运行服务", () => {
       await first.close();
     }
   });
-
   it("源码运行能定位独立提交 worker", () => {
     expect(aiCommitWorkerPath().replaceAll("\\", "/")).toMatch(
       /apps\/sidecar\/scripts\/ai-commit-worker\.ts$/,
     );
   });
-
   it("源码 worker 在独立进程中完成任务，不要求发行包或全局 tsx", () => {
     const dir = mkdtempSync(join(tmpdir(), "agentdesk-commit-worker-"));
     const jobPath = join(dir, "job.json");
@@ -80,7 +75,7 @@ describe("独立运行服务", () => {
     execFileSync(process.execPath, aiCommitWorkerArgs(jobPath), {
       cwd: dir,
       windowsHide: true,
-      timeout: 10_000,
+      timeout: 10000,
     });
     expect(JSON.parse(readFileSync(jobPath, "utf8"))).toMatchObject({
       status: "done",

@@ -21,7 +21,7 @@ it.each([false, true])(
             { headers: { "content-type": "text/event-stream" } },
           ),
       } as unknown as RunnerClient,
-      { sessionAlive: () => true } as unknown as RemoteRoutingStore,
+      { sessionAlive: async () => true } as unknown as RemoteRoutingStore,
     );
     const stream = await events.open(
       { userId: "owner", sessionId: "session", recentAuthAt: new Date().toISOString() },

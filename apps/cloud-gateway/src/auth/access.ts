@@ -6,7 +6,6 @@ import type { GatewayConfig } from "../config";
 import type { GatewayAuth } from "./service";
 import type { GatewayStore } from "../db/store";
 import { sessionExpired } from "./session-policy";
-
 export function clientAddress(c: Context, config: GatewayConfig, peer: string): string {
   const address = peer.startsWith("::ffff:") ? peer.slice(7) : peer;
   const family = isIP(address) === 6 ? "ipv6" : "ipv4";
@@ -26,7 +25,6 @@ export function clientAddress(c: Context, config: GatewayConfig, peer: string): 
     throw new AppError(ErrorCode.Forbidden, "需要 HTTPS");
   return forwarded ?? address;
 }
-
 export function authHeaders(c: Context, config: GatewayConfig): Headers {
   // Better Auth 只接收已核实的 Origin 和 Cookie，不再次解释浏览器提供的代理头。
   const headers = new Headers({ origin: config.publicOrigin });
@@ -34,17 +32,14 @@ export function authHeaders(c: Context, config: GatewayConfig): Headers {
   if (cookie) headers.set("cookie", cookie);
   return headers;
 }
-
 export const csrfToken = (sessionId: string, secret: string) =>
   createHmac("sha256", secret).update(`csrf:${sessionId}`).digest("base64url");
-
 export function verifyCsrf(value: string | undefined, sessionId: string, secret: string): void {
   const expected = Buffer.from(csrfToken(sessionId, secret));
   const actual = Buffer.from(value ?? "");
   if (actual.length !== expected.length || !timingSafeEqual(actual, expected))
     throw new AppError(ErrorCode.Forbidden, "请求验证已失效，请刷新页面");
 }
-
 export async function requireSession(
   auth: GatewayAuth,
   store: GatewayStore,
@@ -60,10 +55,10 @@ export async function requireSession(
     throw new AppError(ErrorCode.Unauthorized, "请登录");
   const { session } = result;
   if (sessionExpired(session.createdAt, session.updatedAt)) {
-    store.db.prepare('DELETE FROM "session" WHERE id=?').run(session.id);
+    await store.db.prepare('DELETE FROM "session" WHERE id=?').run(session.id);
     throw new AppError(ErrorCode.Unauthorized, "登录已过期");
   }
-  store.db
+  await store.db
     .prepare('UPDATE "session" SET "updatedAt"=? WHERE id=?')
     .run(new Date().toISOString(), session.id);
   return result;
