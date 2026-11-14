@@ -21,6 +21,7 @@
   },
   "scripts": {
     "build": "tsx scripts/build.ts",
+    "build:team-client": "tsx scripts/build-team-client.ts",
     "prepack": "tsx scripts/build.ts",
     "test": "node --import tsx --test test/*.test.ts",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.tools.json",

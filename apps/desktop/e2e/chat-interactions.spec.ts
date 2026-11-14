@@ -293,10 +293,10 @@ test("工作台宽度可调整并保存，明暗主题及窄屏均可关闭面�
   await expect(page.getByRole("button", { name: "选择 Agent" })).toBeFocused();
 });
 
-test("欢迎页与输入菜单在桌面和窄屏下保持可读", async ({ page }, testInfo) => {
+test("单聊欢迎页与输入菜单在桌面和窄屏下保持可读", async ({ page }, testInfo) => {
   await fixture(page, 0);
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.goto("/");
+  await page.goto("/#/");
   await expect(page.getByRole("heading", { name: /今天想做什么/ })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("chat-home-light.png") });
   await page.getByRole("button", { name: "选择 Agent" }).click();

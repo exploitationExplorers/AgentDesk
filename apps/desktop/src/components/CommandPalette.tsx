@@ -5,6 +5,7 @@ import {
   Code2,
   FolderGit2,
   HardDrive,
+  House,
   MessageSquarePlus,
   Newspaper,
   Play,
@@ -13,6 +14,7 @@ import {
   Settings,
   Sparkles,
   Terminal,
+  UsersRound,
   Workflow,
 } from "lucide-react";
 import { useEffect } from "react";
@@ -88,6 +90,18 @@ export function CommandPalette() {
           heading="导航"
           className="px-1 text-[11px] text-subtle [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5"
         >
+          <Item
+            icon={<House className="h-4 w-4" />}
+            onSelect={() => go(() => navigate({ to: "/welcome" }))}
+          >
+            首页
+          </Item>
+          <Item
+            icon={<UsersRound className="h-4 w-4" />}
+            onSelect={() => go(() => navigate({ to: "/collaboration", search: {} }))}
+          >
+            Agent 群聊
+          </Item>
           <Item
             icon={<MessageSquarePlus className="h-4 w-4" />}
             onSelect={() => go(() => navigate({ to: "/", search: {} }))}

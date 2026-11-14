@@ -133,7 +133,12 @@ export function createWorkbench(webRoot: string) {
         return c.notFound();
       }
       if (pathname === "/index.html") return c.redirect("/");
-      if (pathname !== "/" && pathname !== "/agentdesk.svg" && !pathname.startsWith("/assets/"))
+      if (
+        pathname !== "/" &&
+        pathname !== "/agentdesk.svg" &&
+        !pathname.startsWith("/assets/") &&
+        !pathname.startsWith("/reference/")
+      )
         return c.notFound();
       if (pathname.includes("\\") || pathname.includes("\0")) return c.notFound();
       try {
@@ -149,6 +154,9 @@ export function createWorkbench(webRoot: string) {
           ".css": "text/css",
           ".svg": "image/svg+xml",
           ".png": "image/png",
+          ".jpg": "image/jpeg",
+          ".jpeg": "image/jpeg",
+          ".ttf": "font/ttf",
           ".woff2": "font/woff2",
         };
         const type = mime[extname(file)];

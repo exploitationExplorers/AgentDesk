@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+<defs>
+    <filter id="fuzz" x="-10%" y="-10%" width="120%" height="120%">
+      <feTurbulence type="fractalNoise" baseFrequency="1.1" numOctaves="2" seed="3" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="2.6" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <radialGradient id="g-jolly" cx="42%" cy="32%" r="75%"><stop offset="0" stop-color="#FFFDF8"/><stop offset=".55" stop-color="#F3EADB"/><stop offset="1" stop-color="#D9C8AC"/></radialGradient>
+    <radialGradient id="g-alfred" cx="45%" cy="38%" r="70%"><stop offset="0" stop-color="#FFEE7A"/><stop offset=".6" stop-color="#F7CD27"/><stop offset="1" stop-color="#D9A307"/></radialGradient>
+    <radialGradient id="g-molty" cx="40%" cy="35%" r="70%"><stop offset="0" stop-color="#FF7A66"/><stop offset=".6" stop-color="#EE3E2C"/><stop offset="1" stop-color="#BF2316"/></radialGradient>
+  </defs>
+<g stroke="#D3301F" stroke-width="3.2" fill="none" stroke-linecap="round"><path d="M43 31C40 19 34 13 27 9"/><path d="M57 31C60 19 66 13 73 9"/></g>
+    <circle cx="27" cy="9" r="3.4" fill="#D3301F"/><circle cx="73" cy="9" r="3.4" fill="#D3301F"/>
+    <path d="M24 52Q9 53 7 39Q6 28 15 25Q14 33 20 35Q22 29 28 30Q32 39 24 52Z" fill="url(#g-molty)"/>
+    <path d="M76 52Q91 53 93 39Q94 28 85 25Q86 33 80 35Q78 29 72 30Q68 39 76 52Z" fill="url(#g-molty)"/>
+    <rect x="35" y="78" width="7" height="12" rx="3.5" fill="#C9281A"/><rect x="58" y="78" width="7" height="12" rx="3.5" fill="#C9281A"/>
+    <circle cx="50" cy="56" r="29" fill="url(#g-molty)"/>
+    <circle cx="41" cy="52" r="4.4" fill="#161616"/><circle cx="59" cy="52" r="4.4" fill="#161616"/>
+    <circle cx="42.4" cy="50.6" r="1.4" fill="#fff"/><circle cx="60.4" cy="50.6" r="1.4" fill="#fff"/>
+    <path d="M45 63Q50 67 55 63" stroke="#6A0E07" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+</svg>

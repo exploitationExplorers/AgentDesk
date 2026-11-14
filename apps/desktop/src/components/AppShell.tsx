@@ -5,6 +5,7 @@ import {
   GraduationCap,
   Code2,
   HardDrive,
+  House,
   MessageSquare,
   Menu,
   Newspaper,
@@ -16,6 +17,7 @@ import {
   Settings,
   ShieldAlert,
   Sparkles,
+  UsersRound,
   Workflow,
   type LucideIcon,
 } from "lucide-react";
@@ -44,6 +46,9 @@ import { Toasts } from "./Toasts";
 import { ThemeToggle } from "./ThemeToggle";
 
 const NAV: Array<{ to: string; label: string; icon: LucideIcon }> = [
+  { to: "/welcome", label: "首页", icon: House },
+  { to: "/collaboration", label: "群聊", icon: UsersRound },
+  { to: "/team", label: "团队开发", icon: UsersRound },
   { to: "/", label: "Bot", icon: MessageSquare },
   { to: "/code", label: "编码", icon: Code2 },
   { to: "/projects", label: "项目", icon: FolderGit2 },
@@ -109,6 +114,13 @@ function NavItem({
 }
 
 export function AppShell() {
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  // 团队独立站不连接本机 Provider、磁盘或全局审批，也不加载那些页面的后台查询。
+  if (pathname === "/team") return <Outlet />;
+  return <WorkbenchShell />;
+}
+
+function WorkbenchShell() {
   useGlobalEvents();
   const reduced = useReducedMotion();
   const { theme, sidebarCollapsed: collapsed, toggleSidebar, setPaletteOpen } = useUi();
@@ -157,6 +169,20 @@ export function AppShell() {
   useEffect(() => setMobileNavOpen(false), [routeSection]);
 
   const navCollapsed = (collapsed || routeSection === "home") && !mobileNavOpen;
+
+  if (routeSection === "welcome" || routeSection === "collaboration") {
+    return (
+      <TooltipProvider>
+        <div className="h-full min-h-0 min-w-0">
+          <Outlet />
+        </div>
+        <LowDiskDialog status={disk.data} />
+        <CommandPalette />
+        <Toasts />
+        <ApprovalToasts />
+      </TooltipProvider>
+    );
+  }
 
   return (
     <TooltipProvider>

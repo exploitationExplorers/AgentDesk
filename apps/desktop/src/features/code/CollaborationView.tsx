@@ -151,11 +151,12 @@ export function CollaborationView({
         to: target,
         color: index ? "var(--collab-mint)" : "var(--collab-sky)",
         live:
-          model.root?.status === "running" ||
-          (index ? model.events.length > 0 : model.outputs.length > 0),
+          model.live &&
+          (model.root?.status === "running" ||
+            (index ? model.events.length > 0 : model.outputs.length > 0)),
       })),
     ],
-    [model.members, model.root, model.events.length, model.outputs.length, colors],
+    [model.members, model.root, model.live, model.events.length, model.outputs.length, colors],
   );
 
   useEffect(() => {

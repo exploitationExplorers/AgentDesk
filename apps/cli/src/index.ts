@@ -17,6 +17,7 @@ import {
 import { runningState, serviceStatus, startService, stopService } from "./lifecycle.js";
 import { cliHome } from "./state.js";
 import { connectCommand } from "./connect/commands.js";
+import { teamCommand } from "./team/commands.js";
 import { offerCliUpdate } from "./update.js";
 import { configureUi, createUi, nextCommand } from "./ui.js";
 import { chooseWorkspace, openWorkbench } from "./workbench.js";
@@ -71,7 +72,9 @@ async function main() {
     process.stdout.write(HELP);
     return;
   }
-  if (command === "connect") {
+  if (command === "team") {
+    await teamCommand(home, positionals[0]!, positionals.slice(1), values);
+  } else if (command === "connect") {
     await connectCommand(home, workerPath, positionals[0]!, values);
   } else if (command === "start" || command === "restart") {
     let port = values.port === undefined ? undefined : Number(values.port);

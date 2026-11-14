@@ -1,0 +1,22 @@
+[Unit]
+Description=AgentDesk Team Collaboration
+After=network.target
+
+[Service]
+Type=simple
+User=agentdesk-team
+Group=agentdesk-team
+WorkingDirectory=/opt/agentdesk-team
+EnvironmentFile=/opt/agentdesk-team/team.env
+ExecStart=/usr/bin/node /opt/agentdesk-team/team.mjs
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/agentdesk-team/data
+
+[Install]
+WantedBy=multi-user.target

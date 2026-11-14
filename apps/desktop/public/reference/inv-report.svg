@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 300" width="500" height="300">
+  <rect width="500" height="300" fill="#F1F8FF"/>
+  <rect x="44" y="22" width="412" height="300" rx="14" fill="#fff"/>
+  <text x="74" y="62" font-family="Helvetica, Arial, sans-serif" font-size="15" fill="#141414" fill-opacity=".45">Annual report</text>
+  <text x="426" y="62" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="15" fill="#141414" fill-opacity=".45">41</text>
+  <text x="74" y="94" font-family="Helvetica, Arial, sans-serif" font-size="21" font-weight="600" fill="#141414" fill-opacity=".85">Cash flows</text>
+  <g font-family="Helvetica, Arial, sans-serif" font-size="18" fill="#141414" fill-opacity=".72">
+    <text x="74" y="136">Operating cash flow</text>
+    <text x="426" y="136" text-anchor="end">$1.9B</text>
+    <text x="74" y="172">Capital spending</text>
+    <text x="426" y="172" text-anchor="end">($1.3B)</text>
+  </g>
+  <line x1="74" y1="188" x2="426" y2="188" stroke="#141414" stroke-opacity=".12" stroke-width="1.5"/>
+  <rect x="62" y="198" width="376" height="40" rx="10" fill="#FFEFC2"/>
+  <rect x="62" y="198" width="376" height="40" rx="10" fill="none" stroke="#141414" stroke-opacity=".55" stroke-width="2.5"/>
+  <g font-family="Helvetica, Arial, sans-serif" font-size="18" font-weight="600" fill="#141414" fill-opacity=".9">
+    <text x="74" y="224">Free cash flow</text>
+    <text x="426" y="224" text-anchor="end">$0.6B</text>
+  </g>
+  <g fill="#141414" fill-opacity=".07">
+    <rect x="74" y="256" width="300" height="10" rx="5"/>
+    <rect x="74" y="276" width="240" height="10" rx="5"/>
+  </g>
+</svg>

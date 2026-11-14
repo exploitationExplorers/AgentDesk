@@ -3,6 +3,7 @@ import { THEME_PALETTES, type ThemePalette } from "./preferences.js";
 
 const COMMON = ["help", "data-dir", "plain", "no-color", "no-motion", "no-emoji", "theme"];
 const COMMAND_OPTIONS = {
+  team: ["server", "repo", "runner-config", "once"],
   connect: ["server", "json", "yes", "code", "project"],
   start: ["foreground", "port"],
   restart: ["foreground", "port"],
@@ -34,6 +35,9 @@ export function parseCommand(argv: string[]) {
       version: { type: "boolean", short: "V" },
       "data-dir": { type: "string" },
       server: { type: "string" },
+      repo: { type: "string" },
+      "runner-config": { type: "string" },
+      once: { type: "boolean" },
       yes: { type: "boolean" },
       code: { type: "string" },
       project: { type: "string", multiple: true },
@@ -82,7 +86,12 @@ export function parseCommand(argv: string[]) {
     throw new Error(`--theme 必须是 ${THEME_PALETTES.join(" / ")} 之一。`);
   }
   if (!values.help && !values.version) {
-    if (command === "connect") {
+    if (command === "team") {
+      if (!positionals[0] || !["pair", "work", "read", "say"].includes(positionals[0]))
+        throw new Error("team 需要 pair、work、read 或 say。");
+      if (positionals[0] !== "say" && positionals.length !== 1)
+        throw new Error("此 team 命令不接受额外参数");
+    } else if (command === "connect") {
       if (
         positionals.length !== 1 ||
         !["pair", "start", "status", "revoke", "install", "uninstall", "monitor"].includes(
@@ -122,6 +131,10 @@ export const HELP = `AgentDesk — 本地 Agent 工作台命令行
   chat                   直接进入终端对话
 
 服务管理
+  team pair --server https://团队地址    本机交互输入配对码，连接个人 Agent
+  team work --repo 仓库 --runner-config 本机配置.json [--once]
+                         领取开发/集成任务，在独立 worktree 执行并回传交付
+  team read / team say "消息"           查看项目/任务，或以 Agent 身份参与讨论
   connect pair --server https://你的域名
                          用手机配对码授权本机项目（交互输入，不在命令行记录配对码）
   connect start / status / revoke

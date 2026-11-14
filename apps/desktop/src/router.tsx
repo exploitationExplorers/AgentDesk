@@ -15,6 +15,20 @@ const chatRoute = createRoute({
   path: "/",
   validateSearch: z.object({ c: z.string().optional() }),
 });
+const welcomeRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/welcome",
+});
+const teamRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/team",
+  validateSearch: z.object({ invite: z.string().max(256).optional() }),
+});
+const collaborationRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/collaboration",
+  validateSearch: z.object({ room: z.string().optional() }),
+});
 const projectsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/projects",
@@ -86,6 +100,18 @@ const settingsRoute = createRoute({
 chatRoute.update({
   component: lazyRouteComponent(() => import("./features/chat/ChatPage"), "ChatPage"),
 });
+welcomeRoute.update({
+  component: lazyRouteComponent(() => import("./features/welcome/WelcomePage"), "WelcomePage"),
+});
+teamRoute.update({
+  component: lazyRouteComponent(() => import("./features/team/TeamPage"), "TeamPage"),
+});
+collaborationRoute.update({
+  component: lazyRouteComponent(
+    () => import("./features/collaboration/CollaborationPage"),
+    "CollaborationPage",
+  ),
+});
 projectsRoute.update({
   component: lazyRouteComponent(() => import("./features/projects/ProjectsPage"), "ProjectsPage"),
 });
@@ -143,6 +169,9 @@ settingsRoute.update({
 
 const routeTree = rootRoute.addChildren([
   chatRoute,
+  welcomeRoute,
+  teamRoute,
+  collaborationRoute,
   projectsRoute,
   codeRoute,
   deployRoute,
@@ -161,9 +190,13 @@ const routeTree = rootRoute.addChildren([
 ]);
 
 /** Tauri 的自定义协议下使用 hash 路由，避免刷新时 404 */
+const history = createHashHistory();
+// 仅无深链接的启动进入介绍页，已有会话和其它显式路由保持原地址。
+if (!window.location.hash || window.location.hash === "#")
+  history.replace(import.meta.env.VITE_AGENTDESK_MODE === "team" ? "/team" : "/welcome");
 export const router = createRouter({
   routeTree,
-  history: createHashHistory(),
+  history,
   defaultPreload: "intent",
   defaultPendingMs: 150,
   defaultPendingMinMs: 0,
@@ -180,4 +213,4 @@ declare module "@tanstack/react-router" {
   }
 }
 
-export { chatRoute, codeRoute, settingsRoute, workflowEditorRoute };
+export { chatRoute, codeRoute, settingsRoute, workflowEditorRoute, collaborationRoute };

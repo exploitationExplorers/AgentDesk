@@ -8,6 +8,8 @@ export * from "./contracts/project";
 export * from "./contracts/deploy";
 export * from "./contracts/feed";
 export * from "./contracts/chat";
+export * from "./contracts/collaboration";
+export * from "./contracts/team";
 export * from "./contracts/context";
 export * from "./contracts/workbench";
 export * from "./contracts/project-insights";

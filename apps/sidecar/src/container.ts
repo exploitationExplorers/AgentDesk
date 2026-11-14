@@ -28,6 +28,9 @@ import { AutoloopStore } from "./services/autoloop/store";
 import { createAutoApprove } from "./services/auto-approve";
 import { BrowserService } from "./services/browser";
 import { ChatService } from "./services/chat";
+import { CollaborationService } from "./services/collaboration";
+import { TeamService } from "./services/team";
+import { createCollaborationExecutor } from "./services/collaboration-executor";
 import { ConversationStore } from "./services/conversation-store";
 import { ConversationContextService } from "./services/conversation-context";
 import { ProjectInsightService } from "./services/project-insights";
@@ -94,6 +97,8 @@ export interface Container {
   wechat: WechatReportService | null;
   orchestrator: Orchestrator;
   chat: ChatService;
+  collaboration: CollaborationService;
+  team: TeamService;
   context: ConversationContextService;
   insights: ProjectInsightService;
   tasks: TaskService;
@@ -424,6 +429,15 @@ export async function createContainer(
   );
   chat.setContextService(context);
   if (!remoteOptions) chat.setEvolutionService(evolution);
+  const collaboration = new CollaborationService(
+    db,
+    providers,
+    createCollaborationExecutor(orchestrator, approvals, maskFactory),
+    approvals,
+    { persistence },
+  );
+  await collaboration.ready;
+  const team = new TeamService(db, persistence);
   const insights = new ProjectInsightService(db, projects, tasks, providers, maskFactory);
   const scheduler = new Scheduler(db, settings, feed, workflows);
   return {
@@ -456,6 +470,8 @@ export async function createContainer(
     wechat,
     orchestrator,
     chat,
+    collaboration,
+    team,
     context,
     insights,
     tasks,
@@ -484,6 +500,7 @@ export async function createContainer(
       await cloudRepositorySetup?.dispose();
       await codex?.dispose();
       await autoloop.dispose();
+      await collaboration.dispose();
       await chat.dispose();
       reach.dispose();
       await insights.dispose();

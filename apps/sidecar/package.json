@@ -7,8 +7,10 @@
     "dev": "tsx watch --clear-screen=false src/index.ts",
     "start": "tsx src/index.ts",
     "start:cloud": "tsx src/cloud.ts",
+    "start:team": "tsx src/team.ts",
     "build": "tsx scripts/build.ts",
     "build:cloud": "tsx scripts/build-cloud.ts",
+    "build:team": "tsx scripts/build-team.ts",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run"
   },

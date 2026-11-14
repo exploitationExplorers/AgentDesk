@@ -1,0 +1,42 @@
+@font-face {
+  font-family: "Welcome Figtree";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/reference/figtree-400.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Welcome Figtree";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/reference/figtree-500.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Welcome Figtree";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/reference/figtree-600.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Welcome Figtree";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/reference/figtree-700.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Welcome Figtree";
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("/reference/figtree-800.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Welcome Nunito";
+  font-style: normal;
+  font-weight: 900;
+  font-display: swap;
+  src: url("/reference/nunito-900.ttf") format("truetype");
+}

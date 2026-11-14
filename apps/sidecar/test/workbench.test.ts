@@ -34,8 +34,19 @@ beforeAll(async () => {
   root = mkdtempSync(join(tmpdir(), "agentdesk-web-test-"));
   const web = join(root, "web");
   mkdirSync(join(web, "assets"), { recursive: true });
+  mkdirSync(join(web, "reference", "avatars"), { recursive: true });
   writeFileSync(join(web, "index.html"), "<html>workbench-app</html>");
   writeFileSync(join(web, "assets", "app.js"), "window.workbench = true;");
+  writeFileSync(
+    join(web, "reference", "fonts.css"),
+    "@font-face{font-family:Welcome;src:url(font.ttf)}",
+  );
+  writeFileSync(join(web, "reference", "font.ttf"), "font fixture");
+  writeFileSync(join(web, "reference", "scene.jpg"), "image fixture");
+  writeFileSync(
+    join(web, "reference", "avatars", "jolly.svg"),
+    "<svg xmlns='http://www.w3.org/2000/svg'/>",
+  );
   writeFileSync(join(root, "private.txt"), "private outside web root");
   container = await createContainer(
     loadConfig({ AGENTDESK_DATA_DIR: join(root, "data"), AGENTDESK_TOKEN: master }),
@@ -134,6 +145,16 @@ describe("CLI 浏览器工作台", () => {
     expect((await request("/assets/app.js")).headers.get("content-type")).toContain(
       "text/javascript",
     );
+    for (const [path, mime] of [
+      ["/reference/fonts.css", "text/css"],
+      ["/reference/font.ttf", "font/ttf"],
+      ["/reference/scene.jpg", "image/jpeg"],
+      ["/reference/avatars/jolly.svg", "image/svg+xml"],
+    ] as const) {
+      const response = await request(path);
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toContain(mime);
+    }
     for (const path of [
       "/package.json",
       "/.env",
@@ -141,6 +162,10 @@ describe("CLI 浏览器工作台", () => {
       "/assets/..%5c..%5cprivate.txt",
       "/assets/%00app.js",
       "/assets/missing.js",
+      "/reference/..%2f..%2fprivate.txt",
+      "/reference/..%5c..%5cprivate.txt",
+      "/reference/%00font.ttf",
+      "/reference/missing.svg",
     ]) {
       const response = await request(path);
       expect(response.status).toBe(404);

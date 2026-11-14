@@ -150,6 +150,12 @@ async function collaborationFixture(
     const request = route.request(),
       path = new URL(request.url()).pathname;
     if (request.method() !== "GET") writes.push(path);
+    if (path === "/api/desktop-terminal/start" || path === "/api/desktop-terminal/resize")
+      return route.fulfill({ json: { generation: 1 } });
+    if (path === "/api/desktop-terminal/read")
+      return route.fulfill({
+        json: { generation: 1, reset: false, data: "", cursor: 0, exitCode: null, running: true },
+      });
     if (path === `${prefix}/tasks`)
       return route.fulfill({
         json: [
@@ -222,9 +228,11 @@ async function collaborationFixture(
     return route.fulfill({ json: [] });
   });
   await page.goto(`/#/code?task=${task.id}&source=${source}`);
-  await page.getByRole("button", { name: "协作视图", exact: true }).click();
   const view = page.getByTestId("collaboration-view");
-  await expect(view.getByTestId("collaboration-member")).toHaveCount(4);
+  if (source === "workbench") {
+    await page.getByRole("button", { name: "协作视图", exact: true }).click();
+    await expect(view.getByTestId("collaboration-member")).toHaveCount(4);
+  }
   return {
     view,
     writes,
@@ -263,9 +271,11 @@ test("协作视图接收真实事件结构，暂停仅影响动效，终态停�
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   const { view, writes, finish } = await collaborationFixture(page);
-  const reviewer = view.getByRole("button", { name: "查看审查的任务详情" });
+  const reviewer = view.getByRole("button", { name: "查看子 Agent 审查的任务详情" });
   await expect(reviewer).toContainText("待确认");
-  await expect(view.getByRole("button", { name: "查看部署的任务详情" })).toContainText("失败");
+  await expect(view.getByRole("button", { name: "查看子 Agent 部署的任务详情" })).toContainText(
+    "失败",
+  );
   await expect(view.getByText("协作模型说明", { exact: true })).toBeVisible();
   await expect(view.locator(".ad-collab-packet").first()).toBeVisible();
   await page.getByRole("button", { name: "批准执行", exact: true }).click();
@@ -289,14 +299,15 @@ test("历史轮次、任务详情和成果检查器互通，窄屏与减少动�
   await page.getByRole("button", { name: "批准执行", exact: true }).click();
   await page.evaluate(() => document.documentElement.classList.add("dark"));
   await view.screenshot({ path: testInfo.outputPath("collaboration-dark.png") });
-  await view.getByRole("button", { name: "查看部署的任务详情" }).click();
+  await view.getByRole("button", { name: "查看子 Agent 部署的任务详情" }).click();
   const detail = page.getByRole("dialog");
   await expect(detail).toContainText("测试服务暂时不可用");
   await page.keyboard.press("Escape");
   await expect(detail).not.toBeVisible();
   await view.getByRole("combobox", { name: "执行轮次" }).selectOption("old-root");
   await expect(view.getByTestId("collaboration-member")).toHaveCount(0);
-  await expect(view.getByText("本轮由主控直接执行")).toBeVisible();
+  await expect(view.getByText("等待子 Agent 加入", { exact: true })).toBeVisible();
+  await expect(view.getByRole("button", { name: "查看主控任务详情" })).toContainText("已完成");
   await expect(view.getByText("协作模型说明", { exact: true })).toHaveCount(0);
   await view.getByRole("combobox", { name: "执行轮次" }).selectOption("root");
   await page.emulateMedia({ reducedMotion: "reduce" });
@@ -326,7 +337,8 @@ test("同一任务进入新轮次后重新订阅，历史终态不会截断新�
   const previousSubscriptions = streams.filter((after) => after === 0).length;
   followup();
   await expect(view.getByRole("combobox", { name: "执行轮次" })).toHaveValue("followup-root");
-  await expect(view.getByText("本轮由主控直接执行")).toBeVisible();
+  await expect(view.getByText("等待子 Agent 加入", { exact: true })).toBeVisible();
+  await expect(view.getByTestId("collaboration-member")).toHaveCount(0);
   await view.getByRole("button", { name: "查看主控任务详情" }).click();
   await expect(page.getByRole("dialog")).toContainText("1 次工具调用");
   expect(streams.filter((after) => after === 0).length).toBeGreaterThan(previousSubscriptions);
@@ -340,11 +352,17 @@ test("自动化任务在根运行结束后保持订阅", async ({ page }) => {
   await expect.poll(() => streams.length).toBeGreaterThan(subscriptionsAtEnd);
 });
 
-test("CLI 来源的协作视图保持实例隔离", async ({ page }) => {
+test("CLI 来源使用独立终端，不混用工作台协作任务", async ({ page }) => {
   const requests: string[] = [];
   page.on("request", (request) => requests.push(new URL(request.url()).pathname));
   const { view } = await collaborationFixture(page, "cli");
-  await expect(view.getByText("协作模型说明", { exact: true })).toBeVisible();
-  expect(requests).toContain("/api/cli-monitor/tasks/collaboration-task/artifacts");
+  await expect(page.getByRole("region", { name: "CLI 终端", exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "CLI 终端", exact: true }).getByRole("status"),
+  ).toHaveText("已连接");
+  await expect(view).toHaveCount(0);
+  expect(requests).toContain("/api/desktop-terminal/start");
+  expect(requests).toContain("/api/desktop-terminal/read");
+  expect(requests).not.toContain("/api/cli-monitor/tasks/collaboration-task/artifacts");
   expect(requests).not.toContain("/api/tasks/collaboration-task/artifacts");
 });

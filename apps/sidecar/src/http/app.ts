@@ -6,6 +6,8 @@ import type { Container } from "../container";
 import { browserRoutes } from "./routes/browser";
 import { diskRoutes } from "./routes/disk";
 import { chatRoutes } from "./routes/chat";
+import { collaborationRoutes } from "./routes/collaboration";
+import { teamRoutes } from "./routes/team";
 import { cliMonitorRoutes } from "./routes/cli-monitor";
 import { deployRoutes } from "./routes/deploy";
 import { feedRoutes } from "./routes/feed";
@@ -83,6 +85,11 @@ export function createApp(container: Container, options: { webRoot?: string } = 
   app.route("/api", deployRoutes(container));
   app.route("/api", browserRoutes(container));
   app.route("/api", chatRoutes(container));
+  app.route("/api", collaborationRoutes(container));
+  app.route("/team-api/v1", teamRoutes(container.team, { allowedOrigins: config.allowedOrigins }));
+  app.post("/api/team/rooms", async (c) =>
+    c.json(await container.team.create(await c.req.json()), 201),
+  );
   app.route("/api", sessionWorkbenchRoutes(container));
   app.route("/api", autoloopRoutes(container));
   app.route("/api", projectInsightRoutes(container));

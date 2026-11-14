@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+<defs>
+    <filter id="fuzz" x="-10%" y="-10%" width="120%" height="120%">
+      <feTurbulence type="fractalNoise" baseFrequency="1.1" numOctaves="2" seed="3" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="2.6" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <radialGradient id="g-jolly" cx="42%" cy="32%" r="75%"><stop offset="0" stop-color="#FFFDF8"/><stop offset=".55" stop-color="#F3EADB"/><stop offset="1" stop-color="#D9C8AC"/></radialGradient>
+    <radialGradient id="g-alfred" cx="45%" cy="38%" r="70%"><stop offset="0" stop-color="#FFEE7A"/><stop offset=".6" stop-color="#F7CD27"/><stop offset="1" stop-color="#D9A307"/></radialGradient>
+    <radialGradient id="g-molty" cx="40%" cy="35%" r="70%"><stop offset="0" stop-color="#FF7A66"/><stop offset=".6" stop-color="#EE3E2C"/><stop offset="1" stop-color="#BF2316"/></radialGradient>
+  </defs>
+<g filter="url(#fuzz)">
+      <ellipse cx="17" cy="64" rx="7" ry="10" transform="rotate(28 17 64)" fill="url(#g-jolly)"/>
+      <ellipse cx="83" cy="64" rx="7" ry="10" transform="rotate(-28 83 64)" fill="url(#g-jolly)"/>
+      <path d="M50 7C72 7 81 25 81 45C81 53 80 59 83 65C87 74 85 92 69 94L31 94C15 92 13 74 17 65C20 59 19 53 19 45C19 25 28 7 50 7Z" fill="url(#g-jolly)"/>
+    </g>
+    <ellipse cx="34" cy="53" rx="6" ry="3.4" fill="#F2A79C" opacity=".55"/><ellipse cx="66" cy="53" rx="6" ry="3.4" fill="#F2A79C" opacity=".55"/>
+    <circle cx="40.5" cy="45" r="3.3" fill="#1B1B1B"/><circle cx="59.5" cy="45" r="3.3" fill="#1B1B1B"/>
+    <path d="M45 54Q50 59 55 54" stroke="#1B1B1B" stroke-width="2" fill="none" stroke-linecap="round"/>
+</svg>

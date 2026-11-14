@@ -1,0 +1,9 @@
+# 宝塔网站启用 HTTPS 后，将反向代理指向团队专用端口。
+location / {
+    proxy_pass http://127.0.0.1:17895;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    client_max_body_size 64k;
+    proxy_read_timeout 30s;
+}

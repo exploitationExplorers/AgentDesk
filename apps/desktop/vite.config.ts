@@ -20,9 +20,9 @@ export default defineConfig(({ mode }) => ({
   envPrefix: ["VITE_", "TAURI_ENV_*"],
   // npm 内置工作台只能连接当前 CLI，避免构建机环境里的服务地址或令牌进入发行文件。
   define:
-    mode === "cli"
+    mode === "cli" || mode === "team"
       ? {
-          "import.meta.env.VITE_AGENTDESK_MODE": JSON.stringify("cli"),
+          "import.meta.env.VITE_AGENTDESK_MODE": JSON.stringify(mode),
           "import.meta.env.VITE_SIDECAR_URL": JSON.stringify(""),
           "import.meta.env.VITE_SIDECAR_TOKEN": JSON.stringify(""),
         }

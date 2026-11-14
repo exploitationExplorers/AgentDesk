@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -p tsconfig.json && vite build",
+    "build:team": "tsc -p tsconfig.json && vite build --mode team --outDir dist-team",
     "build:cloud": "tsc -p tsconfig.cloud.json && vite build --config vite.cloud.config.ts",
     "typecheck:cloud": "tsc -p tsconfig.cloud.json",
     "e2e:cloud": "playwright test --config playwright.cloud.config.ts",
