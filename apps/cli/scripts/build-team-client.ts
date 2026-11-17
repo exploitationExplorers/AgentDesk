@@ -27,7 +27,7 @@ writeFileSync(
   JSON.stringify(
     {
       name: "agentdesk-team-client",
-      version: "0.1.0-preview.20261114",
+      version: "0.1.1-preview.20261114",
       private: true,
       type: "module",
       license: "UNLICENSED",

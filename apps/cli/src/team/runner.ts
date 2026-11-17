@@ -3,11 +3,14 @@ import { existsSync, readFileSync, realpathSync, mkdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { z } from "zod";
 import type { TeamClaim, TeamDelivery } from "@agentdesk/shared";
+import { StringDecoder } from "node:string_decoder";
+import { watchTaskTranscript, type ExecutionSink } from "./execution.js";
 
 export const LocalTeamRunner = z.strictObject({
   executor: z.enum(["codex", "claude", "custom"]),
   command: z.string().min(1).optional(),
   args: z.array(z.string()).max(40).default([]),
+  shareExecution: z.boolean().default(false),
   checks: z
     .array(
       z.strictObject({
@@ -68,23 +71,61 @@ function agentBinary(config: LocalTeamRunner): { command: string; args: string[]
     ? { command: process.execPath, args: [command, ...config.args] }
     : { command, args: config.args };
 }
-/** 只继承本机终端。模型工具输出不采集、不上传；保留原 CLI 的人工工具审批。 */
+/** 交互 Agent 保留原终端；仅显式授权共享的普通子进程输出通过管道复制。 */
 export function runTeamProcess(
   command: string,
   args: string[],
   cwd: string,
   signal: AbortSignal,
+  output?: (text: string) => void,
 ): Promise<number> {
   signal.throwIfAborted();
   return new Promise((resolveResult, reject) => {
     const child = spawn(command, args, {
       cwd,
-      stdio: "inherit",
+      stdio: output ? ["inherit", "pipe", "pipe"] : "inherit",
       shell: false,
       windowsHide: true,
       // 交互 CLI 必须保留前台终端进程组，否则 Unix 下读取审批输入会被 SIGTTIN 暂停。
       detached: false,
     });
+    const tails: Array<() => void> = [];
+    if (output)
+      for (const [stream, destination] of [
+        [child.stdout, process.stdout],
+        [child.stderr, process.stderr],
+      ] as const) {
+        const decoder = new StringDecoder("utf8");
+        let buffer = "",
+          privateKey = false,
+          discarding = false;
+        const publish = (line: string) => {
+          if (/-----BEGIN .*PRIVATE KEY-----/.test(line)) privateKey = true;
+          if (privateKey) output("[已隐藏私钥内容]");
+          else output(line);
+          if (/-----END .*PRIVATE KEY-----/.test(line)) privateKey = false;
+        };
+        stream?.on("data", (chunk: Buffer) => {
+          destination.write(chunk);
+          buffer += decoder.write(chunk);
+          let newline: number;
+          while ((newline = buffer.indexOf("\n")) !== -1) {
+            const line = buffer.slice(0, newline);
+            buffer = buffer.slice(newline + 1);
+            if (!discarding && line.length <= 16000) publish(line);
+            else output("[过长的输出行已省略]");
+            discarding = false;
+          }
+          if (buffer.length > 16000) {
+            buffer = "";
+            discarding = true;
+          }
+        });
+        tails.push(() => {
+          buffer += decoder.end();
+          if (buffer && !discarding) publish(buffer);
+        });
+      }
     let stopping: Promise<void> | undefined;
     const stop = () => {
       if (!child.pid || stopping) return;
@@ -137,6 +178,7 @@ export function runTeamProcess(
       reject(new Error("本机命令启动失败"));
     });
     child.once("close", (code) => {
+      for (const finish of tails) finish();
       signal.removeEventListener("abort", stop);
       void (stopping ?? Promise.resolve()).then(
         () => resolveResult(signal.aborted ? 1 : (code ?? 1)),
@@ -156,6 +198,7 @@ export async function executeTeamTask(options: {
   progress: (value: string) => void;
   summarize: () => Promise<string>;
   discussion?: Array<{ author: string; kind: string; content: string }>;
+  execution?: ExecutionSink;
 }): Promise<TeamDelivery> {
   const { claim, config, signal, confirm, progress } = options;
   const repo = realpathSync(options.repo);
@@ -168,7 +211,7 @@ export async function executeTeamTask(options: {
     throw new Error("本地仓库存在未提交改动，请先保存后再执行");
   if (
     !(await confirm(
-      `项目：${claim.room.name}\n仓库：${claim.room.repository}\n任务：${claim.task.title}\n${claim.task.instructions}\n验收：${claim.task.acceptance.join("；")}\n执行器：${config.executor}\n将创建独立 worktree 并运行本机配置的 ${config.checks.length} 个检查。确认执行？`,
+      `项目：${claim.room.name}\n仓库：${claim.room.repository}\n任务：${claim.task.title}\n${claim.task.instructions}\n验收：${claim.task.acceptance.join("；")}\n执行器：${config.executor}\n将创建独立 worktree 并运行本机配置的 ${config.checks.length} 个检查。${config.shareExecution ? "本任务可见回复、工具记录、文件名和检查输出会过滤后共享到项目网页；请勿输出秘密。" : "详细执行记录共享未开启，仅上报阶段。"}确认执行？`,
     ))
   )
     throw new Error("本机成员未批准任务");
@@ -187,6 +230,25 @@ export async function executeTeamTask(options: {
     signal,
   );
   console.info(`任务工作目录：${cwd}`);
+  const emit = options.execution;
+  let previousFiles = "",
+    filePoll: Promise<void> | undefined;
+  const reportFiles = () =>
+    (filePoll ??= (async () => {
+      const changes =
+        (await git(cwd, ["diff", "--name-status", claim.task.baseRevision, "HEAD"], signal)) +
+        (await git(cwd, ["status", "--porcelain", "--untracked-files=all"], signal));
+      if (changes.trim() && changes !== previousFiles) {
+        previousFiles = changes;
+        emit?.({ kind: "files", text: changes });
+      }
+    })()
+      .catch(() => {
+        /* 正常退出时仍有一次最终文件核对；失败不上传本机错误。 */
+      })
+      .finally(() => {
+        filePoll = undefined;
+      }));
   for (const dependency of claim.dependencies) {
     if (dependency.status !== "approved" || !dependency.delivery)
       throw new Error("依赖交付尚未验收");
@@ -214,16 +276,51 @@ export async function executeTeamTask(options: {
         : config.executor === "claude"
           ? [...binary.args, "--permission-mode", "default", prompt]
           : [...binary.args, prompt];
-    if ((await runTeamProcess(binary.command, args, cwd, signal)) !== 0)
-      throw new Error("Agent 未正常结束，请在本机检查后重试");
+    const sharing = config.shareExecution && emit;
+    const stopTranscript =
+      sharing && config.executor !== "custom"
+        ? watchTaskTranscript({
+            executor: config.executor,
+            cwd,
+            emit,
+          })
+        : undefined;
+    const filesTimer = sharing ? setInterval(() => void reportFiles(), 2000) : undefined;
+    try {
+      if (
+        (await runTeamProcess(
+          binary.command,
+          args,
+          cwd,
+          signal,
+          sharing && config.executor === "custom"
+            ? (text) => emit({ kind: "output", text })
+            : undefined,
+        )) !== 0
+      )
+        throw new Error("Agent 未正常结束，请在本机检查后重试");
+    } finally {
+      clearInterval(filesTimer);
+      await filePoll;
+      if (sharing) await reportFiles();
+      await stopTranscript?.();
+    }
   }
   signal.throwIfAborted();
   progress("正在执行本机配置的回归检查");
   const checks: TeamDelivery["checks"] = [];
   for (const check of config.checks) {
+    emit?.({ kind: "check", text: `开始检查：${check.name}` });
     if (/\.(cmd|bat)$/i.test(check.command))
       throw new Error("检查命令需要可直接启动的 executable，不能是 shell 批处理");
-    const exitCode = await runTeamProcess(check.command, check.args, cwd, signal);
+    const exitCode = await runTeamProcess(
+      check.command,
+      check.args,
+      cwd,
+      signal,
+      config.shareExecution && emit ? (text) => emit({ kind: "output", text }) : undefined,
+    );
+    emit?.({ kind: "check", text: `${check.name} · exit ${exitCode}` });
     checks.push({ name: check.name, exitCode });
     if (exitCode !== 0) throw new Error(`回归检查未通过：${check.name}`);
   }
@@ -263,7 +360,7 @@ export async function executeTeamTask(options: {
   if (!summary) throw new Error("需要明确填写共享的交付摘要");
   if (
     !(await confirm(
-      `将向团队仓库推送分支 ${claim.task.branch}\n提交 ${revision}\n文件：\n${files}\n群里仅发布摘要、提交与检查结果，不上传模型配置或终端日志。确认交付？`,
+      `将向团队仓库推送分支 ${claim.task.branch}\n提交 ${revision}\n文件：\n${files}\n${config.shareExecution ? "已授权的执行记录会在项目网页共享。" : "群里仅发布摘要、提交与检查结果。"}不上传模型配置或认证文件。确认交付？`,
     ))
   )
     throw new Error("本机成员未批准交付");

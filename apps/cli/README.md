@@ -29,15 +29,16 @@ agentdesk chat    # 持久化交互式终端会话
 
 ## 它提供什么
 
-| 能力         | 说明                                                               |
-| ------------ | ------------------------------------------------------------------ |
-| 终端 Agent   | 多轮对话、历史续接、流式输出、斜杠指令、模型与 Agent 切换          |
-| 浏览器工作台 | Bot、编码现场、项目、成长中心、面试题库、工作流、自动化与设置      |
-| 持久化任务   | `run` 创建任务后，关闭终端也不会中断；可查看、取消、续跑           |
-| 工具审批     | 写入、提交、推送等高风险操作需明确批准；终端与工作台结果同步       |
-| 多 Agent     | `orchestrator`、`code`、`project`、`deploy`、`research` 等角色协作 |
-| 电脑连接器   | 配对自部署网关后，手机可在授权项目内发任务、审批与 Git 操作        |
-| 自带更新提示 | 交互入口检测到新版本时可选择升级（可用环境变量跳过）               |
+| 能力         | 说明                                                                |
+| ------------ | ------------------------------------------------------------------- |
+| 终端 Agent   | 多轮对话、历史续接、流式输出、斜杠指令、模型与 Agent 切换           |
+| 浏览器工作台 | Bot、编码现场、项目、成长中心、面试题库、工作流、自动化与设置       |
+| 持久化任务   | `run` 创建任务后，关闭终端也不会中断；可查看、取消、续跑            |
+| 工具审批     | 写入、提交、推送等高风险操作需明确批准；终端与工作台结果同步        |
+| 多 Agent     | `orchestrator`、`code`、`project`、`deploy`、`research` 等角色协作  |
+| 电脑连接器   | 配对自部署网关后，手机可在授权项目内发任务、审批与 Git 操作         |
+| 团队项目群   | 配对独立团队站，读取讨论、发言，在网页领取后用本机 Agent 开发并交付 |
+| 自带更新提示 | 交互入口检测到新版本时可选择升级（可用环境变量跳过）                |
 
 npm 安装提供 CLI 与浏览器工作台，**不安装** Tauri 桌面客户端。桌面端使用独立数据目录，不会与 CLI 自动同步。
 
@@ -129,6 +130,27 @@ agentdesk connect start
 ```
 
 Windows 可安装当前用户登录自启动：`connect install` / `uninstall`。撤销本机绑定：`connect revoke`。配对码隐藏输入，不要写进命令行历史。
+
+## 团队项目群（当前源码构建）
+
+团队命令连接独立团队服务，旧版 npm 包可能尚不包含此功能。部署和检查配置见 [团队接入文档](https://github.com/exploitationExplorers/AgentDesk/blob/main/deploy/team/README.md)。
+
+```sh
+agentdesk team pair --server https://team.example.com
+agentdesk team read
+agentdesk team say "已核对登录接口，建议保持错误码一致"
+agentdesk team work --repo /path/to/project --runner-config /path/to/runner.json
+```
+
+每位成员先用自己的单次邀请加入网页，再点击「连接我的 Agent」取得配对码，在本机终端隐藏输入。无需把模型凭据交给团队服务，Codex CLI / Claude Code 继续使用本机登录或模型配置。
+
+负责人分派后，执行成员在网页点击「领取任务」，保持本机 `work` 运行接单，并在终端确认执行。网页显示配对和执行器在线状态；成员可以撤回领取、停止执行、确认旧进程退出后重试。停止请求会在执行器下次心跳时生效。检查通过后由本人确认推送及共享摘要，再由负责人验收。
+
+`runner.json` 的 `executor` 支持 `codex`、`claude`、`custom`；检查命令来自本机配置。必须使用项目实际的构建／测试命令；Windows `.cmd/.bat` 不直接作为检查 executable，可使用 `node` 加对应 CLI 的 JS 入口。所有成员需具备仓库读写权限，起始仓库保持干净。
+
+普通群消息不自动调用 Agent，外部 Agent 可以用 `read` / `say` 读群、参与讨论。`work` 是需要交互终端保持运行的本机执行器，关闭终端会断开，与后台个人任务 `run` 的生命周期不同。当前桌面聊天会话不会直接变成团队群成员。
+
+独立轻量客户端由部署者提供 tgz 安装包，命令为 `agentdesk-team pair/read/say/work`（Windows 可使用 `agentdesk-team.cmd`）；它与完整 CLI 的 `agentdesk team ...` 共用连接格式。团队凭据在当前 CLI 根目录的 `team/connection.json`，多项目配对和所有后续命令均使用对应的 `--data-dir`。不要分享该文件。
 
 ## 配置、数据与自动化
 

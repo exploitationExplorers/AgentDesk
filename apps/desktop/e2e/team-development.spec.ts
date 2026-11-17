@@ -55,6 +55,22 @@ test("两位真实成员邀请入群、Agent 配对、分工开发、群聊、�
     await task.getByLabel("验收标准（每行一项）").fill("登录接口单测通过\n未授权请求被拒绝");
     await task.getByRole("button", { name: "分配任务", exact: true }).click();
     await expect(task).not.toBeVisible();
+    await friend.getByRole("button", { name: "任务与进度", exact: true }).click();
+    const ownTask = friend.getByTestId("team-task");
+    await expect(ownTask.getByRole("button", { name: "领取任务", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "领取任务", exact: true })).toHaveCount(0);
+    expect(
+      await (
+        await request.post("http://127.0.0.1:17950/team-api/v1/claim", { headers, data: {} })
+      ).json(),
+    ).toBeNull();
+    await ownTask.getByRole("button", { name: "领取任务", exact: true }).click();
+    await expect(ownTask.getByRole("status")).toHaveText("已领取 · 等待本机");
+    friend.on("dialog", (dialog) => void dialog.accept());
+    await ownTask.getByRole("button", { name: "撤回领取", exact: true }).click();
+    await expect(ownTask.getByRole("status")).toHaveText("已阻塞");
+    await ownTask.getByRole("button", { name: "重试并领取", exact: true }).click();
+    await expect(ownTask.getByRole("status")).toHaveText("已领取 · 等待本机");
     const claimResponse = await request.post("http://127.0.0.1:17950/team-api/v1/claim", {
       headers,
       data: {},
@@ -66,6 +82,9 @@ test("两位真实成员邀请入群、Agent 配对、分工开发、群聊、�
       data: { lease: claim.lease, progress: "正在开发登录接口并补充测试" },
     });
     await expect(page.getByTestId("team-task")).toContainText("正在开发登录接口并补充测试");
+    await expect(ownTask.getByRole("button", { name: "停止执行", exact: true })).toBeVisible();
+    await expect(ownTask.getByRole("button", { name: "验收通过", exact: true })).toHaveCount(0);
+    await friend.getByRole("button", { name: "群聊讨论", exact: true }).click();
     await friend.getByLabel("发送到项目群").fill("请确认登录接口使用统一错误码。");
     await friend.getByRole("button", { name: "发送群消息" }).click();
     await page.getByRole("button", { name: "群聊讨论", exact: true }).click();

@@ -10,6 +10,10 @@ import {
   TeamProgressInput,
   TeamSubmitInput,
   TeamReviewInput,
+  TeamControlInput,
+  TeamExecutionBatch,
+  teamExecutionText,
+  type TeamExecutionEntry,
   type TeamRoom,
   type TeamMember,
   type TeamMessage,
@@ -39,6 +43,12 @@ type Credential = {
   kind: "invite" | "pair" | "human" | "agent";
   expiresAt: number;
 };
+type ExecutionRecord = {
+  id: string;
+  roomId: string;
+  sequence: number;
+  entries: TeamExecutionEntry[];
+};
 export type TeamActor = {
   roomId: string;
   memberId: string;
@@ -57,6 +67,7 @@ export class TeamService {
   private readonly business: BusinessDatabase;
   private readonly records: AsyncDocumentRepository<RoomRecord>;
   private readonly credentials: AsyncDocumentRepository<Credential>;
+  private readonly execution: AsyncDocumentRepository<ExecutionRecord>;
   constructor(db: Db, persistence?: Pick<TaskPersistence, "business" | "documents">) {
     this.business =
       persistence?.business ??
@@ -66,6 +77,53 @@ export class TeamService {
     this.credentials =
       persistence?.documents<Credential>("team_credentials") ??
       sqliteDocuments(db, "team_credentials");
+    this.execution =
+      persistence?.documents<ExecutionRecord>("team_execution") ??
+      sqliteDocuments(db, "team_execution");
+  }
+  async executionPage(actor: TeamActor, id: string, after = 0) {
+    const { record } = await this.access(actor);
+    if (!record.tasks.some((task) => task.id === id)) fail("任务不存在", ErrorCode.NotFound);
+    const history = await this.execution.get(id);
+    const entries = (history?.entries ?? []).filter((entry) => entry.seq > after).slice(0, 100);
+    return {
+      entries,
+      cursor: entries.at(-1)?.seq ?? Math.min(after, history?.sequence ?? 0),
+      truncated: !!history?.entries.length && history.entries[0]!.seq > after + 1,
+    };
+  }
+  async appendExecution(actor: TeamActor, id: string, raw: unknown) {
+    const input = TeamExecutionBatch.parse(raw);
+    return this.business
+      .transaction(async () => {
+        const { record, me } = await this.access(actor);
+        const task = this.leased(record, actor, id, input.lease);
+        const history = (await this.execution.get(id)) ?? {
+          id,
+          roomId: record.id,
+          sequence: 0,
+          entries: [],
+        };
+        for (const entry of input.entries) {
+          if (history.entries.some((old) => old.id === entry.id)) continue;
+          const text = teamExecutionText(entry.text);
+          if (!text) continue;
+          history.entries.push({
+            ...entry,
+            text,
+            seq: ++history.sequence,
+            attempt: task.attempt,
+            createdAt: now(),
+          });
+        }
+        history.entries = history.entries.slice(-240);
+        await this.execution.put(history);
+        me.workerSeenAt = now();
+        task.leaseExpiresAt = new Date(Date.now() + 45_000).toISOString();
+        await this.records.put(record);
+        return { cursor: history.sequence };
+      })
+      .immediate();
   }
   private async credential(kind: Credential["kind"], roomId: string, memberId?: string) {
     for (const old of await this.credentials.list())
@@ -117,7 +175,8 @@ export class TeamService {
     for (const task of record.tasks) {
       if (task.status === "running" && Date.parse(task.leaseExpiresAt ?? "") <= Date.now()) {
         task.status = "blocked";
-        task.progress = "连接租约已过期，需负责人明确重试";
+        task.progress = "连接租约已过期，请确认旧进程已停止后明确重试";
+        task.executionRequestedAt = undefined;
         task.leaseHash = undefined;
         task.leaseExpiresAt = undefined;
         task.updatedAt = now();
@@ -251,6 +310,7 @@ export class TeamService {
         this.blockAssigned(record, me.id, "Agent 已重新配对，请明确重试未完成任务");
         me.executor = input.name;
         me.connectedAt = now();
+        me.workerSeenAt = undefined;
         await this.credentials.delete(ticket.id);
         await this.audit(record, `${me.name} 已连接 ${input.name}。`);
         const { code: token } = await this.credential("agent", record.id, me.id);
@@ -262,6 +322,7 @@ export class TeamService {
     for (const task of record.tasks)
       if (task.assigneeId === memberId && task.status === "running") {
         task.status = "blocked";
+        task.executionRequestedAt = undefined;
         task.leaseHash = undefined;
         task.leaseExpiresAt = undefined;
         task.progress = reason;
@@ -282,6 +343,7 @@ export class TeamService {
         }
         if (!connectionOnly) member.revoked = true;
         member.connectedAt = undefined;
+        member.workerSeenAt = undefined;
         this.blockAssigned(record, memberId, "成员或 Agent 授权已撤销");
         await this.audit(
           record,
@@ -358,7 +420,7 @@ export class TeamService {
           branch: `agentdesk/${id}-1`,
           status: "queued",
           attempt: 0,
-          progress: "等待成员本人确认执行",
+          progress: "等待执行成员在网页领取任务",
           createdAt: now(),
           updatedAt: now(),
         };
@@ -374,6 +436,7 @@ export class TeamService {
         const { record, me } = await this.access(actor);
         if (actor.kind !== "agent") fail("此接口仅供已配对 Agent 使用", ErrorCode.Forbidden);
         me.connectedAt = now();
+        me.workerSeenAt = now();
         const outstanding = record.tasks.some(
           (task) => task.assigneeId === me.id && task.status === "running",
         );
@@ -383,6 +446,7 @@ export class TeamService {
               (task) =>
                 task.assigneeId === me.id &&
                 task.status === "queued" &&
+                !!task.executionRequestedAt &&
                 task.dependsOn.every((id) =>
                   record.tasks.some((value) => value.id === id && value.status === "approved"),
                 ),
@@ -411,6 +475,46 @@ export class TeamService {
       })
       .immediate();
   }
+  async control(actor: TeamActor, id: string, raw: unknown): Promise<TeamTask> {
+    const input = TeamControlInput.parse(raw);
+    return this.business
+      .transaction(async () => {
+        const { record, me } = await this.access(actor);
+        const task = record.tasks.find((value) => value.id === id);
+        if (!task) fail("任务不存在", ErrorCode.NotFound);
+        if (
+          actor.kind !== "human" ||
+          (task.assigneeId !== me.id && !(input.action === "stop" && me.role === "owner"))
+        )
+          fail("只有执行成员本人可以领取或重试；负责人也可以停止任务", ErrorCode.Forbidden);
+        if (input.action === "stop") {
+          if (task.status !== "running" && !(task.status === "queued" && task.executionRequestedAt))
+            fail("当前任务没有待执行请求或运行中的任务");
+          task.status = "blocked";
+          task.executionRequestedAt = undefined;
+          task.progress = `${me.name} 已停止任务；本机执行器将在下次心跳停止，请确认旧进程退出后重试`;
+        } else {
+          if (task.assigneeId !== me.id) fail("只能领取自己的任务", ErrorCode.Forbidden);
+          if (!me.connectedAt) fail("请先连接自己的 Agent", ErrorCode.Conflict);
+          if (input.action === "retry" && task.status !== "blocked") fail("只有阻塞任务可以重试");
+          if (input.action === "accept" && task.status !== "queued") fail("当前任务不能领取");
+          if (input.action === "accept" && task.executionRequestedAt) return publicTask(task);
+          task.status = "queued";
+          task.delivery = undefined;
+          task.executionRequestedAt = now();
+          task.progress = "已在网页领取，等待本机执行器接单；执行前仍需终端本人确认";
+        }
+        task.leaseHash = undefined;
+        task.leaseExpiresAt = undefined;
+        task.updatedAt = now();
+        await this.audit(
+          record,
+          `${me.name} ${input.action === "stop" ? "停止了" : input.action === "retry" ? "明确重试并领取了" : "领取了"}任务：${task.title}。`,
+        );
+        return publicTask(task);
+      })
+      .immediate();
+  }
   private leased(record: RoomRecord, actor: TeamActor, id: string, lease: string): StoredTask {
     const task = record.tasks.find((value) => value.id === id);
     if (
@@ -434,6 +538,7 @@ export class TeamService {
         task.updatedAt = now();
         task.leaseExpiresAt = new Date(Date.now() + 45_000).toISOString();
         me.connectedAt = now();
+        me.workerSeenAt = now();
         await this.records.put(record);
         return publicTask(task);
       })
@@ -446,6 +551,7 @@ export class TeamService {
         const { record } = await this.access(actor);
         const task = this.leased(record, actor, id, input.lease);
         task.status = "blocked";
+        task.executionRequestedAt = undefined;
         task.progress = input.progress;
         task.leaseHash = undefined;
         task.leaseExpiresAt = undefined;
@@ -512,6 +618,7 @@ export class TeamService {
         task.updatedAt = now();
         task.leaseHash = undefined;
         task.leaseExpiresAt = undefined;
+        task.executionRequestedAt = undefined;
         await this.audit(record, `负责人处理了「${task.title}」：${input.note}`);
         return publicTask(task);
       })

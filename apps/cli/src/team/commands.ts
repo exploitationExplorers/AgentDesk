@@ -5,6 +5,7 @@ import type { CliValues } from "../args.js";
 import { question } from "../terminal.js";
 import { readTeamConnection, saveTeamConnection, teamOrigin, teamRequest } from "./client.js";
 import { executeTeamTask, localTeamConfig } from "./runner.js";
+import { executionReporter } from "./execution.js";
 
 export async function teamCommand(
   home: string,
@@ -47,7 +48,9 @@ export async function teamCommand(
   const stop = () => shutdown.abort();
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
-  console.info("等待分配任务。每项任务需要本机确认；Ctrl+C 停止连接。断线或撤权会停止执行。");
+  console.info(
+    "执行器已上线。请在网页领取自己的任务；接单后仍需在本机确认。Ctrl+C 停止连接，断线、网页停止或撤权会停止执行。",
+  );
   try {
     while (!shutdown.signal.aborted) {
       const raw = await request<unknown>("/claim", {});
@@ -77,6 +80,27 @@ export async function teamCommand(
         }
       };
       const timer = setInterval(() => void heartbeat(), 10_000);
+      const secrets = [
+        connection.token,
+        ...Object.entries(process.env)
+          .filter(([key]) => /key|token|password|secret/i.test(key))
+          .map(([, value]) => value ?? ""),
+      ];
+      const reporter = executionReporter(
+        (entries) =>
+          request(`/tasks/${claim.task.id}/events`, {
+            lease: claim.lease,
+            entries,
+          }),
+        secrets,
+      );
+      reporter.emit({ kind: "stage", text: "已接单，等待本机成员确认执行" });
+      reporter.emit({
+        kind: "notice",
+        text: config.shareExecution
+          ? "本机已开启任务执行记录共享，工具审批仍在本机终端处理。"
+          : "本机未开启详细输出共享；runner.json 添加 shareExecution: true 并重新启动后生效。",
+      });
       try {
         const context = await request<TeamDetail>("/room");
         const delivery = await executeTeamTask({
@@ -90,28 +114,35 @@ export async function teamCommand(
             kind: message.authorKind,
             content: message.content.slice(0, 2000),
           })),
-          confirm: async (message) => (await question(`${message} 输入 yes`)) === "yes",
-          summarize: () => question("交付摘要（将分享给项目群，请勿包含密钥）"),
+          confirm: async (message) => (await question(`${message} 输入 yes`, { signal })) === "yes",
+          summarize: () => question("交付摘要（将分享给项目群，请勿包含密钥）", { signal }),
           progress: (value) => {
             progress = value;
+            reporter.emit({ kind: "stage", text: value });
             console.info(value);
             void heartbeat();
           },
+          execution: config.shareExecution ? reporter.emit : undefined,
         });
         clearInterval(timer);
         signal.throwIfAborted();
+        reporter.emit({ kind: "stage", text: "本机执行与检查完成，准备提交交付" });
+        await reporter.close();
         await request(`/tasks/${claim.task.id}/submit`, { lease: claim.lease, delivery });
         console.info("已提交交付，等待负责人验收。");
       } catch (error) {
         clearInterval(timer);
         console.error(error instanceof Error ? error.message : "本机执行未完成");
         console.error("本次任务未交付。请检查本机终端和任务 worktree，负责人明确重试前不会重跑。");
+        reporter.emit({ kind: "notice", text: "本机执行未完成，请检查本机终端与任务工作目录。" });
+        await reporter.close();
         await request(`/tasks/${claim.task.id}/block`, {
           lease: claim.lease,
           progress: "本机执行未完成，请与成员核对后明确重试",
         }).catch(() => undefined);
       } finally {
         clearInterval(timer);
+        await reporter.close();
       }
       if (values.once || shutdown.signal.aborted) return;
     }

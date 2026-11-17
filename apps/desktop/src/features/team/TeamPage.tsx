@@ -14,6 +14,7 @@ import { http } from "../../lib/http";
 import { isTeamHost, readTeamSessions, storeTeamSessions, teamRequest } from "./team-api";
 import "../collaboration/collaboration.css";
 import "./team.css";
+import { TeamExecutionPanel } from "./TeamExecutionPanel";
 
 const statuses: Record<TeamTask["status"], string> = {
   queued: "待领取",
@@ -214,20 +215,29 @@ function TaskCard({
   task,
   detail,
   review,
+  control,
   busy,
+  token,
 }: {
   task: TeamTask;
   detail: TeamDetail;
   review: (action: string, note: string) => void;
+  control: (action: "accept" | "stop" | "retry") => void;
   busy: boolean;
+  token: string;
 }) {
   const [note, setNote] = useState("");
   const owner = detail.me.role === "owner";
+  const mine = task.assigneeId === detail.me.id;
+  const assignee = detail.members.find((member) => member.id === task.assigneeId);
+  const online =
+    !!assignee?.workerSeenAt && Date.now() - Date.parse(assignee.workerSeenAt) < 15_000;
+  const waiting = task.status === "queued" && !!task.executionRequestedAt;
   return (
     <article className={`team-task team-task-${task.status}`} data-testid="team-task">
       <div className="team-task-heading">
         <h3>{task.title}</h3>
-        <span role="status">{statuses[task.status]}</span>
+        <span role="status">{waiting ? "已领取 · 等待本机" : statuses[task.status]}</span>
       </div>
       <p className="team-muted">
         {task.kind === "integrate" ? "集成回归" : "功能开发"} ·{" "}
@@ -235,6 +245,86 @@ function TaskCard({
         次执行
       </p>
       <p>{task.progress}</p>
+      <TeamExecutionPanel task={task} token={token} online={online} />
+      {mine && !["approved", "cancelled", "submitted"].includes(task.status) ? (
+        <div className="team-execution">
+          <p className="team-muted">
+            {!assignee?.connectedAt
+              ? "尚未配对 Agent，请先点击右上角「连接我的 Agent」。"
+              : online
+                ? "本机执行器在线；执行与交付仍需在终端确认。"
+                : "Agent 已配对，本机执行器未在线。网页领取后，请在自己的电脑启动 work。"}
+          </p>
+          {task.dependsOn.some(
+            (id) => !detail.tasks.some((item) => item.id === id && item.status === "approved"),
+          ) ? (
+            <p className="team-muted">依赖任务尚未全部验收，接单后仍会等待依赖。</p>
+          ) : null}
+          <div className="team-task-controls">
+            {task.status === "queued" && !waiting ? (
+              <button
+                className="cc-primary"
+                disabled={busy || !assignee?.connectedAt}
+                onClick={() => control("accept")}
+              >
+                领取任务
+              </button>
+            ) : null}
+            {task.status === "blocked" ? (
+              <button
+                disabled={busy || !assignee?.connectedAt}
+                onClick={() => {
+                  if (
+                    confirm(
+                      "请确认旧终端任务已停止。重试将创建新分支，并在本机再次确认执行。继续？",
+                    )
+                  )
+                    control("retry");
+                }}
+              >
+                重试并领取
+              </button>
+            ) : null}
+            {waiting || task.status === "running" ? (
+              <button
+                disabled={busy}
+                onClick={() => {
+                  if (confirm("停止本次任务？本机将在下次心跳停止，已产生的文件会保留。"))
+                    control("stop");
+                }}
+              >
+                {waiting ? "撤回领取" : "停止执行"}
+              </button>
+            ) : null}
+          </div>
+          <details>
+            <summary>如何启动本机执行器</summary>
+            <p>在自己的交互终端运行，替换成本机仓库与检查配置路径；保持终端打开并按提示确认。</p>
+            <code className="team-command">
+              {isTeamHost() ? "agentdesk-team work" : "agentdesk team work"} --repo "/本机/项目仓库"
+              --runner-config "/本机/runner.json"
+            </code>
+            <p>
+              Windows 可使用 agentdesk-team.cmd。runner.json 配置自己的 Agent 与项目实际检查命令。
+            </p>
+            {isTeamHost() ? (
+              <a href="/downloads/TEAM-GUIDE.txt" target="_blank" rel="noreferrer">
+                安装与配置说明
+              </a>
+            ) : null}
+          </details>
+        </div>
+      ) : null}
+      {!mine && owner && task.status === "running" ? (
+        <button
+          disabled={busy}
+          onClick={() => {
+            if (confirm("停止该成员正在执行的任务？")) control("stop");
+          }}
+        >
+          停止执行
+        </button>
+      ) : null}
       <details>
         <summary>要求与验收标准</summary>
         <p className="team-pre">{task.instructions}</p>
@@ -678,7 +768,10 @@ export function TeamPage() {
               {data && tab === "tasks" ? (
                 <section className="team-tasks">
                   <div className="team-task-top">
-                    <p>待领取 → 执行 → 交付 → 验收；各功能通过后，再分配集成回归任务。</p>
+                    <p>
+                      成员网页领取 → 本机终端确认 → 执行与交付 →
+                      负责人验收；各功能通过后再集成回归。
+                    </p>
                     {owner ? (
                       <button className="cc-primary" onClick={() => setModal("task")}>
                         <Plus size={16} />
@@ -693,8 +786,15 @@ export function TeamPage() {
                     <TaskCard
                       key={item.id}
                       task={item}
+                      token={session!.token}
                       detail={data}
                       busy={action.isPending}
+                      control={(controlAction) =>
+                        action.mutate({
+                          path: `/tasks/${item.id}/control`,
+                          body: { action: controlAction },
+                        })
+                      }
                       review={(reviewAction, note) =>
                         action.mutate({
                           path: `/tasks/${item.id}/review`,
@@ -724,6 +824,14 @@ export function TeamPage() {
                             ? `· 最近连接 ${new Date(member.connectedAt).toLocaleString("zh-CN")}`
                             : ""}
                         </p>
+                        {member.connectedAt && !member.revoked ? (
+                          <p className="team-muted">
+                            {member.workerSeenAt &&
+                            Date.now() - Date.parse(member.workerSeenAt) < 15_000
+                              ? "本机执行器在线"
+                              : "已配对 · 本机执行器未在线"}
+                          </p>
+                        ) : null}
                       </div>
                       {!member.revoked && (owner || member.id === data.me.id) ? (
                         <div>

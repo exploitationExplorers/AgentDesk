@@ -315,6 +315,30 @@
   word-break: break-all;
   font-size: 12px;
 }
+.team-execution {
+  margin: 14px 0;
+  padding: 14px;
+  border: 1px solid #e6e4ec;
+  border-radius: 14px;
+  background: #faf9fc;
+}
+.team-execution details {
+  margin-top: 12px;
+  font-size: 13px;
+}
+.team-task-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 10px;
+}
+.team-task-controls button,
+.team-task > button {
+  padding: 8px 16px;
+  border: 1px solid #ddd;
+  border-radius: 20px;
+  cursor: pointer;
+}
 .team-dialog {
   max-height: 90dvh;
   overflow: auto;
@@ -325,6 +349,114 @@
   height: 1px;
   overflow: hidden;
   clip-path: inset(50%);
+}
+
+.team-live {
+  margin: 18px 0;
+  border: 1px solid #dfdfe8;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #fafafd;
+  min-width: 0;
+}
+.team-live-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.team-live-toggle > span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.team-live-toggle > span:last-child {
+  font-size: 12px;
+  color: #777580;
+}
+.team-live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #a8a5b0;
+  flex-shrink: 0;
+}
+.team-live-dot.is-live {
+  background: #638b6b;
+  box-shadow: 0 0 0 4px #638b6b18;
+}
+.team-live-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 16px 12px;
+  font-size: 12px;
+  color: #777580;
+}
+.team-live-toolbar label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.team-live-toolbar input {
+  width: auto;
+}
+.team-live-log {
+  max-height: 380px;
+  overflow: auto;
+  padding: 4px 16px;
+  border-top: 1px solid #e9e8ef;
+  scrollbar-gutter: stable;
+}
+.team-live-empty {
+  padding: 16px 0;
+  color: #777580;
+  font-size: 13px;
+  line-height: 1.8;
+}
+.team-live-entry {
+  padding: 12px 0;
+  border-bottom: 1px solid #ecebf1;
+}
+.team-live-entry > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 11px;
+  color: #8c8896;
+}
+.team-live-entry pre {
+  margin: 6px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font:
+    12px/1.75 ui-monospace,
+    Consolas,
+    monospace;
+  color: #44414c;
+}
+.team-live-entry.kind-message pre {
+  font-family: inherit;
+  font-size: 13px;
+}
+.team-live-entry.kind-stage pre,
+.team-live-entry.kind-check pre {
+  color: #69508a;
+}
+.team-live-footnote {
+  margin: 0;
+  padding: 10px 16px;
+  font-size: 11px;
+  color: #888391;
+  line-height: 1.7;
 }
 @media (max-width: 1050px) {
   .team-sidebar {

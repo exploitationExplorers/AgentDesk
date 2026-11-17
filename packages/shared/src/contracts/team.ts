@@ -33,6 +33,7 @@ export const TeamMember = z.object({
   revoked: z.boolean(),
   connectedAt: z.string().optional(),
   executor: z.string().optional(),
+  workerSeenAt: z.string().optional(),
 });
 export type TeamMember = z.infer<typeof TeamMember>;
 export const TeamSession = z.object({ token: z.string(), member: TeamMember, room: TeamRoom });
@@ -79,6 +80,7 @@ export const TeamTask = TeamTaskInput.extend({
   status: z.enum(["queued", "running", "blocked", "submitted", "approved", "cancelled"]),
   attempt: z.number().int(),
   progress: z.string(),
+  executionRequestedAt: z.string().optional(),
   leaseExpiresAt: z.string().optional(),
   delivery: TeamDelivery.optional(),
   review: z.string().optional(),
@@ -113,3 +115,29 @@ export const TeamReviewInput = z.strictObject({
   action: z.enum(["approve", "revise", "cancel", "retry"]),
   note: Text.max(4000),
 });
+export const TeamControlInput = z.strictObject({
+  action: z.enum(["accept", "stop", "retry"]),
+});
+
+export const TeamExecutionEntryInput = z.strictObject({
+  id: z.string().uuid(),
+  kind: z.enum(["stage", "message", "command", "output", "files", "check", "notice"]),
+  text: Text.max(4000),
+});
+export const TeamExecutionEntry = TeamExecutionEntryInput.extend({
+  seq: z.number().int().positive(),
+  attempt: z.number().int().positive(),
+  createdAt: z.string(),
+});
+export type TeamExecutionEntry = z.infer<typeof TeamExecutionEntry>;
+export type TeamExecutionInput = z.infer<typeof TeamExecutionEntryInput>;
+export const TeamExecutionBatch = z.strictObject({
+  lease: Text.max(256),
+  entries: z.array(TeamExecutionEntryInput).min(1).max(16),
+});
+export const TeamExecutionPage = z.object({
+  entries: z.array(TeamExecutionEntry),
+  cursor: z.number().int().nonnegative(),
+  truncated: z.boolean(),
+});
+export type TeamExecutionPage = z.infer<typeof TeamExecutionPage>;

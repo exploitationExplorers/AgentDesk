@@ -27,6 +27,32 @@ class TtyFixture extends PassThrough {
   }
 }
 
+test("网页停止信号能取消待输入确认并恢复终端，不留下旧任务提示", async () => {
+  await loadPrompts();
+  for (const plain of [false, true]) {
+    configureUi({ plain });
+    const input = new TtyFixture(),
+      output = new TtyFixture();
+    output.on("data", () => undefined);
+    const controller = new AbortController();
+    const pending = question("确认执行？", {
+      input: input.asInput(),
+      output: output.asOutput(),
+      env: {},
+      signal: controller.signal,
+    });
+    const rejected = assert.rejects(pending);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    controller.abort();
+    await rejected;
+    assert.equal(input.isRaw, false);
+    assert.equal(input.listenerCount("keypress"), 0);
+    input.destroy();
+    output.destroy();
+  }
+  configureUi({});
+});
+
 test("管道、纯文本和 NO_COLOR 不输出颜色；dumb 终端不启用光标交互", async () => {
   for (const settings of [
     { tty: false },

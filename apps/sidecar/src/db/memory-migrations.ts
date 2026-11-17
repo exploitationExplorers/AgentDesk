@@ -35,6 +35,28 @@ export function migrateMemoryDatabase(raw: Database.Database): void {
         PRIMARY KEY (namespace, digest)
       );
       CREATE INDEX IF NOT EXISTS memories_status_idx ON memories(namespace, status, updated_at);
+      CREATE TABLE IF NOT EXISTS memory_originals (
+        id TEXT PRIMARY KEY,
+        namespace TEXT NOT NULL,
+        conversation_id TEXT,
+        text TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS memory_originals_idx
+        ON memory_originals(namespace, conversation_id, created_at);
+      CREATE TABLE IF NOT EXISTS memory_summaries (
+        id TEXT PRIMARY KEY,
+        namespace TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        text TEXT NOT NULL,
+        citations TEXT NOT NULL,
+        status TEXT NOT NULL,
+        conversation_id TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS memory_summaries_idx
+        ON memory_summaries(namespace, kind, status, updated_at);
     `);
   })();
 }

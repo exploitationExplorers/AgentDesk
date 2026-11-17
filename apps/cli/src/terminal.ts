@@ -14,6 +14,7 @@ interface QuestionOptions extends TerminalOptions {
   defaultValue?: string;
   placeholder?: string;
   validate?: (value: string) => string | undefined;
+  signal?: AbortSignal;
 }
 function requireTerminal(input: ReadStream, output: WriteStream) {
   if (!input.isTTY || !output.isTTY)
@@ -34,11 +35,13 @@ export async function question(
     defaultValue = "",
     placeholder,
     validate,
+    signal,
     input = process.stdin,
     output = process.stderr,
     env = process.env,
   }: QuestionOptions = {},
 ) {
+  signal?.throwIfAborted();
   requireTerminal(input, output);
   const ui = createUi({ stream: output, env });
   if (ui.interactive) {
@@ -48,6 +51,7 @@ export async function question(
       input,
       output,
       withGuide: true,
+      signal,
       validate: validate ? (value: string | undefined) => validate(value ?? "") : undefined,
       placeholder: placeholder ?? defaultValue,
     };
@@ -59,21 +63,30 @@ export async function question(
   while (true) {
     const prompt = `${message.trim()}${defaultValue ? ` [${defaultValue}]` : ""}：`;
     const value = secret
-      ? await secretQuestion(prompt, input, output)
-      : (await plainQuestion(prompt, input, output)) || defaultValue;
+      ? await secretQuestion(prompt, input, output, signal)
+      : (await plainQuestion(prompt, input, output, signal)) || defaultValue;
     const error = validate?.(value);
     if (!error) return value;
     output.write(`${error}\n`);
   }
 }
 
-async function plainQuestion(prompt: string, input: ReadStream, output: WriteStream) {
+async function plainQuestion(
+  prompt: string,
+  input: ReadStream,
+  output: WriteStream,
+  signal?: AbortSignal,
+) {
   const reader = createInterface({ input, output });
   const controller = new AbortController();
   const cancel = () => controller.abort();
   reader.once("SIGINT", cancel);
   try {
-    return (await reader.question(prompt, { signal: controller.signal })).trim();
+    return (
+      await reader.question(prompt, {
+        signal: signal ? AbortSignal.any([signal, controller.signal]) : controller.signal,
+      })
+    ).trim();
   } catch (error) {
     if (controller.signal.aborted) throw new Error("已取消配置。");
     throw error;
@@ -87,7 +100,9 @@ async function secretQuestion(
   prompt: string,
   input: ReadStream,
   output: WriteStream,
+  signal?: AbortSignal,
 ): Promise<string> {
+  signal?.throwIfAborted();
   output.write(prompt);
   emitKeypressEvents(input);
   const wasRaw = input.isRaw;
@@ -98,6 +113,7 @@ async function secretQuestion(
     const cleanup = () => {
       input.off("keypress", onKey);
       input.off("end", cancel);
+      signal?.removeEventListener("abort", cancel);
       input.setRawMode(wasRaw);
       input.pause();
       output.write("\n");
@@ -116,6 +132,7 @@ async function secretQuestion(
     };
     input.on("keypress", onKey);
     input.once("end", cancel);
+    signal?.addEventListener("abort", cancel, { once: true });
   });
 }
 

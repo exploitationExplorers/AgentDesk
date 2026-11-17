@@ -82,6 +82,21 @@ export function teamRoutes(
     c.json(await service.createTask(c.get("actor"), await c.req.json()), 201),
   );
   app.post("/claim", async (c) => c.json(await service.claim(c.get("actor"))));
+  app.get("/tasks/:id/events", async (c) => {
+    const after = z.coerce
+      .number()
+      .int()
+      .min(0)
+      .max(Number.MAX_SAFE_INTEGER)
+      .parse(c.req.query("after") ?? "0");
+    return c.json(await service.executionPage(c.get("actor"), c.req.param("id"), after));
+  });
+  app.post("/tasks/:id/events", async (c) =>
+    c.json(await service.appendExecution(c.get("actor"), c.req.param("id"), await c.req.json())),
+  );
+  app.post("/tasks/:id/control", async (c) =>
+    c.json(await service.control(c.get("actor"), c.req.param("id"), await c.req.json())),
+  );
   app.post("/tasks/:id/progress", async (c) =>
     c.json(await service.progress(c.get("actor"), c.req.param("id"), await c.req.json())),
   );

@@ -18,7 +18,8 @@
     "e2e": "playwright test",
     "perf:ui": "tsx scripts/measure-ui-performance.ts",
     "test:cli-workbench": "tsx scripts/test-cli-workbench.ts",
-    "screenshots": "tsx scripts/capture-readme.ts"
+    "screenshots": "tsx scripts/capture-readme.ts",
+    "screenshots:team": "tsx scripts/capture-team-readme.ts"
   },
   "dependencies": {
     "@agentdesk/shared": "workspace:*",

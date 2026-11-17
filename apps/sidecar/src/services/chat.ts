@@ -369,9 +369,8 @@ export class ChatService {
       const memoryContext = { workspace: effectiveWorkspace, conversationId };
       try {
         context =
-          this.memory.withContext(memoryContext, () =>
-            this.memory.formatForPrompt(this.memory.recall(req.message)),
-          ) || undefined;
+          this.memory.withContext(memoryContext, () => this.memory.formatContext(req.message)) ||
+          undefined;
       } catch (error) {
         console.error("[memory] recall failed", error);
       }

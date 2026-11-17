@@ -32,3 +32,4 @@ export * from "./chat-display";
 export * from "./chat-progress";
 export * from "./agentdesk-segments";
 export * from "./contracts/device";
+export * from "./team-execution";
