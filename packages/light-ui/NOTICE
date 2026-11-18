@@ -1,0 +1,10 @@
+Lancer Light UI
+
+Extracted from the Lancer desktop application's light-trail rendering implementation.
+Lancer is a fork of pi-gui: https://github.com/minghinmatthewlam/pi-gui
+Upstream copyright (c) 2026 Matthew Lam. MIT license retained in LICENSE.
+Lancer-specific additions and this extraction: Lancer contributors, 2026, MIT.
+
+This library includes no model-provider SDK, gateway configuration, credentials,
+user conversations, character artwork, or downloaded media. Model names shown in
+the demo identify example origins; they do not imply an affiliation or endorsement.

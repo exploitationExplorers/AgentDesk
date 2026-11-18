@@ -1,5 +1,6 @@
 {
   "executor": "codex",
   "args": [],
+  "shareExecution": false,
   "checks": [{ "name": "项目回归", "command": "node", "args": ["--test", "test/im.test.mjs"] }]
 }

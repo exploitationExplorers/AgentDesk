@@ -2,8 +2,9 @@ import { memo } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { cn } from "@agentdesk/ui";
+import { remarkCjkStrong } from "./remark-cjk-strong";
 
-const remarkPlugins = [remarkGfm];
+const remarkPlugins = [remarkGfm, remarkCjkStrong];
 const components: Components = {
   a: ({ href, children }) => (
     <a href={href} target="_blank" rel="noreferrer">

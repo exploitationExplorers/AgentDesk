@@ -1,6 +1,6 @@
 {
   "name": "@agentdesk/desktop",
-  "version": "0.1.0",
+  "version": "1.0.0-alpha.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -22,6 +22,7 @@
     "screenshots:team": "tsx scripts/capture-team-readme.ts"
   },
   "dependencies": {
+    "@agentdesk/light-ui": "workspace:*",
     "@agentdesk/shared": "workspace:*",
     "@agentdesk/ui": "workspace:*",
     "@agentdesk/workflow": "workspace:*",

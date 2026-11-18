@@ -1,4 +1,5 @@
 import { dirname, resolve } from "node:path";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
@@ -8,7 +9,22 @@ const host = process.env.TAURI_DEV_HOST;
 const root = dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig(({ mode }) => ({
-  plugins: [react(), tailwindcss()],
+  plugins: [
+    react(),
+    tailwindcss(),
+    {
+      name: "light-ui-notices",
+      generateBundle() {
+        for (const name of ["LICENSE", "NOTICE"]) {
+          this.emitFile({
+            type: "asset",
+            fileName: `licenses/lancer-light-ui-${name}.txt`,
+            source: readFileSync(resolve(root, "../../packages/light-ui", name), "utf8"),
+          });
+        }
+      },
+    },
+  ],
   clearScreen: false,
   server: {
     port: 1420,

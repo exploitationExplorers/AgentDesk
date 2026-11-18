@@ -3,6 +3,7 @@ import { Check, CornerUpLeft, ExternalLink, Loader2 } from "lucide-react";
 import { useState } from "react";
 import type { Approval, CollaborationMember, CollaborationMessage } from "@agentdesk/shared";
 import { Markdown } from "../../components/Markdown";
+import { RunningLightBorder } from "../../components/execution-light/ExecutionLight";
 import { api } from "../../lib/api";
 import { http } from "../../lib/http";
 import { SavedSteps } from "../chat/Steps";
@@ -54,6 +55,7 @@ export function CollaborationMessageRow({
           {message.role ? <span>{collaborationRoleLabels[message.role]}</span> : null}
         </div>
         <div className="cc-bubble">
+          <RunningLightBorder active={message.status === "streaming"} color="#9270be" />
           {reply ? (
             <button
               className="cc-quote"

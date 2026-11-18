@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { randomUUID } from "node:crypto";
 import type { TeamClaim, TeamSession } from "@agentdesk/shared";
 
 test("两位真实成员邀请入群、Agent 配对、分工开发、群聊、进度与验收", async ({
@@ -84,6 +85,33 @@ test("两位真实成员邀请入群、Agent 配对、分工开发、群聊、�
     await expect(page.getByTestId("team-task")).toContainText("正在开发登录接口并补充测试");
     await expect(ownTask.getByRole("button", { name: "停止执行", exact: true })).toBeVisible();
     await expect(ownTask.getByRole("button", { name: "验收通过", exact: true })).toHaveCount(0);
+    const report = async (text: string, kind = "stage") => {
+      const response = await request.post(
+        `http://127.0.0.1:17950/team-api/v1/tasks/${claim.task.id}/events`,
+        {
+          headers,
+          data: { lease: claim.lease, entries: [{ id: randomUUID(), kind, text }] },
+        },
+      );
+      expect(response.ok()).toBe(true);
+    };
+    await report("已进入独立 worktree，开始核对登录模块");
+    await ownTask.getByRole("button", { name: /执行过程/ }).click();
+    const log = ownTask.getByRole("log");
+    await expect(log).toContainText("已进入独立 worktree");
+    const flow = ownTask.getByLabel("本机执行流向");
+    await expect(flow.locator("[data-curve-kind=flight]")).toHaveCount(0);
+    await report("登录接口单测通过", "check");
+    await expect(log).toContainText("登录接口单测通过");
+    await expect(flow).toContainText("1 条上报");
+    await flow.getByRole("button", { name: "暂停光线" }).click();
+    await expect(flow).toHaveClass(/light-motion-paused/);
+    await friend.reload();
+    await friend.getByRole("button", { name: "任务与进度", exact: true }).click();
+    await expect(friend.getByRole("log")).toContainText("登录接口单测通过");
+    await expect(friend.getByLabel("本机执行流向").locator("[data-curve-kind=flight]")).toHaveCount(
+      0,
+    );
     await friend.getByRole("button", { name: "群聊讨论", exact: true }).click();
     await friend.getByLabel("发送到项目群").fill("请确认登录接口使用统一错误码。");
     await friend.getByRole("button", { name: "发送群消息" }).click();

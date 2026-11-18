@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const output = resolve(root, "../../.tmp/team-client-20261114/package");
+const output = resolve(root, "../../.tmp/team-client-20261118/package");
 mkdirSync(join(output, "licenses"), { recursive: true });
 await build({
   entryPoints: [join(root, "src/team/standalone.ts")],
@@ -27,7 +27,7 @@ writeFileSync(
   JSON.stringify(
     {
       name: "agentdesk-team-client",
-      version: "0.1.1-preview.20261114",
+      version: "0.1.2-preview.20261118",
       private: true,
       type: "module",
       license: "UNLICENSED",

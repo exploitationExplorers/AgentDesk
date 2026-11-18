@@ -1,0 +1,23 @@
+{
+  "name": "@agentdesk/light-ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "description": "Lancer Light UI, vendored with attribution for AgentDesk",
+  "exports": {
+    ".": "./src/index.ts",
+    "./running-border.css": "./src/running-border.css"
+  },
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "tsc -p tsconfig.json && node --test test/*.test.mjs"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
+}

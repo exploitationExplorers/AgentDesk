@@ -1,4 +1,9 @@
-import { CollaborationRoomDetail, TeamDetail, TeamSession } from "@agentdesk/shared";
+import {
+  CollaborationRoomDetail,
+  TeamDetail,
+  TeamSession,
+  TeamExecutionPage,
+} from "@agentdesk/shared";
 
 // 公开文档专用固定数据，与生产项目、成员和登录态无关。
 export const teamDemoTime = "2026-11-14T08:30:00.000Z";
@@ -176,4 +181,27 @@ export const discussionDemo = CollaborationRoomDetail.parse({
     createdAt: teamDemoTime,
   })),
   pendingApprovals: [],
+});
+
+export const teamExecutionDemo = TeamDetail.parse({
+  ...teamDemo,
+  tasks: [
+    { ...teamDemo.tasks[0], status: "running", attempt: 1, progress: "正在核对接口契约并运行检查" },
+  ],
+});
+export const teamExecutionDemoPage = TeamExecutionPage.parse({
+  cursor: 4,
+  truncated: false,
+  entries: [
+    { kind: "stage", text: "本机已确认任务，进入独立 worktree" },
+    { kind: "command", text: "git diff --stat" },
+    { kind: "files", text: "src/auth/session.ts\ntest/auth/session.test.ts" },
+    { kind: "check", text: "登录会话回归：退出码 0（演示数据）" },
+  ].map((entry, i) => ({
+    ...entry,
+    id: `00000000-0000-4000-8000-${String(i + 1).padStart(12, "0")}`,
+    seq: i + 1,
+    attempt: 1,
+    createdAt: teamDemoTime,
+  })),
 });

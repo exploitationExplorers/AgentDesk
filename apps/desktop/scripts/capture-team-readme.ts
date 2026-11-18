@@ -4,7 +4,14 @@ import { resolve } from "node:path";
 import { chromium, expect } from "@playwright/test";
 import { createServer } from "vite";
 import { responses } from "./readme-fixtures";
-import { discussionDemo, teamDemo, teamDemoSession, teamDemoTime } from "./readme-team-fixtures";
+import {
+  discussionDemo,
+  teamDemo,
+  teamDemoSession,
+  teamDemoTime,
+  teamExecutionDemo,
+  teamExecutionDemoPage,
+} from "./readme-team-fixtures";
 
 const desktopDir = fileURLToPath(new URL("../", import.meta.url));
 const outputDir = resolve(desktopDir, "../../assets/screenshots");
@@ -37,10 +44,14 @@ try {
       );
       localStorage.setItem("agentdesk.diskNagUntil", String(Date.now() + 86400000));
     }, teamDemoSession);
+    let execution = false;
     await context.route("**/*", async (route) => {
       const url = new URL(route.request().url());
       if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204 });
-      if (url.pathname === "/team-api/v1/room") return route.fulfill({ json: teamDemo });
+      if (url.pathname === "/team-api/v1/room")
+        return route.fulfill({ json: execution ? teamExecutionDemo : teamDemo });
+      if (url.pathname === `/team-api/v1/tasks/${teamDemo.tasks[0]!.id}/events`)
+        return route.fulfill({ json: teamExecutionDemoPage });
       if (url.pathname.startsWith("/api/")) {
         const path = url.pathname.slice(4);
         const collaboration: Record<string, unknown> = {
@@ -85,6 +96,12 @@ try {
     await page.getByRole("button", { name: "成员与连接", exact: true }).click();
     await expect(page.getByText("已配对 · 本机执行器未在线", { exact: true })).toBeVisible();
     await capture("team-members");
+    execution = true;
+    await page.reload();
+    await page.getByRole("button", { name: "任务与进度", exact: true }).click();
+    await expect(page.getByRole("log")).toContainText("登录会话回归");
+    await expect(page.getByLabel("本机执行流向")).toBeVisible();
+    await capture("team-execution");
     await page.goto(origin + "/#/collaboration?room=demo-discussion");
     await expect(
       page.getByRole("heading", { name: discussionDemo.room.name, exact: true }),

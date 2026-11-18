@@ -48,6 +48,8 @@ AgentDesk 把这些环节连接起来：**围绕本地项目发起任务，让 A
 
 近期能力包括：**多 Agent 群聊、跨团队开发与任务验收、Agent 协作视图、流式成果预览、持久化自动化、源码导读、成长中心与面试题库，以及手机远程工作台与电脑连接器**。
 
+当前产品源码版本：**v1.0.0 (Alpha)**，SemVer 为 `1.0.0-alpha.1`。变化记录见 [CHANGELOG](CHANGELOG.md)，Lancer 技术栈、Agent 架构与 Skills 用途见 [研究报告](research/lancer-architecture.md)。CLI npm 包独立版本化。
+
 ## 快速开始
 
 ### 1. 安装并打开工作台
@@ -130,6 +132,10 @@ agentdesk --help          # 查看全部命令
 
 ![本机多 Agent 群聊：调研、核验、总结与用户拍板](assets/screenshots/collaboration.png)
 
+展开任务的「执行过程」查看本机上报、文件与检查记录。光线响应新增事件，运行节点使用 Lancer 的细描边；截图中的任务和检查结果为固定演示数据。
+
+![团队任务执行过程与 Lancer 光线 UI 接入](assets/screenshots/team-execution.png)
+
 ### 个人工作台
 
 |                Bot：对话与任务入口                |                 项目：集中管理本地仓库                  |
@@ -167,6 +173,7 @@ agentdesk --help          # 查看全部命令
 - 创建项目，绑定不含凭据的 HTTPS Git 仓库与完整起始提交 SHA；通过单次邀请加入，再分别配对自己的 Agent。
 - 执行成员在网页领取自己的任务；本机连接端接单，在终端确认后创建独立 Git worktree 和交付分支。
 - 页面区分 Agent 配对状态与执行器在线状态，展示任务进度；成员可撤回领取、停止执行、明确重试，负责人保留取消与验收权限。
+- 展开「执行过程」查看本机阶段与上报记录。详细共享需在本机 runner 配置开启 `shareExecution`；新增事件触发光线，历史记录不会循环播放，运行中的节点显示细描边。
 - 检查命令由成员在本机配置。交付包含提交 SHA、分支、摘要与检查结果；负责人复核后验收，再分派依赖这些固定提交的集成回归任务。
 - 模型登录和 API Key 留在各自电脑；团队服务不代替成员运行模型，也不会自动合入主分支或部署。完整接入步骤见下方[团队协作](#团队协作从建群到交付)。
 
@@ -177,6 +184,7 @@ agentdesk --help          # 查看全部命令
 - 持久化任务由本地后台服务执行，不依赖页面一直打开；服务重启后，中断任务可按状态续跑，并非无缝恢复进程。
 - 使用原生文件与命令工具完成编码，也可在安装并配置相应工具后打开 Cursor、终端或 Claude Code。
 - 切换协作视图，检查 Agent 委派关系与执行进度；在成果面板查看生成内容和文件预览。
+- 复用 Lancer 独立 [Light UI](packages/light-ui/README.md)，工具、结果和交付事件使用同色光线连接节点，支持暂停及系统减少动态效果设置。
 - 在编码页切换工作台任务与 CLI 会话，查看各自的执行记录。
 
 ### 项目管理：连接多平台，围绕本地仓库工作
@@ -358,10 +366,12 @@ AgentDesk/
 │   ├── autoloop-runtime/ # 持久化自动化运行时与进程管理
 │   ├── shared/           # 共享类型与契约
 │   ├── ui/               # 共享 UI
+│   ├── light-ui/         # Lancer MIT 光线与运行描边，无运行时依赖
 │   └── workflow/         # 工作流能力
 ├── assets/screenshots/   # README 演示截图，可随仓库分发
 ├── deploy/cloud/         # Linux / 宝塔远程部署包与操作文档
 ├── deploy/team/          # 独立团队站部署与本机 Agent 检查配置
+├── research/             # 可公开的技术研究与迁移分析
 ├── docs/                 # 本机工程笔记，不纳入公开仓库
 └── scripts/              # 开发与安全检查脚本
 ```
@@ -385,6 +395,8 @@ pnpm build
 ```sh
 pnpm security:check --history
 ```
+
+产品发布先更新根与 desktop 的 `package.json`、Tauri 配置、Cargo 版本和 `CHANGELOG.md`，运行 `pnpm release:check` 及相关测试。完成提交后执行 `pnpm release:tag`，仅在干净提交上创建本地 annotated tag `v<version>`，不覆盖已有 tag。推送 tag、npm 发布和签名安装包分发分别进行；CLI 发行线继续使用 `cli-v<version>`。
 
 欢迎通过 [Issues](https://github.com/exploitationExplorers/AgentDesk/issues) 反馈缺陷、提出功能建议或先讨论较大的改动。缺陷报告请附带运行入口（桌面 / 浏览器 / CLI）、系统与 Node.js 版本、复现步骤、预期结果和脱敏日志。PR 请说明修改动机、涉及范围与实际执行的验证；不要附带密钥或真实业务数据。参与前请留意下方许可证状态。
 
@@ -432,3 +444,5 @@ npm 包提供终端入口和浏览器工作台。运行 `agentdesk web` 即可�
 ## 许可证
 
 当前仓库未包含 `LICENSE` 文件，CLI 的 `package.json` 标注为 **`UNLICENSED`（保留权利）**。源码可见不等于已按开源许可证授权；在明确许可证之前，不应假定可以自由使用、修改或分发。第三方依赖仍遵循各自的许可证。
+
+独立子包 [`packages/light-ui`](packages/light-ui/README.md) 从 Lancer 复用，保留其 MIT [LICENSE](packages/light-ui/LICENSE) 与 [NOTICE](packages/light-ui/NOTICE)。该授权仅适用于对应组件，不改变根项目的许可状态。

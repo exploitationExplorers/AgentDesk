@@ -710,6 +710,9 @@
   display: flex;
   flex-direction: column;
   gap: 18px;
+  width: 100%;
+  max-width: 1040px;
+  margin-inline: auto;
 }
 .collaboration-page .cc-topic {
   font-size: 12px;
@@ -773,6 +776,7 @@
 .collaboration-page .cc-message-content {
   min-width: 0;
   max-width: calc(100% - 47px);
+  width: min(100%, 820px);
 }
 .collaboration-page .cc-who {
   font-size: 13px;
@@ -793,11 +797,12 @@
   font-size: 11px;
 }
 .collaboration-page .cc-bubble {
+  position: relative;
   margin-top: 4px;
   background: var(--cc-soft);
   border-radius: 6px 16px 16px 16px;
-  padding: 9px 14px;
-  font-size: 15px;
+  padding: 14px 18px;
+  font-size: 14px;
   line-height: 1.5;
   color: rgba(0, 0, 0, 0.82);
   display: inline-block;
@@ -806,7 +811,7 @@
 }
 .collaboration-page .cc-bubble .ad-prose {
   font-size: inherit;
-  line-height: 1.65;
+  line-height: 1.85;
   color: inherit;
   overflow-wrap: anywhere;
   word-break: normal;
@@ -849,6 +854,37 @@
 }
 .collaboration-page .cc-bubble .ad-prose strong {
   color: inherit;
+}
+.collaboration-page .cc-bubble .ad-prose :not(pre) > code {
+  background: #e5e5eb;
+  color: #454153;
+  border: 1px solid #d7d6e0;
+  padding: 0.12em 0.4em;
+  font-size: 0.86em;
+  white-space: break-spaces;
+  overflow-wrap: anywhere;
+}
+.collaboration-page .cc-bubble .ad-prose pre code {
+  color: #454153;
+  background: transparent;
+  border: 0;
+}
+.collaboration-page .cc-bubble .ad-prose li + li {
+  margin-top: 0.45em;
+}
+.collaboration-page .cc-bubble .ad-prose h2 {
+  font-size: 1.1em;
+  line-height: 1.5;
+  margin: 1.1em 0 0.5em;
+}
+.collaboration-page .cc-bubble .ad-prose blockquote {
+  color: #686476;
+  border-color: #c7c2d3;
+}
+.collaboration-page .cc-message-owner .cc-bubble .ad-prose :not(pre) > code {
+  background: #ffffff20;
+  color: #fff;
+  border-color: #ffffff30;
 }
 .collaboration-page .cc-message-owner {
   align-self: flex-end;

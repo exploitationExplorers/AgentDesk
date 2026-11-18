@@ -1,7 +1,7 @@
 {
   "name": "agentdesk",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0-alpha.1",
   "type": "module",
   "description": "个人 Agent 工作台：项目管理、自动部署、技术热榜、多 Agent Bot 与可视化工作流",
   "packageManager": "pnpm@10.33.3",
@@ -28,6 +28,8 @@
     "test": "turbo run test",
     "security:check": "tsx scripts/check-public-files.ts",
     "security:test": "node --import tsx --test scripts/check-public-files.test.ts",
+    "release:check": "node scripts/check-release.mjs",
+    "release:tag": "node scripts/check-release.mjs --tag",
     "e2e": "pnpm --filter @agentdesk/desktop e2e",
     "changeset": "changeset",
     "prepare": "husky"

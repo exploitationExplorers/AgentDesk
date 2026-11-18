@@ -237,6 +237,14 @@ async function collaborationFixture(
     view,
     writes,
     streams,
+    emit: () =>
+      add("code", 32, {
+        type: "tool_call",
+        agent: "code",
+        id: `live-${records.length}`,
+        name: "fs.read",
+        args: { path: "src/CollaborationView.tsx" },
+      }),
     finish: () => {
       finished = true;
       awaiting = false;
@@ -270,24 +278,27 @@ async function collaborationFixture(
 test("协作视图接收真实事件结构，暂停仅影响动效，终态停止光点", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  const { view, writes, finish } = await collaborationFixture(page);
+  const { view, writes, finish, emit } = await collaborationFixture(page);
   const reviewer = view.getByRole("button", { name: "查看子 Agent 审查的任务详情" });
   await expect(reviewer).toContainText("待确认");
   await expect(view.getByRole("button", { name: "查看子 Agent 部署的任务详情" })).toContainText(
     "失败",
   );
   await expect(view.getByText("协作模型说明", { exact: true })).toBeVisible();
-  await expect(view.locator(".ad-collab-packet").first()).toBeVisible();
+  await expect(view.locator("[data-light-layer]")).toHaveCount(1);
+  await expect(view.locator("[data-curve-kind=flight]")).toHaveCount(0);
+  emit();
+  await expect(view.locator("[data-curve-kind=flight]").first()).toBeVisible();
   await page.getByRole("button", { name: "批准执行", exact: true }).click();
   await expect(reviewer).toContainText("执行中");
   await view.getByRole("button", { name: "暂停动效" }).click();
-  await expect(view.locator(".ad-collab-packet").first()).toHaveCSS(
+  await expect(view.locator(".light-running-border rect").first()).toHaveCSS(
     "animation-play-state",
     "paused",
   );
   finish();
   await expect(view.locator(".ad-collab-hub-title")).toContainText("已完成");
-  await expect(view.locator(".ad-collab-packet")).toHaveCount(0);
+  await expect(view.locator(".light-running-border")).toHaveCount(0);
   await expect(view.locator(".ad-collab-metrics")).toContainText("3 / 4 完成");
   expect(writes).toEqual(["/api/approvals/review-approval"]);
   expect(errors).toEqual([]);
@@ -311,7 +322,10 @@ test("历史轮次、任务详情和成果检查器互通，窄屏与减少动�
   await expect(view.getByText("协作模型说明", { exact: true })).toHaveCount(0);
   await view.getByRole("combobox", { name: "执行轮次" }).selectOption("root");
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await expect(view.locator(".ad-collab-packet").first()).toBeHidden();
+  await expect(view.locator(".light-running-border rect").first()).toHaveCSS(
+    "animation-name",
+    "none",
+  );
   await page.evaluate(() => document.documentElement.classList.remove("dark"));
   await view.screenshot({ path: testInfo.outputPath("collaboration-light.png") });
   await page.setViewportSize({ width: 980, height: 800 });

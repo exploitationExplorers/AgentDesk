@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { inspectFile } from "./check-public-files.js";
 
-test("根目录只允许 README.md/AGENTS.md/CLAUDE.md，子目录 Markdown 仍可提交", () => {
+test("根目录只允许公开说明、变更记录与协作规范，子目录 Markdown 仍可提交", () => {
   for (const file of ["开发任务.md", "private.plan.md", "notes.MD", ".private.md"]) {
     const issues = inspectFile(file, Buffer.from("local document"));
     assert.equal(issues.length, 1, file);
@@ -10,6 +10,7 @@ test("根目录只允许 README.md/AGENTS.md/CLAUDE.md，子目录 Markdown 仍�
   }
   for (const file of [
     "README.md",
+    "CHANGELOG.md",
     "AGENTS.md",
     "CLAUDE.md",
     "docs/guide.md",

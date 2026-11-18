@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { TeamExecutionPage, type TeamTask, type TeamExecutionEntry } from "@agentdesk/shared";
 import { teamRequest } from "./team-api";
+import { TeamExecutionFlow } from "./TeamExecutionFlow";
 
 const labels: Record<TeamExecutionEntry["kind"], string> = {
   stage: "阶段",
@@ -88,6 +89,9 @@ export function TeamExecutionPanel({
       </button>
       {open ? (
         <>
+          {query.isSuccess ? (
+            <TeamExecutionFlow key={task.attempt} task={task} entries={entries} online={online} />
+          ) : null}
           <div className="team-live-toolbar">
             <span>由成员本机上报 · 第 {task.attempt} 次执行</span>
             <label>

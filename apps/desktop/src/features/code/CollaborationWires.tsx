@@ -1,4 +1,8 @@
 import { useEffect, useState, type CSSProperties, type RefObject } from "react";
+import {
+  useExecutionLights,
+  type LightEvent,
+} from "../../components/execution-light/ExecutionLight";
 
 export interface CollaborationWire {
   id: string;
@@ -13,10 +17,15 @@ const cnWire = (live: boolean) => (live ? "ad-collab-wire is-live" : "ad-collab-
 export function CollaborationWires({
   host,
   wires,
+  events,
+  paused,
 }: {
   host: RefObject<HTMLDivElement | null>;
   wires: CollaborationWire[];
+  events: LightEvent[];
+  paused: boolean;
 }) {
+  useExecutionLights(host, events, paused);
   const [geometry, setGeometry] = useState<{
     width: number;
     height: number;
@@ -79,12 +88,6 @@ export function CollaborationWires({
             }
           >
             <path className={cnWire(wire.live)} d={d} />
-            {wire.live ? (
-              <>
-                <path className="ad-collab-packet" d={d} pathLength={100} />
-                <path className="ad-collab-packet ad-collab-packet-core" d={d} pathLength={100} />
-              </>
-            ) : null}
           </g>
         );
       })}

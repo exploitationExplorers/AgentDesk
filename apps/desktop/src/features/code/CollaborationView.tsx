@@ -16,6 +16,7 @@ import {
 import type { Approval, Run, RunEventRecord, Task, TaskSession } from "@agentdesk/shared";
 import { Button, Dialog, cn } from "@agentdesk/ui";
 import { Markdown } from "../../components/Markdown";
+import { RunningLightBorder } from "../../components/execution-light/ExecutionLight";
 import { AGENT_META, TOOL_LABELS } from "../../lib/agents";
 import type { CodeSource } from "./api";
 import { artifactsApi } from "./artifacts-api";
@@ -158,6 +159,34 @@ export function CollaborationView({
     ],
     [model.members, model.root, model.live, model.events.length, model.outputs.length, colors],
   );
+  const lightEvents = useMemo(() => {
+    const visibleRuns = new Set(model.nodes.map((run) => run.id));
+    return records.flatMap((record) => {
+      if (!visibleRuns.has(record.runId)) return [];
+      if (
+        !["run_started", "run_ended", "tool_call", "tool_result", "artifact_ready"].includes(
+          record.event.type,
+        )
+      )
+        return [];
+      const member = model.members.find((run) => run.id === record.runId);
+      const wire = wires.find(
+        (item) =>
+          item.id ===
+          (member ? member.id : record.event.type === "artifact_ready" ? "outputs" : "events"),
+      );
+      return wire
+        ? [
+            {
+              id: `${record.runId}:${record.seq}`,
+              from: wire.from,
+              to: wire.to,
+              color: wire.color,
+            },
+          ]
+        : [];
+    });
+  }, [records, model.nodes, model.members, wires]);
 
   useEffect(() => {
     let inView = true;
@@ -194,7 +223,7 @@ export function CollaborationView({
   return (
     <div
       ref={host}
-      className={cn("ad-collab", (paused || !visible) && "is-motion-paused")}
+      className={cn("ad-collab", (paused || !visible) && "is-motion-paused light-motion-paused")}
       data-testid="collaboration-view"
     >
       <div className="ad-collab-heading">
@@ -265,7 +294,13 @@ export function CollaborationView({
         ) : (
           <>
             <div className="ad-collab-board" ref={board}>
-              <CollaborationWires host={board} wires={wires} />
+              <CollaborationWires
+                key={model.root.id}
+                host={board}
+                wires={wires}
+                events={lightEvents}
+                paused={paused || !visible}
+              />
               <section className="ad-collab-column">
                 <h3>
                   <span>01</span>子 Agent<small>{model.members.length} AGENTS</small>
@@ -282,9 +317,14 @@ export function CollaborationView({
                         onClick={() => openRun(run)}
                         style={colorStyle(colors.get(run.id) ?? "var(--ad-brand)")}
                         data-collab-node
+                        data-light-anchor={`member-out:${run.id}`}
                         data-testid="collaboration-member"
                         aria-label={`查看子 Agent ${AGENT_META[run.agent].label}的任务详情`}
                       >
+                        <RunningLightBorder
+                          active={run.status === "running"}
+                          color={colors.get(run.id)}
+                        />
                         <span className="ad-collab-member-top">
                           <span className="ad-collab-avatar">
                             <Icon size={16} />
@@ -308,6 +348,7 @@ export function CollaborationView({
                         <i
                           className="ad-collab-port is-left"
                           data-collab-port={`member-in:${run.id}`}
+                          data-light-anchor={`member-in:${run.id}`}
                         />
                       </button>
                     );
@@ -326,6 +367,10 @@ export function CollaborationView({
                   <span>02</span>主控调度<small>ORCHESTRATOR</small>
                 </h3>
                 <article className="ad-collab-hub" data-collab-node>
+                  <RunningLightBorder
+                    active={model.root.status === "running"}
+                    color="var(--ad-brand)"
+                  />
                   <button
                     className="ad-collab-hub-title"
                     type="button"
@@ -353,7 +398,11 @@ export function CollaborationView({
                       key={run.id}
                       onClick={() => openRun(run)}
                     >
-                      <i className="ad-collab-port is-left" data-collab-port={`hub:${run.id}`} />
+                      <i
+                        className="ad-collab-port is-left"
+                        data-collab-port={`hub:${run.id}`}
+                        data-light-anchor={`hub:${run.id}`}
+                      />
                       <i className="ad-collab-mini-dot" />
                       <span title={run.title}>{run.title}</span>
                       <Status value={run.status} />
@@ -387,10 +436,12 @@ export function CollaborationView({
                   <i
                     className="ad-collab-port is-right ad-collab-output-port"
                     data-collab-port="hub-out:outputs"
+                    data-light-anchor="hub-out:outputs"
                   />
                   <i
                     className="ad-collab-port is-right ad-collab-events-port"
                     data-collab-port="hub-out:events"
+                    data-light-anchor="hub-out:events"
                   />
                 </article>
                 <p className="ad-collab-hub-note">每一份结果，都回到同一条主线</p>
@@ -407,7 +458,11 @@ export function CollaborationView({
                       <p>本轮文件变更与交付成果</p>
                     </div>
                     <b>{model.outputs.length}</b>
-                    <i className="ad-collab-port is-left" data-collab-port="outputs" />
+                    <i
+                      className="ad-collab-port is-left"
+                      data-collab-port="outputs"
+                      data-light-anchor="outputs"
+                    />
                   </div>
                   {model.outputs.slice(0, 5).map((output) => (
                     <button
@@ -448,7 +503,11 @@ export function CollaborationView({
                       <h4>协作动态</h4>
                       <p>最新执行事件</p>
                     </div>
-                    <i className="ad-collab-port is-left" data-collab-port="events" />
+                    <i
+                      className="ad-collab-port is-left"
+                      data-collab-port="events"
+                      data-light-anchor="events"
+                    />
                   </div>
                   <ol>
                     {model.events.map((record) => (

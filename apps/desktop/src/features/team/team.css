@@ -401,6 +401,80 @@
   font-size: 12px;
   color: #777580;
 }
+.team-flow {
+  position: relative;
+  margin: 0 16px 16px;
+  padding: 14px;
+  border: 1px solid #e8e5ef;
+  border-radius: 12px;
+  background: #fff;
+}
+.team-flow-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  color: #85808e;
+  font-size: 11px;
+  margin-bottom: 12px;
+}
+.team-flow-heading button {
+  border: 0;
+  background: transparent;
+  color: #786096;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 3px 0;
+}
+.team-flow-nodes {
+  display: flex;
+  align-items: center;
+}
+.team-flow-node {
+  position: relative;
+  min-width: 0;
+  flex: 1;
+  border: 1px solid #ece8f3;
+  border-radius: 12px;
+  padding: 12px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.team-flow-node > span {
+  font:
+    10px ui-monospace,
+    monospace;
+  color: #a599b6;
+}
+.team-flow-node strong {
+  font-size: 12px;
+  color: #4a4354;
+  font-weight: 600;
+}
+.team-flow-node small {
+  font-size: 10px;
+  color: #8e8699;
+  overflow-wrap: anywhere;
+}
+.team-flow-link {
+  width: 20px;
+  flex-shrink: 0;
+  height: 1px;
+  background: #e3deed;
+}
+@media (max-width: 480px) {
+  .team-flow {
+    margin-inline: 10px;
+    padding: 10px;
+  }
+  .team-flow-node {
+    padding: 10px 6px;
+  }
+  .team-flow-link {
+    width: 10px;
+  }
+}
 .team-live-toolbar label {
   display: flex;
   align-items: center;

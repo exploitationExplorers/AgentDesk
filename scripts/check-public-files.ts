@@ -22,12 +22,13 @@ export interface PublicFileIssue {
 export function inspectFile(file: string, content: Buffer): PublicFileIssue[] {
   const path = file.replaceAll("\\", "/");
   const name = path.split("/").at(-1) ?? "";
-  const PUBLIC_ROOT_MD = new Set(["README.md", "AGENTS.md", "CLAUDE.md"]);
+  const PUBLIC_ROOT_MD = new Set(["README.md", "CHANGELOG.md", "AGENTS.md", "CLAUDE.md"]);
   if (!path.includes("/") && /\.md$/i.test(name) && !PUBLIC_ROOT_MD.has(name)) {
     return [
       {
         file,
-        reason: "根目录仅允许提交 README.md/AGENTS.md/CLAUDE.md，其他 Markdown 文档仅保留在本机",
+        reason:
+          "根目录仅允许提交 README.md/CHANGELOG.md/AGENTS.md/CLAUDE.md，其他 Markdown 文档仅保留在本机",
       },
     ];
   }
