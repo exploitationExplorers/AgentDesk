@@ -30,6 +30,87 @@ function createMemory(withModel = false) {
 }
 
 describe("可信记忆治理", () => {
+  it("启动索引只列生效主题，正文按 ID 查阅并受当前仓库与开关约束", () => {
+    const { memory, handle } = createMemory();
+    const project = { workspace: "D:/projects/a" };
+    memory.withContext(project, () => {
+      const body = `每次提交先执行测试。${"验证边界条件。".repeat(16)}最终正文`;
+      const topic = memory.store({ text: body, kind: "feedback", source: "tool" }).memory;
+      const candidate = memory.store({
+        text: "评审流程候选",
+        kind: "reference",
+        source: "auto",
+      }).memory;
+      const old = memory.store({
+        text: "过期的流程",
+        kind: "reference",
+        source: "tool",
+        expiresAt: "2000-01-01T00:00:00.000Z",
+      }).memory;
+      expect(memory.index()).toMatchObject({ count: 1, truncated: false });
+      expect(memory.sessionIndex()).toContain(`${topic.id}.md`);
+      expect(memory.sessionIndex()).not.toContain("最终正文");
+      expect(memory.readTopic(topic.id).markdown).toContain(`type: feedback`);
+      expect(memory.readTopic(topic.id).markdown).toContain(body);
+      expect(() => memory.readTopic(candidate.id)).toThrow("已失效");
+      expect(() => memory.readTopic(old.id)).toThrow("已失效");
+      memory.withContext({ workspace: "D:/projects/b" }, () => {
+        expect(memory.sessionIndex()).toBe("");
+        expect(() => memory.readTopic(topic.id)).toThrow("不属于当前项目");
+      });
+      memory.updatePolicy({ enabled: false });
+      expect(memory.sessionIndex()).toBe("");
+      expect(() => memory.readTopic(topic.id)).toThrow("已关闭");
+      memory.updatePolicy({ enabled: true });
+      memory.forget(topic.id);
+      expect(() => memory.readTopic(topic.id)).toThrow("不存在");
+
+      const insert = handle.raw.prepare(`INSERT INTO memories
+        (id, namespace, kind, text, tokens, source, status, scope, created_at, updated_at)
+        VALUES (?, ?, 'fact', ?, '', 'tool', 'active', 'project', '2026', '2026')`);
+      const namespace = memoryWorkspaceNamespace(project.workspace);
+      for (let i = 0; i < 210; i++) insert.run(`topic-${i}`, namespace, "验证细节".repeat(40));
+      const bounded = memory.index();
+      expect(bounded.truncated).toBe(true);
+      expect(bounded.markdown.trimEnd().split("\n").length).toBeLessThanOrEqual(200);
+      expect(Buffer.byteLength(bounded.markdown)).toBeLessThanOrEqual(25 * 1024);
+    });
+  });
+
+  it("迁移已登记 worktree 的旧条目和遗忘记录，保留 ID、候选状态与隔离", () => {
+    const { memory } = createMemory();
+    const workspace = "D:/projects/worktrees/feature";
+    const repositoryRoot = "D:/projects/main";
+    const forgotten = { text: "弃用旧部署目录", kind: "decision", source: "auto" } as const;
+    const { active, candidate } = memory.withContext({ workspace }, () => {
+      const active = memory.store({
+        text: "检索 Postgres 部署手册",
+        kind: "reference",
+        source: "tool",
+      }).memory;
+      const candidate = memory.store({
+        text: "为数据库补充监控",
+        kind: "decision",
+        source: "auto",
+      }).memory;
+      const removed = memory.store({ ...forgotten, source: "tool" }).memory;
+      memory.forget(removed.id);
+      return { active, candidate };
+    });
+    memory.withContext({ workspace, repositoryRoot }, () => {
+      expect(memory.readTopic(active.id).markdown).toContain("type: reference");
+      expect(memory.get(candidate.id)?.status).toBe("candidate");
+    });
+    memory.withContext({ workspace: repositoryRoot }, () => {
+      expect(memory.recall("Postgres")[0]?.id).toBe(active.id);
+      expect(memory.index()).toMatchObject({ count: 1 });
+      expect(() => memory.store(forgotten)).toThrow("已被遗忘");
+    });
+    memory.withContext({ workspace: "D:/projects/clone" }, () => {
+      expect(memory.index().count).toBe(0);
+      expect(() => memory.readTopic(active.id)).toThrow("不属于当前项目");
+    });
+  });
   it("旧数据库迁移可重复执行，正文和 FTS 召回不丢失", () => {
     const raw = new Database(":memory:");
     try {
@@ -66,6 +147,73 @@ describe("可信记忆治理", () => {
     } finally {
       raw.close();
     }
+  });
+
+  it("项目回顾只接受同项目可核查的原话，批准后才替换旧记忆", async () => {
+    const { memory, handle } = createMemory(true);
+    const workspace = "D:/projects/replay";
+    const quote = "项目发布窗口改为周五下午";
+    const originalIds = new Map<string, string>();
+    const record = (project: string, text: string, conversationId: string) => {
+      memory.withContext({ workspace: project }, () =>
+        memory.recordOriginal({ text, conversationId }),
+      );
+      const row = handle.raw
+        .prepare("SELECT id FROM memory_originals WHERE namespace = ? AND conversation_id = ?")
+        .get(memoryWorkspaceNamespace(project), conversationId) as { id: string };
+      originalIds.set(conversationId, row.id);
+    };
+    await memory.withContext({ workspace }, async () => {
+      const old = memory.store({
+        text: "项目发布窗口在周一",
+        kind: "decision",
+        source: "tool",
+      }).memory;
+      record(workspace, quote, "session-a");
+      record(workspace, "稳定的值班安排写在运营手册", "session-b");
+      record("D:/projects/separate", "其他项目的内部交付时间", "unrelated");
+      vi.mocked(completeStructured).mockResolvedValueOnce({
+        proposals: [
+          { sourceId: originalIds.get("session-a"), quote, replaces: old.id, kind: "decision" },
+          {
+            sourceId: originalIds.get("session-b"),
+            quote: "模型编造的证据",
+            replaces: null,
+            kind: "fact",
+          },
+          {
+            sourceId: originalIds.get("unrelated"),
+            quote: "其他项目的内部交付时间",
+            replaces: null,
+            kind: "reference",
+          },
+        ],
+      });
+      await expect(memory.replay()).resolves.toEqual({ reviewed: 2, proposed: 1 });
+      expect(vi.mocked(completeStructured).mock.calls[0]?.[0].prompt).not.toContain(
+        "其他项目的内部交付时间",
+      );
+      const candidate = memory.list().find((item) => item.reviewTargetId === old.id)!;
+      expect(candidate).toMatchObject({ status: "candidate", text: quote, evidence: quote });
+      expect(memory.index().markdown).toContain(old.id);
+      expect(memory.index().markdown).not.toContain(candidate.id);
+      expect(memory.approve(candidate.id)).toMatchObject({
+        supersedesId: old.id,
+        reviewTargetId: null,
+      });
+      expect(memory.get(old.id)?.status).toBe("superseded");
+      expect(memory.readTopic(candidate.id).markdown).toContain(quote);
+      memory.forget(candidate.id);
+      expect(
+        handle.raw
+          .prepare("SELECT id FROM memory_originals WHERE conversation_id = 'session-a'")
+          .all(),
+      ).toEqual([]);
+
+      memory.updatePolicy({ allowCloudExtraction: false });
+      await expect(memory.replay()).rejects.toThrow("允许模型提取");
+      expect(completeStructured).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("旧契约记录读取时补齐治理默认字段", () => {

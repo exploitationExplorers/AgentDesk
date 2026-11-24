@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { z } from "zod";
 import {
   AppError,
   ErrorCode,
@@ -8,9 +9,24 @@ import {
 } from "@agentdesk/shared";
 import type { Container } from "../../container";
 
-export function memoryRoutes({ memory }: Container) {
+export function memoryRoutes({ memory, projectInstructions }: Container) {
   const app = new Hono();
   app.get("/memories", (c) => c.json(memory.withManagement(() => memory.listAll())));
+  app.get("/memories/index", async (c) => {
+    const workspace = c.req.query("workspace");
+    const repositoryRoot = await projectInstructions.memoryRoot(workspace, c.req.raw.signal);
+    return c.json(memory.withContext({ workspace, repositoryRoot }, () => memory.index()));
+  });
+  app.post("/memories/replay", async (c) => {
+    const { workspace } = z
+      .object({ workspace: z.string().min(1) })
+      .parse(await c.req.json().catch(() => null));
+    const signal = c.req.raw.signal;
+    const repositoryRoot = await projectInstructions.memoryRoot(workspace, signal);
+    return c.json(
+      await memory.withContext({ workspace, repositoryRoot }, () => memory.replay(signal)),
+    );
+  });
   app.post("/memories", async (c) => {
     const body: unknown = await c.req.json().catch(() => {
       throw new AppError(ErrorCode.BadRequest, "请求内容必须是有效的 JSON");

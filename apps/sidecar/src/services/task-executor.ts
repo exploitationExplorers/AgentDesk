@@ -344,22 +344,25 @@ export function createOrchestratorExecutor(deps: RealExecutorDeps): RunExecutor 
       }
       try {
         const projectContext = await deps.projectInstructions.load(run.input.workspace, signal);
-        const memoryContext = {
+        const memoryScope = {
           workspace: run.input.workspace,
+          repositoryRoot: deps.memory
+            ? await deps.projectInstructions.memoryRoot(run.input.workspace, signal)
+            : undefined,
           conversationId: task.conversationId ?? undefined,
         };
-        const recalled = deps.memory?.withContext(memoryContext, () =>
-          deps.memory!.formatForPrompt(deps.memory!.recall(run.input.userMessage)),
+        const memoryContext = deps.memory?.withContext(memoryScope, () =>
+          deps.memory!.sessionIndex(),
         );
         const context =
-          [run.input.context, resumeContext, projectContext, planGateHint, recalled, guidance]
+          [run.input.context, resumeContext, projectContext, planGateHint, guidance]
             .filter(Boolean)
             .join("\n\n") || undefined;
         const prepared = await deps.context?.prepare({
           conversationId: task.conversationId,
           history,
           userMessage: run.input.userMessage,
-          systemContext: context,
+          systemContext: [context, memoryContext].filter(Boolean).join("\n\n"),
           agent: run.agent,
           signal,
           emit,
@@ -370,6 +373,7 @@ export function createOrchestratorExecutor(deps: RealExecutorDeps): RunExecutor 
             userMessage: run.input.userMessage,
             agent: run.agent,
             context,
+            memoryContext,
             signal,
             emit,
             requestApproval,
@@ -381,7 +385,7 @@ export function createOrchestratorExecutor(deps: RealExecutorDeps): RunExecutor 
             mask: maskFactory(),
           });
         const result = await (deps.memory
-          ? deps.memory.withContext(memoryContext, execute)
+          ? deps.memory.withContext(memoryScope, execute)
           : execute());
         await conversationStore.insertMessage({
           id: newId(),
@@ -395,7 +399,7 @@ export function createOrchestratorExecutor(deps: RealExecutorDeps): RunExecutor 
         });
         if (!isPlanGate && deps.memory) {
           await deps.memory.withContext(
-            memoryContext,
+            memoryScope,
             async () =>
               await deps.memory!.captureFromTurn({
                 userText: run.input.userMessage,

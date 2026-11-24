@@ -8,6 +8,7 @@ import type {
   Conversation,
   HealthInfo,
   Memory,
+  MemoryIndex,
   ModelSelection,
   Provider,
   Task,
@@ -487,6 +488,19 @@ export function useSlashCommands(options: Options) {
           break;
         }
         case "memory": {
+          const indexArgs = /^index(?:\s+(.+))?$/.exec(args);
+          if (indexArgs) {
+            const workspace = indexArgs[1]?.replace(/^(["'])(.*)\1$/, "$2");
+            const query = workspace ? `?workspace=${encodeURIComponent(workspace)}` : "";
+            const index = await get<MemoryIndex>(`/memories/index${query}`);
+            show("MEMORY.md", [
+              ...(index.count
+                ? index.markdown.trimEnd().split("\n").slice(2)
+                : ["没有已生效的记忆主题。"]),
+              ...(index.truncated ? ["用 /memory <搜索词> 查找其他主题。"] : []),
+            ]);
+            break;
+          }
           const memories = await get<Memory[]>("/memories");
           show(
             "长期记忆",

@@ -362,42 +362,45 @@ export class ChatService {
           });
       };
       let text = "";
-      let context: string | undefined;
       const effectiveWorkspace = shadow
         ? (await this.tasks.getRun(shadow.runId))?.input.workspace
         : workspace;
-      const memoryContext = { workspace: effectiveWorkspace, conversationId };
-      try {
-        context =
-          this.memory.withContext(memoryContext, () => this.memory.formatContext(req.message)) ||
-          undefined;
-      } catch (error) {
-        console.error("[memory] recall failed", error);
-      }
       try {
         const projectContext = await this.projectInstructions.load(effectiveWorkspace, signal);
+        const memoryScope = {
+          workspace: effectiveWorkspace,
+          repositoryRoot: await this.projectInstructions.memoryRoot(effectiveWorkspace, signal),
+          conversationId,
+        };
+        let memoryContext: string | undefined;
+        try {
+          memoryContext = this.memory.withContext(memoryScope, () => this.memory.sessionIndex());
+        } catch (error) {
+          console.error("[memory] index failed", error);
+        }
         const behavior = this.evolutionService?.pin(
           shadow?.runId ?? `chat:${conversationId}:${assistantId}`,
         );
         const guidance = behavior ? formatBehaviorGuidance(behavior) : undefined;
-        context = [context, projectContext, guidance].filter(Boolean).join("\n\n") || undefined;
+        const context = [projectContext, guidance].filter(Boolean).join("\n\n") || undefined;
         const prepared = await this.contextService?.prepare({
           conversationId,
           history,
           userMessage: req.message,
-          systemContext: context,
+          systemContext: [context, memoryContext].filter(Boolean).join("\n\n"),
           agent: req.agent,
           modelSelection: req.modelSelection,
           signal,
           emit: forwardToShadow,
         });
-        const result = await this.memory.withContext(memoryContext, () =>
+        const result = await this.memory.withContext(memoryScope, () =>
           this.orchestrator.run({
             history: prepared?.history ?? this.conversationStore.toPiMessages(history),
             userMessage: req.message,
             agent: req.agent,
             modelSelection: req.modelSelection,
             context,
+            memoryContext,
             signal,
             emit: forwardToShadow,
             requestApproval: async (request) =>
@@ -452,7 +455,7 @@ export class ChatService {
         });
         try {
           await this.memory.withContext(
-            memoryContext,
+            memoryScope,
             async () =>
               await this.memory.captureFromTurn({
                 userText: req.message,

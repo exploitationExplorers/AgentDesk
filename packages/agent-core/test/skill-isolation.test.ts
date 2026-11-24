@@ -129,3 +129,65 @@ it("空允许列表的隔离技能默认拒绝业务工具", async () => {
     allowedTools: [],
   });
 });
+
+it("主 Agent 可读取记忆主题，委派的 Agent 无索引和记忆工具", async () => {
+  faux = registerFauxProvider({ tokensPerSecond: 100_000 });
+  const registry = new ToolRegistry().register(
+    defineTool({
+      name: "memory.read",
+      description: "Read memory",
+      parameters: Type.Object({ id: Type.String() }),
+      risk: "safe",
+      execute: async () => "topic-body",
+    }),
+  );
+  const orchestrator = new Orchestrator({
+    registry,
+    agents: (["orchestrator", "code"] as const).map((name) => ({
+      name,
+      title: name,
+      description: name,
+      systemPrompt: "test",
+      tools: ["memory.*"],
+      maxTurns: 5,
+    })),
+    resolver: {
+      resolve: async () => [
+        { providerId: "faux", providerName: "faux", apiKey: "x", model: faux!.getModel() },
+      ],
+    },
+  });
+  const prompts: Array<{ system?: string; tools: string[] }> = [];
+  faux.setResponses([
+    (ctx) => {
+      prompts.push({ system: ctx.systemPrompt, tools: ctx.tools?.map((tool) => tool.name) ?? [] });
+      return fauxAssistantMessage(
+        fauxToolCall(toWireName("agents.delegate"), { agent: "code", task: "Check code" }),
+        { stopReason: "toolUse" },
+      );
+    },
+    (ctx) => {
+      prompts.push({ system: ctx.systemPrompt, tools: ctx.tools?.map((tool) => tool.name) ?? [] });
+      return fauxAssistantMessage(fauxText("checked"));
+    },
+    fauxAssistantMessage(fauxToolCall(toWireName("memory.read"), { id: "topic" }), {
+      stopReason: "toolUse",
+    }),
+    fauxAssistantMessage(fauxText("done")),
+  ]);
+  const result = await orchestrator.run({
+    history: [],
+    userMessage: "Check code",
+    context: "project-instructions",
+    memoryContext: "private-memory-index",
+    emit: () => {},
+    requestApproval: async () => true,
+  });
+  expect(result.text).toBe("done");
+  expect(result.toolCalls.find((call) => call.name === "memory.read")?.isError).toBeFalsy();
+  expect(prompts[0]?.system).toContain("private-memory-index");
+  expect(prompts[0]?.tools).toContain(toWireName("memory.read"));
+  expect(prompts[1]?.system).toContain("project-instructions");
+  expect(prompts[1]?.system).not.toContain("private-memory-index");
+  expect(prompts[1]?.tools).not.toContain(toWireName("memory.read"));
+});

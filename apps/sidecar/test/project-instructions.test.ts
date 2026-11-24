@@ -1,8 +1,9 @@
-import { mkdtemp, mkdir, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { ProjectInstructionService } from "../src/services/project-instructions";
+import { repositoryGit } from "../src/services/remote/repository-git";
 
 let fixture: string;
 let projectA: string;
@@ -35,6 +36,44 @@ describe("项目指令", () => {
     await writeFile(join(projectA, "AGENTS.md"), "updated-rule");
     expect(await service.load(projectA)).toContain("updated-rule");
     expect(await service.load()).toBeUndefined();
+  });
+
+  it("项目级与本地指令从各自 checkout 加载，工作区记忆只在真实 worktree 间共享", async () => {
+    await repositoryGit(projectA, ["init", "--quiet"]);
+    await repositoryGit(projectA, [
+      "-c",
+      "user.name=Fixture",
+      "-c",
+      "user.email=fixture@example.invalid",
+      "-c",
+      "commit.gpgsign=false",
+      "commit",
+      "--allow-empty",
+      "-m",
+      "Fixture",
+    ]);
+    const linked = join(fixture, "linked");
+    await repositoryGit(projectA, ["worktree", "add", "--detach", linked]);
+    const registered = new ProjectInstructionService({
+      list: () => [{ path: projectA }, { path: projectB }, { path: linked }],
+    });
+    await mkdir(join(linked, ".claude"));
+    await writeFile(join(linked, ".claude", "CLAUDE.md"), "team-instructions");
+    await writeFile(join(linked, "CLAUDE.local.md"), "local-instructions");
+    expect(await registered.load(linked)).toContain("team-instructions");
+    expect(await registered.load(linked)).toContain("local-instructions");
+    expect(await registered.load(projectA)).not.toContain("local-instructions");
+    expect(await registered.memoryRoot(linked)).toBe(projectA);
+    expect(await registered.memoryRoot(projectA)).toBe(projectA);
+
+    await repositoryGit(projectA, ["clone", "--local", ".", projectB]);
+    expect(await registered.memoryRoot(projectB)).toBe(projectB);
+    const alias = join(fixture, "alias");
+    await mkdir(alias);
+    const marker = await readFile(join(linked, ".git"), "utf8");
+    await writeFile(join(alias, ".git"), marker);
+    const aliased = new ProjectInstructionService({ list: () => [{ path: alias }] });
+    expect(await aliased.memoryRoot(alias)).toBe(alias);
   });
 
   it("拒绝未注册目录、注册目录内的子目录和相对路径", async () => {

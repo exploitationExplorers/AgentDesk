@@ -9,6 +9,8 @@ const KIND_LABEL: Record<MemoryKind, string> = {
   preference: "偏好",
   fact: "事实",
   decision: "决定",
+  feedback: "反馈",
+  reference: "资料索引",
 };
 
 function formatTime(iso: string): string {
@@ -104,7 +106,7 @@ export function MemoryTab() {
             />
             <PolicySwitch
               title="自动提取候选记忆"
-              description="从对话中整理稳定偏好、事实和决定。候选经你确认后才会被召回。"
+              description="从对话提取长期偏好、项目决定、纠正反馈和资料入口。确认后才会进入索引。"
               checked={policy.data.autoCaptureEnabled}
               disabled={update.isPending}
               onChange={(value) => change("autoCaptureEnabled", value)}
@@ -124,6 +126,10 @@ export function MemoryTab() {
           </p>
         ) : null}
       </Card>
+      <MemoryIndexPreview
+        allowReplay={!!(policy.data?.enabled && policy.data.allowCloudExtraction)}
+        onProposed={() => setFilter("candidate")}
+      />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap gap-2" role="group" aria-label="记忆筛选">
           {(
@@ -224,11 +230,122 @@ export function MemoryTab() {
       {shown.length > 0 ? (
         <Card>
           {shown.map((item) => (
-            <MemoryRow key={item.id} item={item} />
+            <MemoryRow
+              key={item.id}
+              item={item}
+              reviewTarget={items.find(({ id }) => id === item.reviewTargetId)}
+            />
           ))}
         </Card>
       ) : null}
     </div>
+  );
+}
+
+function MemoryIndexPreview({
+  allowReplay,
+  onProposed,
+}: {
+  allowReplay: boolean;
+  onProposed: () => void;
+}) {
+  const client = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [workspace, setWorkspace] = useState("");
+  const projects = useQuery({ queryKey: ["projects"], queryFn: api.projects, enabled: open });
+  const index = useQuery({
+    queryKey: ["memories", "index", workspace],
+    queryFn: () => api.memoryIndex(workspace || undefined),
+    enabled: open,
+    refetchInterval: open ? 15_000 : false,
+  });
+  const replay = useMutation({
+    mutationFn: api.replayMemory,
+    onSuccess: (result) => {
+      if (result.proposed) {
+        void client.invalidateQueries({ queryKey: ["memories"] });
+        onProposed();
+      }
+    },
+  });
+  return (
+    <Card className="p-5">
+      <details open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
+        <summary className="cursor-pointer text-sm font-semibold">预览 MEMORY.md</summary>
+        {open ? (
+          <div className="mt-4 grid gap-3">
+            <Field label="索引作用域">
+              <Select
+                value={workspace}
+                disabled={replay.isPending}
+                onChange={(event) => {
+                  setWorkspace(event.target.value);
+                  replay.reset();
+                }}
+              >
+                <option value="">用户记忆</option>
+                {projects.data?.map((project) => (
+                  <option key={project.id} value={project.path}>
+                    {project.name}（含用户记忆）
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            {workspace ? (
+              <div className="grid gap-2">
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={!allowReplay}
+                    loading={replay.isPending}
+                    onClick={() => replay.mutate(workspace)}
+                  >
+                    回顾项目记忆
+                  </Button>
+                  <p className="text-xs text-subtle">
+                    {allowReplay
+                      ? "将近期用户原话和生效主题交给所配置的模型核对。建议经审核后生效。"
+                      : "请先启用长期记忆和模型提取。"}
+                  </p>
+                </div>
+                {replay.isSuccess ? (
+                  <p role="status" className="text-xs text-subtle">
+                    已回顾 {replay.data.reviewed} 段原话，新增 {replay.data.proposed} 条候选。
+                  </p>
+                ) : null}
+                {replay.isError ? (
+                  <p role="alert" className="text-xs text-danger">
+                    {replay.error.message}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+            {projects.isError ? (
+              <p role="alert" className="text-xs text-danger">
+                {projects.error.message}
+              </p>
+            ) : null}
+            {index.isPending ? <Spinner /> : null}
+            {index.isError ? (
+              <p role="alert" className="text-xs text-danger">
+                {index.error.message}
+              </p>
+            ) : null}
+            {index.data ? (
+              <>
+                <p className="text-xs text-subtle">
+                  {index.data.count} 个主题{index.data.truncated ? "，其余主题可搜索召回" : ""}
+                </p>
+                <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border p-3 text-xs leading-6">
+                  {index.data.markdown}
+                </pre>
+              </>
+            ) : null}
+          </div>
+        ) : null}
+      </details>
+    </Card>
   );
 }
 
@@ -296,7 +413,7 @@ function MemoryComposer({ onSaved, onCancel }: { onSaved: () => void; onCancel: 
   );
 }
 
-function MemoryRow({ item }: { item: Memory }) {
+function MemoryRow({ item, reviewTarget }: { item: Memory; reviewTarget?: Memory }) {
   const client = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(item.text);
@@ -368,6 +485,13 @@ function MemoryRow({ item }: { item: Memory }) {
         ) : (
           <p className="mt-2 whitespace-pre-wrap break-words text-[13px] leading-7">{item.text}</p>
         )}
+        {item.reviewTargetId ? (
+          <p className="mt-2 break-words text-xs leading-6 text-subtle">
+            {reviewTarget?.status === "active" && !isExpired(reviewTarget)
+              ? `确认后替换原记忆：${reviewTarget.text}`
+              : "原记忆已变更，请重新回顾。"}
+          </p>
+        ) : null}
         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] leading-5 text-subtle">
           <span>更新于 {formatTime(item.updatedAt)}</span>
           <span className="break-all">作用域：{item.namespace}</span>
@@ -388,14 +512,18 @@ function MemoryRow({ item }: { item: Memory }) {
                 size="sm"
                 variant="primary"
                 loading={mutation.isPending && mutation.variables === "approve"}
-                disabled={mutation.isPending}
+                disabled={
+                  mutation.isPending ||
+                  (!!item.reviewTargetId &&
+                    (!reviewTarget || reviewTarget.status !== "active" || isExpired(reviewTarget)))
+                }
                 onClick={() => mutation.mutate("approve")}
               >
                 <Check className="h-3.5 w-3.5" />
-                确认记住
+                {item.reviewTargetId ? "确认替换" : "确认记住"}
               </Button>
             ) : null}
-            {item.status !== "superseded" ? (
+            {item.status !== "superseded" && !item.reviewTargetId ? (
               <Button
                 size="sm"
                 variant="ghost"

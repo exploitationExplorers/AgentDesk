@@ -77,8 +77,10 @@ import type {
   StorageCleanupResult,
 } from "@agentdesk/shared";
 import {
+  MemoryIndex,
   MemoryList,
   MemoryPolicy as MemoryPolicySchema,
+  MemoryReplay,
   PromptOptimizationResponse,
 } from "@agentdesk/shared";
 import type { Workflow, WorkflowInput, WorkflowRun } from "@agentdesk/workflow/dsl";
@@ -217,6 +219,10 @@ export const api = {
     http.put<ReachSettings>("/reach/settings", settings),
   runReach: (input: ReachRequestInput) => http.post<ReachResult>("/reach/run", input),
   memories: async () => MemoryList.parse(await http.get<unknown>("/memories")),
+  memoryIndex: async (workspace?: string) =>
+    MemoryIndex.parse(await http.get<unknown>("/memories/index", { workspace })),
+  replayMemory: async (workspace: string) =>
+    MemoryReplay.parse(await http.post<unknown>("/memories/replay", { workspace })),
   memoryPolicy: async () => MemoryPolicySchema.parse(await http.get<unknown>("/memories/policy")),
   createMemory: (input: MemoryCreate) => http.post<Memory>("/memories", input),
   updateMemoryPolicy: (policy: MemoryPolicy) => http.put<MemoryPolicy>("/memories/policy", policy),

@@ -5,9 +5,11 @@ import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import {
   fauxAssistantMessage,
   fauxText,
+  fauxToolCall,
   registerFauxProvider,
   type FauxProviderRegistration,
 } from "@mariozechner/pi-ai";
+import { toWireName } from "@agentdesk/agent-core";
 import { loadConfig } from "../src/config";
 import { createContainer, type Container } from "../src/container";
 import { createApp } from "../src/http/app";
@@ -114,7 +116,10 @@ it("记忆候选经认证管理接口审核、更正和遗忘，不污染默认�
     source: "auto",
   }).memory;
   expect(container.memory.recall("深色主题")).toEqual([]);
+  expect((await app.request("/api/memories/index")).status).toBe(401);
+  expect((await (await request("/memories/index")).json()).markdown).not.toContain(stored.id);
   expect((await request(`/memories/${stored.id}/approve`, "POST")).status).toBe(200);
+  expect((await (await request("/memories/index")).json()).markdown).toContain(stored.id);
   expect(container.memory.recall("深色主题").map((memory) => memory.id)).toContain(stored.id);
   const corrected = await (
     await request(`/memories/${stored.id}`, "PUT", { text: "用户偏好浅色主题" })
@@ -123,6 +128,65 @@ it("记忆候选经认证管理接口审核、更正和遗忘，不污染默认�
   expect((await request(`/memories/${corrected.id}`, "DELETE")).status).toBe(200);
   expect(container.memory.recall("浅色主题")).toEqual([]);
   expect((await request("/memories/policy")).status).toBe(200);
+});
+
+it("记忆回顾只允许认证后选择已登记的工作区", async () => {
+  const workspace = mkdtempSync(join(tmpdir(), "agentdesk-memory-replay-"));
+  expect((await app.request("/api/memories/replay", { method: "POST" })).status).toBe(401);
+  expect((await request("/memories/replay", "POST", { workspace })).status).toBe(400);
+  const projects = vi
+    .spyOn(container.projects, "list")
+    .mockResolvedValueOnce([
+      { path: workspace } as Awaited<ReturnType<typeof container.projects.list>>[number],
+    ]);
+  try {
+    const replay = await request("/memories/replay", "POST", { workspace });
+    expect(replay.status).toBe(200);
+    expect(await replay.json()).toEqual({ reviewed: 0, proposed: 0 });
+  } finally {
+    projects.mockRestore();
+  }
+});
+
+it("聊天和独立任务都载入索引并能按需读取主题正文", async () => {
+  const text = `用简体中文回复。${"说明如何复查结果。".repeat(12)}正文尾部内容`;
+  const topic = container.memory.store({ text, kind: "preference", source: "tool" }).memory;
+  try {
+    for (const path of ["/chat", "/tasks"] as const) {
+      const observed: { system?: string; transcript?: string } = {};
+      faux.setResponses([
+        (ctx) => {
+          observed.system = ctx.systemPrompt;
+          return fauxAssistantMessage(fauxToolCall(toWireName("memory.read"), { id: topic.id }), {
+            stopReason: "toolUse",
+          });
+        },
+        (ctx) => {
+          observed.transcript = JSON.stringify(ctx.messages);
+          return fauxAssistantMessage(fauxText("已读取主题"));
+        },
+      ]);
+      const response = await request(
+        path,
+        "POST",
+        path === "/chat" ? { message: "查阅当前偏好" } : { goal: "查阅当前偏好" },
+      );
+      expect(response.ok).toBe(true);
+      if (path === "/chat") {
+        expect(await response.text()).toContain("已读取主题");
+      } else {
+        const task = await response.json();
+        await vi.waitFor(async () =>
+          expect((await container.tasks.get(task.id))?.status).toBe("awaiting_review"),
+        );
+      }
+      expect(observed.system).toContain(`${topic.id}.md`);
+      expect(observed.system).not.toContain("正文尾部内容");
+      expect(observed.transcript).toContain("正文尾部内容");
+    }
+  } finally {
+    container.memory.forget(topic.id);
+  }
 });
 it("设置页直接创建真实用户记忆，不调用模型并拒绝伪造来源或凭据", async () => {
   expect((await app.request("/api/memories", { method: "POST", body: "{}" })).status).toBe(401);

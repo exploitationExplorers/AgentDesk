@@ -31,7 +31,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   { name: "tools", description: "查看可用工具及风险等级", args: "[搜索词]" },
   { name: "skills", description: "查看已加载的 Skills", args: "[搜索词]" },
   { name: "tasks", description: "查看后台任务", args: "[状态]" },
-  { name: "memory", description: "查看长期记忆", args: "[搜索词]" },
+  { name: "memory", description: "查看长期记忆", args: "[搜索词 | index [已登记项目路径]]" },
   { name: "export", description: "将当前会话导出为 Markdown", args: "[文件路径]" },
   { name: "doctor", description: "检查服务连接与模型配置" },
   { name: "version", description: "查看 CLI 版本" },

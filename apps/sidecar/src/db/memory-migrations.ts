@@ -14,6 +14,7 @@ export function migrateMemoryDatabase(raw: Database.Database): void {
       workspace: "TEXT",
       evidence: "TEXT",
       supersedes_id: "TEXT",
+      review_target_id: "TEXT",
       expires_at: "TEXT",
     };
     for (const [name, definition] of Object.entries(additions)) {

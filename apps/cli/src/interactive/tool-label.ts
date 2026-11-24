@@ -21,6 +21,7 @@ const ACTIONS: Record<string, string> = {
   "claude.run": "交给 Claude",
   "memory.store": "记住",
   "memory.recall": "回忆",
+  "memory.read": "读取记忆主题",
   "memory.forget": "忘掉",
   "disk.status": "查看磁盘",
   "disk.scan": "扫描磁盘",

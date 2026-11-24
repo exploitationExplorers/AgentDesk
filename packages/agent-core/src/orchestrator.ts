@@ -40,8 +40,10 @@ export interface OrchestratorRunOptions {
   signal?: AbortSignal;
   durable?: DurableAgentOptions;
   durableState?: DurableToolState;
-  /** 额外系统上下文，例如召回的长期记忆。总控和被委派的 Agent 都会看到。 */
+  /** 主 Agent 和被委派的 Agent 共用的额外系统上下文。 */
   context?: string;
+  /** 仅主 Agent 可见的长期记忆索引。 */
+  memoryContext?: string;
   /**
    * 可选：覆盖这次调用可用的工具集（按工具名精确匹配或 `ns.*` 通配，复用
    * ToolRegistry.select 的匹配规则）。不传时沿用现有的"按 agent definition 的 tools
@@ -161,6 +163,7 @@ export class Orchestrator {
       | "requestAnswer"
       | "signal"
       | "context"
+      | "memoryContext"
       | "allowedTools"
       | "recordArtifact"
       | "modelSelection"
@@ -168,19 +171,26 @@ export class Orchestrator {
       | "mask"
       | "durable"
       | "durableState"
-    >,
+    > & { delegated?: boolean },
   ) {
     const def = this.definition(name);
     const models = await this.deps.resolver.resolve(name, opts.modelSelection);
-    const tools = opts.allowedTools
+    const selected = opts.allowedTools
       ? this.deps.registry.select(opts.allowedTools)
       : this.toolsFor(def);
+    const tools = this.isolateTools(name, userText, selected).filter(
+      (tool) => !opts.delegated || !tool.name.startsWith("memory."),
+    );
     return runAgent({
       definition: def,
-      tools: this.isolateTools(name, userText, tools),
+      tools,
       models,
       messages,
-      systemPromptSuffix: [opts.context, this.deps.skills?.promptFor(name, userText)]
+      systemPromptSuffix: [
+        opts.context,
+        tools.some((tool) => tool.name === "memory.read") ? opts.memoryContext : undefined,
+        this.deps.skills?.promptFor(name, userText),
+      ]
         .filter(Boolean)
         .join("\n\n"),
       emit: opts.emit,
@@ -239,6 +249,7 @@ export class Orchestrator {
               requestApproval: subApproval,
               signal: opts.signal,
               context: opts.context,
+              delegated: true,
               modelSelection: opts.modelSelection,
               recordArtifact: opts.recordArtifact,
               autoApprove: opts.autoApprove,
@@ -258,18 +269,20 @@ export class Orchestrator {
     const def = this.definition("orchestrator");
     const models = await this.deps.resolver.resolve("orchestrator", opts.modelSelection);
     const hint = routeByKeywords(opts.userMessage);
-    const tools = opts.allowedTools
+    const selected = opts.allowedTools
       ? this.deps.registry.select(opts.allowedTools)
       : opts.durable
         ? this.toolsFor(def)
         : [...this.toolsFor(def), delegate];
+    const tools = this.isolateTools("orchestrator", opts.userMessage, selected);
     const result = await runAgent({
       definition: def,
-      tools: this.isolateTools("orchestrator", opts.userMessage, tools),
+      tools,
       models,
       messages,
       systemPromptSuffix: [
         opts.context,
+        tools.some((tool) => tool.name === "memory.read") ? opts.memoryContext : undefined,
         hint ? `关键词路由提示：这个请求可能与 ${hint} Agent 相关。` : "",
         this.deps.skills?.promptFor("orchestrator", opts.userMessage) ?? "",
       ]

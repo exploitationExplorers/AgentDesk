@@ -4,6 +4,9 @@ AgentDesk product changes are listed by release. CLI packages follow a separate 
 
 ## Unreleased
 
+- Start conversations and tasks with a bounded memory index, open relevant topics on demand, and share repository memories across linked worktrees. Keep delegated agents out of the main session's memory tools.
+- Preview user and project memory indexes in Settings. Record feedback and reference topics alongside preferences, project facts, and decisions.
+- Review recent project conversations against saved memories and queue evidence-backed additions and corrections for approval.
 - Explore disk usage in a treemap and drill into folders to find large files. Show repository status and explain what it takes to rebuild common development artifacts.
 - Preview the action for each selected item before cleanup. Report estimated deletion size, the size of items moved to the recycle bin, and the measured change in free space.
 - Bind web and Bot cleanup approvals to the scan, selected items, and removal actions. Invalidate approval when the scan or cleanup plan changes.

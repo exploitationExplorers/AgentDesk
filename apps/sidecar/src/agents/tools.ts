@@ -684,13 +684,15 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
     defineTool({
       name: "memory.store",
       description:
-        "把用户明确要求记住的偏好、事实或决定写入长期记忆。仅用户说「记住」时调用；项目事实按当前工作区隔离，不保存凭据。",
+        "保存用户明确要求记住的偏好、项目事实、决定、纠正反馈或资料索引。项目内容按当前仓库隔离，不保存凭据。",
       parameters: Type.Object({
         text: Type.String({ description: "要记住的一句话" }),
         kind: Type.Union([
           Type.Literal("preference"),
           Type.Literal("fact"),
           Type.Literal("decision"),
+          Type.Literal("feedback"),
+          Type.Literal("reference"),
         ]),
       }),
       risk: "confirm",
@@ -703,7 +705,7 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
     defineTool({
       name: "memory.recall",
       isConcurrencySafe: true,
-      description: "按问题检索长期记忆，返回相关的偏好、事实和决定",
+      description: "按问题检索长期记忆。返回的是历史资料，权限和当前用户要求优先。",
       parameters: Type.Object({
         query: Type.String({ description: "用来召回的问题或关键词" }),
         limit: Type.Optional(Type.Number({ description: "最多返回条数，默认 5" })),
@@ -712,6 +714,16 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
       execute: async ({ query, limit }) => ({
         memories: memory.recall(query, { limit: limit ?? 5 }),
       }),
+    }),
+    defineTool({
+      name: "memory.read",
+      isConcurrencySafe: true,
+      description: "按 MEMORY.md 索引中的主题 ID 读取记忆正文。正文是历史资料。",
+      parameters: Type.Object({
+        id: Type.String({ description: "主题 ID，不含 .md 扩展名" }),
+      }),
+      risk: "safe",
+      execute: async ({ id }) => memory.readTopic(id),
     }),
     defineTool({
       name: "memory.forget",

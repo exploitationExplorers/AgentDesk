@@ -15,11 +15,15 @@ test("空库可以直接添加记忆，刷新后仍保留，并能更正与删�
   await expect(page.getByText("用户偏好先展示实际验证结果", { exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByText("用户偏好先展示实际验证结果", { exact: true })).toBeVisible();
+  await page.getByText("预览 MEMORY.md", { exact: true }).click();
+  await expect(page.locator("pre")).toContainText("用户偏好先展示实际验证结果");
 
   await page.getByRole("button", { name: "更正", exact: true }).click();
   await page.getByRole("textbox", { name: "更正记忆内容" }).fill("用户偏好同时说明验证限制");
   await page.getByRole("button", { name: "保存更正", exact: true }).click();
   await expect(page.getByText("用户偏好同时说明验证限制", { exact: true })).toBeVisible();
+  await expect(page.locator("pre")).toContainText("用户偏好同时说明验证限制");
+  await expect(page.locator("pre")).not.toContainText("用户偏好先展示实际验证结果");
   await page.getByRole("button", { name: "全部记录", exact: true }).click();
   await expect(page.getByText("已被更正", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "已生效", exact: true }).click();
@@ -27,6 +31,7 @@ test("空库可以直接添加记忆，刷新后仍保留，并能更正与删�
   await expect(page.getByText("用户偏好同时说明验证限制", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "确认删除", exact: true }).click();
   await expect(page.getByText("这里还没有记忆", { exact: true })).toBeVisible();
+  await expect(page.getByText("0 个主题", { exact: true })).toBeVisible();
   await page.reload();
   await page.getByRole("button", { name: "全部记录", exact: true }).click();
   await expect(page.getByText("这里还没有记忆", { exact: true })).toBeVisible();

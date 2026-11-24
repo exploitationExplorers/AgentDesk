@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const MemoryKind = z.enum(["preference", "fact", "decision"]);
+export const MemoryKind = z.enum(["preference", "fact", "decision", "feedback", "reference"]);
 export type MemoryKind = z.infer<typeof MemoryKind>;
 
 export const MemorySource = z.enum(["tool", "auto"]);
@@ -58,12 +58,26 @@ export const Memory = z.object({
   workspace: z.string().nullable().default(null),
   evidence: z.string().nullable().default(null),
   supersedesId: z.string().nullable().default(null),
+  reviewTargetId: z.string().nullable().default(null),
   expiresAt: z.string().nullable().default(null),
 });
 export type Memory = z.infer<typeof Memory>;
 
 export const MemoryList = z.array(Memory);
 export type MemoryList = z.infer<typeof MemoryList>;
+
+export const MemoryIndex = z.object({
+  markdown: z.string(),
+  count: z.number().int().nonnegative(),
+  truncated: z.boolean(),
+});
+export type MemoryIndex = z.infer<typeof MemoryIndex>;
+
+export const MemoryReplay = z.object({
+  reviewed: z.number().int().nonnegative(),
+  proposed: z.number().int().nonnegative(),
+});
+export type MemoryReplay = z.infer<typeof MemoryReplay>;
 
 export const MemoryDeleted = z.object({
   id: z.string(),
