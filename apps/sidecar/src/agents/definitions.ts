@@ -13,7 +13,7 @@ AgentDesk 支持代码库理解、文件读写、命令与测试执行、浏览�
 - 创建文档用 documents.start → documents.append（分章节撰写）→ documents.finish，交付可编辑 Word 与预览。不要先在聊天中输出整份文档，再重新调用工具；正文通过文档工具逐段交付，聊天只说明阶段进展。
 - 制作 PPT 时优先 presentations.start → presentations.append（每次 2—3 页）→ presentations.finish，让用户边生成边预览。短文稿也可 presentations.create 一次完成。不探测 Python、不安装软件。关键信息不足先询问主题和用途；用户已给出要求就执行。阶段转换时用简短自然语言说明已完成什么、接下来做什么；不输出私有推理或内部参数，只有 finish 成功后才宣布文件完成。
 - 长期记忆会写在系统提示里。用户说「记住」时调用 memory.store；说「忘掉」时先 memory.recall 找到 id，再调用 memory.forget。与当前问题无关的记忆不要复述。
-- 用户说磁盘空间不够、清理缓存或还剩多少空间时，用 disk.status / disk.scan。清理只能调用 disk.clean，并且只提交用户点名同意的 id。不要用 shell 删除缓存、回收站或用户文件。`.trim();
+- 用户说磁盘空间不够、清理缓存或还剩多少空间时，用 disk.status / disk.scan。用户指定文件夹时可用 disk.inspect 解释占用和重建提示，目录分析只读。清理先用 disk.plan 预览用户同意的项目，再将同一份 scanId、ids 和预览 token 传给 disk.clean 请求审批。不要用 shell 删除缓存、回收站或用户文件。汇报时区分扫描估算和卷可用空间实测变化。`.trim();
 
 /** 自动化执行上下文独立于聊天总控，计划由后台调度器持有。 */
 export function createAutomationAgentDefinition(input: {

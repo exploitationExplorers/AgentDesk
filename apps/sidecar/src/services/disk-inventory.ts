@@ -1,5 +1,5 @@
 import { lstat, readdir, realpath } from "node:fs/promises";
-import { extname, join } from "node:path";
+import { basename, extname, join } from "node:path";
 import type { DiskUsageEntry } from "@agentdesk/shared";
 import { isProtectedVolumePath, pathKey, type DiskEnv, type DiskLimits } from "./disk-rules";
 import { volumeForPath, type VolumeRoot } from "./disk-volumes";
@@ -42,6 +42,9 @@ export async function inspectVolume(
   prefixes: string[],
   limits: DiskLimits,
   budget: { left: number },
+  directory = volume.path,
+  userRoot?: string,
+  dependencyRoot?: string,
 ): Promise<{ usage: DiskUsageEntry[]; files: VolumeFile[]; partial: boolean }> {
   const usage: DiskUsageEntry[] = [];
   const files: VolumeFile[] = [];
@@ -50,13 +53,41 @@ export async function inspectVolume(
     const owner = volumeForPath(path, roots, env);
     return owner && pathKey(owner.path, env.platform) === pathKey(volume.path, env.platform);
   };
+  const entries = await readdir(directory, { withFileTypes: true });
+  const names = new Set(
+    entries.filter((entry) => entry.isFile()).map((entry) => entry.name.toLowerCase()),
+  );
+  const scoped = pathKey(directory, env.platform) !== pathKey(volume.path, env.platform);
+  const installedDependencies =
+    scoped && names.has("package.json") ? join(directory, "node_modules") : null;
+  const protectedPath = (path: string) =>
+    isProtectedVolumePath(
+      path,
+      userRoot ?? volume.path,
+      env,
+      prefixes,
+      Boolean(userRoot),
+      dependencyRoot ?? installedDependencies ?? undefined,
+    );
+  const nextBuild =
+    names.has("package.json") && [...names].some((file) => file.startsWith("next.config."));
+  const rebuildHint = (name: string) => {
+    if (!scoped) return undefined;
+    if (name === "node_modules" && installedDependencies)
+      return "依赖安装目录。移除后需按项目的锁文件重新安装依赖。";
+    if (name === ".next" && nextBuild)
+      return "Next.js 构建目录。移除后需重新构建，当前运行的构建产物可能受影响。";
+    if (name === "target" && names.has("cargo.toml"))
+      return "Rust 构建目录。移除后下一次编译会重新构建，耗时可能增加。";
+    return undefined;
+  };
 
   const walk = async (
     target: string,
     allowance: { left: number },
     selectable: boolean,
     depth: number,
-  ): Promise<{ bytes: number; truncated: boolean }> => {
+  ): Promise<{ bytes: number; truncated: boolean; kind?: DiskUsageEntry["kind"] }> => {
     if (budget.left <= 0 || allowance.left <= 0 || depth > 64) {
       return { bytes: 0, truncated: true };
     }
@@ -72,19 +103,19 @@ export async function inspectVolume(
       ) {
         return { bytes: 0, truncated: true };
       }
-      if (isProtectedVolumePath(actual, volume.path, env, prefixes)) {
+      if (protectedPath(actual)) {
         return { bytes: 0, truncated: true };
       }
       if (stat.isFile()) {
-        if (stat.size >= limits.largeFileMinBytes && files.length < 200) {
+        if (!scoped && stat.size >= limits.largeFileMinBytes && files.length < 200) {
           files.push({
             path: actual,
             retain: !selectable || RETAIN_EXTENSIONS.has(extname(actual).toLowerCase()),
           });
-        } else if (stat.size >= limits.largeFileMinBytes) {
+        } else if (!scoped && stat.size >= limits.largeFileMinBytes) {
           partial = true;
         }
-        return { bytes: stat.size, truncated: false };
+        return { bytes: stat.size, truncated: false, kind: "file" };
       }
       if (!stat.isDirectory()) return { bytes: 0, truncated: false };
       const entries = await readdir(actual, { withFileTypes: true });
@@ -109,24 +140,33 @@ export async function inspectVolume(
         bytes += measured.bytes;
         truncated ||= measured.truncated;
       }
-      return { bytes, truncated };
+      return { bytes, truncated, kind: "directory" };
     } catch {
       return { bytes: 0, truncated: true };
     }
   };
 
-  const entries = await readdir(volume.path, { withFileTypes: true });
+  const canSelectFiles = !scoped;
   for (const entry of entries) {
     if (budget.left <= 0) {
       partial = true;
       break;
     }
-    const target = join(volume.path, entry.name);
-    if (isProtectedVolumePath(target, volume.path, env, prefixes) || !isSelectedVolume(target))
+    const target = join(directory, entry.name);
+    if (protectedPath(target) || !isSelectedVolume(target)) {
+      partial = true;
       continue;
-    const measured = await walk(target, { left: limits.maxEntriesPerItem }, true, 0);
+    }
+    const measured = await walk(target, { left: limits.maxEntriesPerItem }, canSelectFiles, 0);
     partial ||= measured.truncated;
-    if (measured.bytes > 0) usage.push({ path: target, title: entry.name, ...measured });
+    if (measured.bytes > 0 || measured.kind === "directory")
+      usage.push({
+        path: target,
+        title: basename(target),
+        ...measured,
+        rebuildHint:
+          measured.kind === "directory" ? rebuildHint(entry.name.toLowerCase()) : undefined,
+      });
   }
   usage.sort((a, b) => b.bytes - a.bytes);
   return { usage, files, partial };

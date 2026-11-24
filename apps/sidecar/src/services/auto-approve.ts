@@ -24,6 +24,7 @@ export function createAutoApprove(
     if (rule?.decision === "deny") {
       return { approved: false, note: `已记住拒绝：${describeRule(rule)}` };
     }
+    if (tool === "disk.clean") return { approved: false, note: "每份清理清单需要本人确认" };
     if (rule?.decision === "allow") {
       return { approved: true, reason: `命中规则：${describeRule(rule)}`, source: "rule" };
     }

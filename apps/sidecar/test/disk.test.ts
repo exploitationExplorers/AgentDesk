@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DiskScan } from "@agentdesk/shared";
+import { DiskScan, type DiskCleanRequest } from "@agentdesk/shared";
 import { openDatabase, type DbHandle } from "../src/db/client";
 import { DiskService } from "../src/services/disk";
 import {
@@ -22,6 +22,10 @@ vi.mock("node:fs", async (importOriginal) => {
 
 let handle: DbHandle | undefined;
 let home: string | undefined;
+
+function cleanSelection(disk: DiskService, input: DiskCleanRequest) {
+  return disk.clean({ ...input, planToken: disk.planClean(input).token });
+}
 
 afterEach(() => {
   handle?.close();
@@ -180,7 +184,7 @@ describe("disk service", () => {
     expect(repo).toBeUndefined();
     expect(report.items.some((item) => item.path.includes(".ssh"))).toBe(false);
 
-    const result = await disk.clean({
+    const result = await cleanSelection(disk, {
       scanId: report.id,
       ids: [npm!.id, movie!.id, "missing-item"],
     });
@@ -191,7 +195,9 @@ describe("disk service", () => {
     expect(() => readFileSync(join(root, "Downloads", "movie.bin"))).toThrow();
     expect(() => readFileSync(join(env.local, "npm-cache", "content", "blob"))).toThrow();
 
-    await expect(disk.clean({ scanId: "missing", ids: [npm!.id] })).rejects.toThrow(/重新扫描/);
+    await expect(
+      disk.clean({ scanId: "missing", ids: [npm!.id], planToken: "stale" }),
+    ).rejects.toThrow(/重新扫描/);
   });
 });
 
@@ -230,7 +236,7 @@ function multipleDisks(maxEntries = 5000) {
     writeFileSync(path, Buffer.alloc(bytes));
     return path;
   };
-  return { disk, env, system, data, file };
+  return { disk, env, system, data, file, settings };
 }
 
 describe("多磁盘扫描", () => {
@@ -263,7 +269,7 @@ describe("多磁盘扫描", () => {
     expect(report.items.every((item) => item.tier === "optional" && item.selectable)).toBe(true);
     expect(report.usage[0]).toMatchObject({ path: join(data, "Downloads"), bytes: 128 });
     const selected = report.items.find((item) => item.path === movie)!;
-    const result = await disk.clean({ scanId: report.id, ids: [selected.id] });
+    const result = await cleanSelection(disk, { scanId: report.id, ids: [selected.id] });
     expect(result.freedBytes).toBe(128);
     expect(() => readFileSync(movie)).toThrow();
     expect(readFileSync(cache)).toHaveLength(64);
@@ -271,7 +277,9 @@ describe("多磁盘扫描", () => {
     const otherReport = await disk.scan(system);
     expect(otherReport.items.some((item) => item.path.includes("npm-cache"))).toBe(true);
     expect(otherReport.items.some((item) => item.path === archive)).toBe(false);
-    await expect(disk.clean({ scanId: report.id, ids: [selected.id] })).rejects.toThrow(/重新扫描/);
+    await expect(
+      disk.clean({ scanId: report.id, ids: [selected.id], planToken: "stale" }),
+    ).rejects.toThrow(/重新扫描/);
   });
 
   it("保留数据盘上的仓库、应用、数据库、密钥和系统内容", async () => {
@@ -294,7 +302,7 @@ describe("多磁盘扫描", () => {
     for (const path of [secrets, windows, protectedFile]) {
       expect(report.items.some((item) => item.path === path)).toBe(false);
     }
-    const result = await disk.clean({
+    const result = await cleanSelection(disk, {
       scanId: report.id,
       ids: report.items.map((item) => item.id),
     });
@@ -328,18 +336,103 @@ describe("多磁盘扫描", () => {
     rmSync(target);
     mkdirSync(target);
     file(join(target, "keep.bin"));
-    const result = await disk.clean({ scanId: report.id, ids: [report.items[0]!.id] });
+    const result = await cleanSelection(disk, { scanId: report.id, ids: [report.items[0]!.id] });
     expect(result.cleaned).toEqual([]);
     expect(readFileSync(join(target, "keep.bin"))).toHaveLength(64);
     const cache = join(env.local, "npm-cache");
     file(join(cache, "blob"));
     const cacheReport = await disk.scan(system);
     file(join(cache, "nested", ".git", "HEAD"));
-    const cacheResult = await disk.clean({
+    const cacheResult = await cleanSelection(disk, {
       scanId: cacheReport.id,
       ids: cacheReport.items.map((item) => item.id),
     });
     expect(cacheResult.cleaned).toEqual([]);
     expect(readFileSync(join(cache, "blob"))).toHaveLength(64);
+  });
+
+  it("确认令牌绑定扫描、选项和动作，旧清单不能用于新扫描", async () => {
+    const { disk, data, system, env, file, settings } = multipleDisks();
+    const archive = file(join(data, "archive.zip"));
+    const other = file(join(data, "other.zip"));
+    const localCache = file(join(env.local, "npm-cache", "blob"));
+    const scan = await disk.scan(data);
+    const request = {
+      scanId: scan.id,
+      ids: [scan.items.find((item) => item.path === archive)!.id],
+    };
+    const plan = disk.planClean(request);
+    const approved = { ...request, planToken: plan.token };
+    expect(plan.items).toEqual([expect.objectContaining({ path: archive, action: "delete" })]);
+    await expect(
+      disk.clean({ ...approved, ids: scan.items.map((item) => item.id) }),
+    ).rejects.toThrow(/清单已变化/);
+    settings.update({ diskOptionalAction: "trash" });
+    await expect(disk.clean(approved)).rejects.toThrow(/清单已变化/);
+    const newScan = await disk.scan(system);
+    expect(newScan.items[0]?.id).toBe("d001");
+    await expect(disk.clean(approved)).rejects.toThrow(/重新扫描/);
+    expect(readFileSync(archive)).toHaveLength(64);
+    expect(readFileSync(other)).toHaveLength(64);
+    expect(readFileSync(localCache)).toHaveLength(64);
+  });
+
+  it("确认后拒绝同路径替换，核验实际卷剩余空间", async () => {
+    const { disk, data, file } = multipleDisks();
+    const archive = file(join(data, "archive.zip"));
+    const video = file(join(data, "video.mp4"), 128);
+    const scan = await disk.scan(data);
+    const input = { scanId: scan.id, ids: scan.items.map((item) => item.id) };
+    const plan = disk.planClean(input);
+    rmSync(archive);
+    writeFileSync(archive, Buffer.alloc(64, 1));
+    const stats = fs.statfsSync(data);
+    vi.mocked(fs.statfsSync)
+      .mockReturnValueOnce(stats)
+      .mockReturnValueOnce({ ...stats, bsize: 4096, blocks: 1000, bavail: 100 })
+      .mockReturnValueOnce(stats)
+      .mockReturnValueOnce({ ...stats, bsize: 4096, blocks: 1000, bavail: 101 });
+    const result = await disk.clean({ ...input, planToken: plan.token });
+    expect(result).toMatchObject({
+      freedBytes: 128,
+      freeBytesBefore: 409600,
+      freeBytesAfter: 413696,
+      skipped: [
+        expect.objectContaining({ path: archive, reason: expect.stringContaining("发生变化") }),
+      ],
+      cleaned: [expect.objectContaining({ path: video })],
+    });
+    expect(readFileSync(archive)).toEqual(Buffer.alloc(64, 1));
+  });
+
+  it("只读浏览允许的文件夹，标出构建产物，拒绝其他卷和受保护目录", async () => {
+    const { disk, env, system, data, file } = multipleDisks();
+    const project = join(data, "workspace", "demo");
+    file(join(project, "package.json"));
+    file(join(project, "node_modules", "pkg", "index.js"), 128);
+    file(join(project, ".ssh", "key"), 512);
+    const downloads = join(env.home, "Downloads");
+    file(join(downloads, "guide.pdf"), 64);
+    const report = await disk.scan(data);
+    const root = await disk.inspectDirectory(data, project);
+    expect(root.usage).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          title: "node_modules",
+          bytes: 128,
+          kind: "directory",
+          rebuildHint: expect.any(String),
+        }),
+        expect.objectContaining({ title: "package.json", kind: "file" }),
+      ]),
+    );
+    expect(root.partial).toBe(true);
+    expect((await disk.inspectDirectory(data, join(project, "node_modules"))).usage[0]?.title).toBe(
+      "pkg",
+    );
+    expect((await disk.inspectDirectory(system, downloads)).usage[0]?.title).toBe("guide.pdf");
+    expect(disk.current()?.id).toBe(report.id);
+    await expect(disk.inspectDirectory(system, project)).rejects.toThrow(/当前磁盘/);
+    await expect(disk.inspectDirectory(data, join(project, ".ssh"))).rejects.toThrow(/可分析范围/);
   });
 });

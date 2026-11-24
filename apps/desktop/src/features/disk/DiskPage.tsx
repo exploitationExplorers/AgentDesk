@@ -15,7 +15,15 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import type { AppSettings, DiskCandidate, DiskCategory, DiskScan } from "@agentdesk/shared";
+import type {
+  AppSettings,
+  DiskCandidate,
+  DiskCategory,
+  DiskCleanRequest,
+  DiskCleanCommitRequest,
+  DiskCleanResult,
+  DiskScan,
+} from "@agentdesk/shared";
 import {
   Badge,
   Button,
@@ -30,6 +38,7 @@ import {
 import { api } from "../../lib/api";
 import { formatGB } from "../../lib/format";
 import { useUi } from "../../stores/ui";
+import { DiskUsageExplorer } from "./DiskUsageExplorer";
 
 type OptionalFilter = "all" | "user" | "dev" | "system";
 
@@ -88,13 +97,17 @@ export function DiskPage() {
   const report = scan.data?.status.volumePath === volumePath ? scan.data : null;
   const used = status.data?.volumes.find((volume) => volume.volumePath === volumePath);
   const [threshold, setThreshold] = useState("15");
-  const [action, setAction] = useState<AppSettings["diskOptionalAction"]>("trash");
+  const action = settings.data?.diskOptionalAction ?? "trash";
+  const [draftAction, setDraftAction] = useState<AppSettings["diskOptionalAction"]>("trash");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [optionalFilter, setOptionalFilter] = useState<OptionalFilter>("all");
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [selection, setSelection] = useState<{ scanId?: string; ids: Set<string> }>({
+    ids: new Set(),
+  });
   const [reviewed, setReviewed] = useState(false);
   const [keepOpen, setKeepOpen] = useState(false);
-  const [notice, setNotice] = useState("");
+  const [receipt, setReceipt] = useState<DiskCleanResult | null>(null);
+  const [usageRevision, setUsageRevision] = useState(0);
   const scanRequested = useRef(false);
 
   useEffect(() => {
@@ -104,16 +117,21 @@ export function DiskPage() {
   useEffect(() => {
     if (!settings.data) return;
     setThreshold(String(settings.data.diskThresholdGB));
-    setAction(settings.data.diskOptionalAction);
+    setDraftAction(settings.data.diskOptionalAction);
   }, [settings.data]);
 
   useEffect(() => {
-    setSelected(
-      new Set(
-        (report?.items ?? [])
-          .filter((item) => item.tier === "primary" && item.selectable)
-          .map((item) => item.id),
-      ),
+    setSelection((previous) =>
+      previous.scanId === report?.id
+        ? previous
+        : {
+            scanId: report?.id,
+            ids: new Set(
+              (report?.items ?? [])
+                .filter((item) => item.tier === "primary" && item.selectable)
+                .map((item) => item.id),
+            ),
+          },
     );
   }, [report]);
 
@@ -121,7 +139,7 @@ export function DiskPage() {
     mutationFn: () => api.scanDisk(volumePath),
     onSuccess: (report) => {
       setReviewed(false);
-      setNotice("");
+      setReceipt(null);
       queryClient.setQueryData(["disk-scan"], report);
       void queryClient.invalidateQueries({ queryKey: ["disk-status"] });
     },
@@ -130,17 +148,16 @@ export function DiskPage() {
     mutationFn: (report: DiskScan) => api.reviewDisk(report.id),
     onSuccess: (report) => {
       setReviewed(true);
-      setNotice("");
       queryClient.setQueryData(["disk-scan"], report);
     },
   });
+  const preview = useMutation({ mutationFn: (input: DiskCleanRequest) => api.planDisk(input) });
   const clean = useMutation({
-    mutationFn: (input: { scanId: string; ids: string[] }) =>
-      api.cleanDisk(input.scanId, input.ids),
+    mutationFn: (input: DiskCleanCommitRequest) => api.cleanDisk(input),
     onSuccess: async (result) => {
-      setNotice(
-        `已处理 ${result.cleaned.length} 项，约释放 ${formatGB(result.freedBytes)}。跳过 ${result.skipped.length} 项。${result.cleaned.some((item) => item.action === "trash") ? "移入回收站的文件需清空回收站后才释放空间。" : ""}`,
-      );
+      preview.reset();
+      setReceipt(result);
+      setUsageRevision((revision) => revision + 1);
       await queryClient.invalidateQueries({ queryKey: ["disk-scan"] });
       await queryClient.invalidateQueries({ queryKey: ["disk-status"] });
     },
@@ -149,7 +166,7 @@ export function DiskPage() {
     mutationFn: () =>
       api.updateSettings({
         diskThresholdGB: Number(threshold),
-        diskOptionalAction: action,
+        diskOptionalAction: draftAction,
       }),
     onSuccess: () => {
       setSettingsOpen(false);
@@ -175,7 +192,8 @@ export function DiskPage() {
     runScan.mutate();
   }, [pendingDiskScan, setPendingDiskScan, runScan, volumePath]);
 
-  const busy = runScan.isPending || review.isPending || clean.isPending;
+  const busy = runScan.isPending || review.isPending || clean.isPending || preview.isPending;
+  const selected = selection.scanId === report?.id ? selection.ids : new Set<string>();
   const primary = report?.items.filter((item) => item.tier === "primary") ?? [];
   const optional = report?.items.filter((item) => item.tier === "optional") ?? [];
   const keep = report?.items.filter((item) => item.tier === "keep") ?? [];
@@ -202,34 +220,34 @@ export function DiskPage() {
     scan.error ??
     runScan.error ??
     review.error ??
-    clean.error ??
+    preview.error ??
     saveSettings.error;
 
   const toggle = (item: DiskCandidate) => {
     if (!item.selectable) return;
-    setSelected((current) => {
-      const next = new Set(current);
+    setSelection((previous) => {
+      const next = new Set(previous.scanId === report?.id ? previous.ids : []);
       if (next.has(item.id)) next.delete(item.id);
       else next.add(item.id);
-      return next;
+      return { scanId: report?.id, ids: next };
     });
   };
 
   const setMany = (items: DiskCandidate[], on: boolean) => {
-    setSelected((current) => {
-      const next = new Set(current);
+    setSelection((previous) => {
+      const next = new Set(previous.scanId === report?.id ? previous.ids : []);
       for (const item of items) {
         if (!item.selectable) continue;
         if (on) next.add(item.id);
         else next.delete(item.id);
       }
-      return next;
+      return { scanId: report?.id, ids: next };
     });
   };
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-5xl px-8 py-8 pb-28">
+      <div className="mx-auto max-w-5xl px-4 py-6 pb-28 sm:px-8 sm:pt-8">
         <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
           <div>
             <h1 className="text-[20px] font-semibold tracking-tight">磁盘清理</h1>
@@ -242,8 +260,14 @@ export function DiskPage() {
               ) : null}
             </p>
           </div>
-          <div className="flex gap-2">
-            <Button variant="ghost" onClick={() => setSettingsOpen(true)}>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setDraftAction(action);
+                setSettingsOpen(true);
+              }}
+            >
               <Settings className="h-3.5 w-3.5" />
               设置
             </Button>
@@ -274,12 +298,13 @@ export function DiskPage() {
               disabled={busy}
               onClick={() => {
                 setDiskVolume(volume.volumePath);
-                setNotice("");
+                setReceipt(null);
                 setReviewed(false);
                 setKeepOpen(false);
                 runScan.reset();
                 review.reset();
                 clean.reset();
+                preview.reset();
               }}
               className={cn(
                 "rounded-2xl border px-4 py-3 text-left transition-colors disabled:opacity-60",
@@ -374,7 +399,16 @@ export function DiskPage() {
         </div>
 
         {error ? <p className="mt-4 text-[12.5px] text-danger">{error.message}</p> : null}
-        {notice ? <p className="mt-4 text-[12.5px] text-success">{notice}</p> : null}
+        {receipt ? <CleanupReceipt result={receipt} /> : null}
+        {used ? (
+          <DiskUsageExplorer
+            key={`${used.volumePath}:${report?.id ?? ""}:${usageRevision}`}
+            volumePath={used.volumePath}
+            volumeUsage={report?.usage}
+            volumePartial={report?.partial}
+            volumeStale={receipt !== null}
+          />
+        ) : null}
 
         {report ? (
           <div className="mt-4 grid gap-3">
@@ -385,46 +419,10 @@ export function DiskPage() {
                 <p className="mt-0.5 text-[12.5px] leading-5 text-muted">{report.summary}</p>
               </div>
             </div>
-            {report.usage.length > 0 ? (
-              <Card className="px-4 py-4">
-                <h2 className="text-[13px] font-medium">主要空间占用</h2>
-                <p className="mt-1 text-[12px] text-subtle">
-                  按已统计大小排序。目录仅展示占用，大文件在下方单独确认。
-                </p>
-                <div className="mt-3 grid gap-3">
-                  {report.usage.slice(0, 8).map((entry) => (
-                    <div key={entry.path}>
-                      <div className="flex justify-between gap-4 text-[12px]">
-                        <span className="truncate" title={entry.path}>
-                          {entry.path}
-                        </span>
-                        <span className="shrink-0 text-muted">
-                          {entry.truncated ? "至少 " : ""}
-                          {formatGB(entry.bytes)}
-                        </span>
-                      </div>
-                      <div className="mt-1 h-1 overflow-hidden rounded-full bg-surface-2">
-                        <div
-                          className="h-full rounded-full bg-brand/60"
-                          style={{
-                            width: `${(entry.bytes / Math.max(1, report.usage[0]?.bytes ?? 1)) * 100}%`,
-                          }}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-            ) : null}
-            {report.partial ? (
-              <p className="text-[12px] text-warning">
-                部分内容因权限、受保护目录或扫描上限未完整统计，显示的大小可能低于实际占用。
-              </p>
-            ) : null}
             {backAbove ? (
               <div className="flex items-center gap-2 rounded-xl bg-success/15 px-4 py-2.5 text-[13px] text-success">
                 <Check className="h-4 w-4" />
-                清理已勾选的内容后，剩余空间将回到 {formatGB(thresholdBytes)} 以上
+                按扫描估算，清理后剩余空间可回到 {formatGB(thresholdBytes)} 以上
               </div>
             ) : thresholdBytes > after ? (
               <div className="rounded-xl bg-warning/10 px-4 py-2.5 text-[13px] text-warning">
@@ -537,7 +535,7 @@ export function DiskPage() {
         )}
       </div>
 
-      <div className="sticky bottom-0 border-t bg-surface/95 px-8 py-3 backdrop-blur">
+      <div className="sticky bottom-0 border-t bg-surface/95 px-4 py-3 backdrop-blur sm:px-8">
         <div className="mx-auto flex max-w-5xl items-center gap-4">
           <div className="min-w-0 flex-1">
             <p className="text-[13.5px] font-medium">
@@ -557,22 +555,101 @@ export function DiskPage() {
               />
             </div>
             <p className="mt-1 text-[11.5px] text-subtle">
-              {backAbove ? "已足够回到阈值以上" : "还不够回到阈值"}
+              {chosen.length > 200
+                ? "每次最多确认 200 项，请缩小选择范围。"
+                : backAbove
+                  ? "按估算可回到阈值以上"
+                  : "按估算仍低于阈值"}
             </p>
           </div>
           <Button
             variant="primary"
-            disabled={!report || !used || chosen.length === 0 || busy}
-            loading={clean.isPending}
+            disabled={!report || !used || chosen.length === 0 || chosen.length > 200 || busy}
+            loading={preview.isPending}
             onClick={() => {
               if (!report) return;
-              clean.mutate({ scanId: report.id, ids: chosen.map((item) => item.id) });
+              clean.reset();
+              preview.mutate({ scanId: report.id, ids: chosen.map((item) => item.id) });
             }}
           >
-            确认清理
+            预览清理
           </Button>
         </div>
       </div>
+
+      <Dialog
+        open={!!preview.data}
+        onOpenChange={(open) => {
+          if (!open && !clean.isPending) preview.reset();
+        }}
+        title="确认清理清单"
+        description={
+          preview.data
+            ? `${preview.data.volumePath} · 将处理 ${preview.data.items.length} 项`
+            : undefined
+        }
+        footer={
+          <>
+            <Button variant="secondary" disabled={clean.isPending} onClick={() => preview.reset()}>
+              返回
+            </Button>
+            <Button
+              variant={
+                preview.data?.items.some((item) => item.action === "delete") ? "danger" : "primary"
+              }
+              loading={clean.isPending}
+              disabled={
+                !preview.data?.items.length ||
+                !preview.variables ||
+                clean.isPending ||
+                report?.id !== preview.variables.scanId
+              }
+              onClick={() => {
+                if (preview.data && preview.variables) {
+                  clean.mutate({ ...preview.variables, planToken: preview.data.token });
+                }
+              }}
+            >
+              确认清理
+            </Button>
+          </>
+        }
+      >
+        <ul className="divide-y divide-border">
+          {preview.data?.items.map((item) => (
+            <li key={item.id} className="py-2.5">
+              <div className="flex flex-wrap items-center gap-2 text-[13px]">
+                <b className="break-all">{item.title}</b>
+                <Badge tone={item.action === "delete" ? "danger" : "neutral"}>
+                  {item.mode === "recycle"
+                    ? "清空回收站"
+                    : item.action === "trash"
+                      ? "移入回收站"
+                      : item.mode === "contents"
+                        ? "永久删除目录内容"
+                        : "永久删除"}
+                </Badge>
+                <span className="ml-auto text-muted">{formatGB(item.bytes)}</span>
+              </div>
+              <p className="mt-1 break-all text-[12px] text-muted">{item.path}</p>
+            </li>
+          ))}
+          {preview.data?.skipped.map((item) => (
+            <li key={item.id} className="break-all py-2 text-[13px] text-warning">
+              跳过 {item.path || item.id} · {item.reason}
+            </li>
+          ))}
+        </ul>
+        {preview.variables && report?.id !== preview.variables.scanId ? (
+          <p role="alert" className="mt-3 text-[13px] text-danger">
+            扫描结果已更新，请返回重新预览。
+          </p>
+        ) : clean.error ? (
+          <p role="alert" className="mt-3 text-[13px] text-danger">
+            {clean.error.message}
+          </p>
+        ) : null}
+      </Dialog>
 
       <Dialog
         open={settingsOpen}
@@ -601,8 +678,8 @@ export function DiskPage() {
           </Field>
           <Field label="需要你决定的项目">
             <Segmented
-              value={action}
-              onChange={setAction}
+              value={draftAction}
+              onChange={setDraftAction}
               options={[
                 { value: "trash", label: "移到回收站" },
                 { value: "delete", label: "直接删除" },
@@ -621,6 +698,65 @@ function Legend({ swatch, label }: { swatch: string; label: string }) {
       <span className={cn("h-1.5 w-1.5 rounded-full", swatch)} />
       {label}
     </span>
+  );
+}
+
+function CleanupReceipt({ result }: { result: DiskCleanResult }) {
+  const { freeBytesBefore, freeBytesAfter, cleaned, skipped } = result;
+  const trashBytes = cleaned.reduce(
+    (total, item) => total + (item.action === "trash" ? item.bytes : 0),
+    0,
+  );
+  const delta =
+    freeBytesBefore !== undefined && freeBytesAfter !== undefined
+      ? freeBytesAfter - freeBytesBefore
+      : undefined;
+  return (
+    <Card className="mt-4 px-4 py-4">
+      <h2 className="text-[14px] font-semibold">清理结果</h2>
+      <p role="status" className="mt-1 text-[13px] text-muted">
+        已处理 {cleaned.length} 项 · 跳过 {skipped.length} 项
+      </p>
+      <dl className="mt-3 grid gap-2 text-[13px] sm:grid-cols-3">
+        <div>
+          <dt className="text-muted">永久删除大小（估算）</dt>
+          <dd>{formatGB(result.freedBytes)}</dd>
+        </div>
+        <div>
+          <dt className="text-muted">移入回收站（估算）</dt>
+          <dd>{formatGB(trashBytes)}</dd>
+        </div>
+        <div>
+          <dt className="text-muted">磁盘可用空间变化</dt>
+          <dd>
+            {delta === undefined
+              ? "未能测量"
+              : `${delta < 0 ? "减少 " : delta > 0 ? "增加 " : ""}${formatGB(Math.abs(delta))}`}
+          </dd>
+        </div>
+      </dl>
+      {freeBytesBefore !== undefined && freeBytesAfter !== undefined ? (
+        <p className="mt-2 text-[12px] text-muted">
+          清理前 {formatGB(freeBytesBefore)} · 清理后 {formatGB(freeBytesAfter)}
+          。两次读数也会反映期间其他程序的磁盘活动。
+        </p>
+      ) : null}
+      {cleaned.some((item) => item.action === "trash") ? (
+        <p className="mt-2 text-[12px] text-muted">移入回收站的文件需清空回收站后才释放空间。</p>
+      ) : null}
+      {skipped.length > 0 ? (
+        <details className="mt-2 text-[13px] text-muted">
+          <summary className="cursor-pointer">查看跳过原因</summary>
+          <ul className="mt-2 list-disc space-y-1 pl-5">
+            {skipped.map((item) => (
+              <li key={item.id} className="break-all">
+                {item.path || item.id} · {item.reason}
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
+    </Card>
   );
 }
 

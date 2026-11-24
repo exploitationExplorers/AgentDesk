@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { DiskCleanRequest, DiskScanRequest } from "@agentdesk/shared";
+import { DiskCleanCommitRequest, DiskCleanRequest, DiskScanRequest } from "@agentdesk/shared";
 import type { Container } from "../../container";
 
 export function diskRoutes({ disk }: Container) {
@@ -17,8 +17,17 @@ export function diskRoutes({ disk }: Container) {
     const body = z.object({ scanId: z.string().min(1) }).parse(await c.req.json());
     return c.json(await disk.review(body.scanId));
   });
+  app.post("/disk/inspect", async (c) => {
+    const body = z
+      .object({ volumePath: z.string().min(1), path: z.string().min(1).max(4096) })
+      .parse(await c.req.json());
+    return c.json(await disk.inspectDirectory(body.volumePath, body.path));
+  });
+  app.post("/disk/plan", async (c) => {
+    return c.json(disk.planClean(DiskCleanRequest.parse(await c.req.json())));
+  });
   app.post("/disk/clean", async (c) => {
-    const body = DiskCleanRequest.parse(await c.req.json());
+    const body = DiskCleanCommitRequest.parse(await c.req.json());
     return c.json(await disk.clean(body));
   });
   app.post("/disk/reveal", async (c) => {

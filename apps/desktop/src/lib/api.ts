@@ -17,6 +17,10 @@ import type {
   Conversation,
   DailyDigest,
   DiskCleanResult,
+  DiskCleanPlan,
+  DiskCleanRequest,
+  DiskCleanCommitRequest,
+  DiskDirectoryUsage,
   DiskScan,
   DiskStatus,
   DeployRecipe,
@@ -262,8 +266,10 @@ export const api = {
   diskScan: () => http.get<DiskScan | null>("/disk/scan"),
   scanDisk: (volumePath?: string) => http.post<DiskScan>("/disk/scan", { volumePath }),
   reviewDisk: (scanId: string) => http.post<DiskScan>("/disk/review", { scanId }),
-  cleanDisk: (scanId: string, ids: string[]) =>
-    http.post<DiskCleanResult>("/disk/clean", { scanId, ids }),
+  inspectDisk: (volumePath: string, path: string) =>
+    http.post<DiskDirectoryUsage>("/disk/inspect", { volumePath, path }),
+  planDisk: (input: DiskCleanRequest) => http.post<DiskCleanPlan>("/disk/plan", input),
+  cleanDisk: (input: DiskCleanCommitRequest) => http.post<DiskCleanResult>("/disk/clean", input),
   revealDisk: (scanId: string, id: string) =>
     http.post<{ ok: true }>("/disk/reveal", { scanId, id }),
 

@@ -41,7 +41,7 @@ export function ApprovalToasts() {
   const pending = data.filter((approval) => approval.kind !== "question");
   if (pending.length === 0 || pathname === "/" || pathname === "/code") return null;
   return (
-    <div className="pointer-events-none fixed bottom-5 right-5 z-40 flex w-[380px] flex-col gap-2">
+    <div className="pointer-events-none fixed bottom-5 right-5 z-40 flex w-[min(380px,calc(100vw-2.5rem))] flex-col gap-2">
       {pending.length > 1 ? (
         <div className="pointer-events-auto flex items-center justify-between rounded-xl border border-warning/30 bg-elevated/95 px-3 py-2 text-[12px] text-muted shadow-lg">
           <span>{pending.length} 个待审批</span>
@@ -76,7 +76,9 @@ export function ApprovalToasts() {
                     {RISK_LABEL[a.risk]}
                   </Badge>
                 </div>
-                <p className="mt-2 text-xs leading-5 text-muted">{chatActionDisplay(a).detail}</p>
+                <p className="mt-2 max-h-44 overflow-auto whitespace-pre-wrap break-words text-xs leading-5 text-muted">
+                  {chatActionDisplay(a).detail}
+                </p>
                 <div className="mt-3 flex justify-end gap-2">
                   <Button
                     size="sm"

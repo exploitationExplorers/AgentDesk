@@ -37,8 +37,24 @@ export const DiskUsageEntry = z.object({
   title: z.string(),
   bytes: z.number(),
   truncated: z.boolean(),
+  kind: z.enum(["directory", "file"]).optional(),
+  rebuildHint: z.string().optional(),
 });
 export type DiskUsageEntry = z.infer<typeof DiskUsageEntry>;
+
+export const DiskDirectoryUsage = z.object({
+  path: z.string(),
+  usage: z.array(DiskUsageEntry),
+  partial: z.boolean(),
+  git: z
+    .object({
+      dirty: z.boolean(),
+      ahead: z.number().int().nonnegative().nullable(),
+    })
+    .nullable()
+    .optional(),
+});
+export type DiskDirectoryUsage = z.infer<typeof DiskDirectoryUsage>;
 
 export const DiskCandidate = z.object({
   id: z.string(),
@@ -77,8 +93,28 @@ export const DiskCleanRequest = z.object({
 });
 export type DiskCleanRequest = z.infer<typeof DiskCleanRequest>;
 
+export const DiskCleanCommitRequest = DiskCleanRequest.extend({
+  planToken: z.string().min(1),
+});
+export type DiskCleanCommitRequest = z.infer<typeof DiskCleanCommitRequest>;
+
+export const DiskCleanPlan = z.object({
+  token: z.string(),
+  volumePath: z.string(),
+  items: z.array(
+    DiskCandidate.pick({ id: true, title: true, path: true, bytes: true, mode: true }).extend({
+      action: z.enum(["delete", "trash"]),
+    }),
+  ),
+  skipped: z.array(z.object({ id: z.string(), path: z.string(), reason: z.string() })),
+});
+export type DiskCleanPlan = z.infer<typeof DiskCleanPlan>;
+
 export const DiskCleanResult = z.object({
+  /** 删除项目的扫描大小之和，用于估算。 */
   freedBytes: z.number(),
+  freeBytesBefore: z.number().optional(),
+  freeBytesAfter: z.number().optional(),
   cleaned: z.array(
     z.object({
       id: z.string(),

@@ -314,6 +314,8 @@ export function isProtectedVolumePath(
   root: string,
   env: DiskEnv,
   prefixes: string[],
+  allowUserContent = false,
+  dependencyRoot?: string,
 ): boolean {
   if (isProtectedPath(target, env, prefixes)) return true;
   if (env.platform !== "win32") {
@@ -331,7 +333,7 @@ export function isProtectedVolumePath(
       "/run",
       "/boot",
       "/root",
-      "/home",
+      ...(!allowUserContent ? ["/home"] : []),
       "/System",
       "/Applications",
       "/Library",
@@ -346,6 +348,7 @@ export function isProtectedVolumePath(
   }
   // 不重复遍历家目录和应用配置；它们仍由精确的缓存规则处理。
   if (
+    !allowUserContent &&
     [env.home, env.local, env.roaming].some(
       (anchor) =>
         samePath(anchor, target, env.platform) || isStrictChild(anchor, target, env.platform),
@@ -353,7 +356,12 @@ export function isProtectedVolumePath(
   )
     return true;
   const parts = relative(resolve(root), resolve(target)).split(sep);
-  return parts.some((part) => VOLUME_PROTECTED_NAMES.has(part.toLowerCase()));
+  let current = resolve(root);
+  return parts.some((part) => {
+    current = join(current, part);
+    if (dependencyRoot && samePath(current, dependencyRoot, env.platform)) return false;
+    return VOLUME_PROTECTED_NAMES.has(part.toLowerCase());
+  });
 }
 
 function relativeDepth(parent: string, child: string, platform: NodeJS.Platform): number {

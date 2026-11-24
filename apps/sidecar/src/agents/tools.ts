@@ -15,7 +15,7 @@ import { GLOBAL_CHANNEL, type EventHub, type GlobalEvent } from "../events";
 import type { BrowserService } from "../services/browser";
 import type { DeployService } from "../services/deploy";
 import type { FeedService } from "../services/feed";
-import type { DiskService } from "../services/disk";
+import { formatBytes, type DiskService } from "../services/disk";
 import type { MemoryService } from "../services/memory";
 import { containsSensitiveMemory } from "../services/memory-safety";
 import type { ProjectService } from "../services/projects";
@@ -771,20 +771,65 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
       },
     }),
     defineTool({
+      name: "disk.inspect",
+      description:
+        "只读分析所选磁盘内用户指定的文件夹，查看同级占用、可重建的开发产物提示及 Git 状态。返回的信息不能作为清理目标 id。",
+      parameters: Type.Object({
+        volumePath: Type.String({ minLength: 1 }),
+        path: Type.String({ minLength: 1, maxLength: 4096 }),
+      }),
+      risk: "safe",
+      execute: async ({ volumePath, path }) => {
+        const result = await disk.inspectDirectory(volumePath, path);
+        return { ...result, usage: result.usage.slice(0, 20) };
+      },
+    }),
+    defineTool({
+      name: "disk.plan",
+      description:
+        "预览清理操作，返回目标、处理方式和确认令牌。使用同一次 disk.scan 的扫描 id 和项目 id。这一步不会删除文件。",
+      parameters: Type.Object({
+        scanId: Type.String({ minLength: 1 }),
+        ids: Type.Array(Type.String({ minLength: 1 }), { minItems: 1, maxItems: 30 }),
+      }),
+      risk: "safe",
+      execute: async (input) => disk.planClean(input),
+    }),
+    defineTool({
       name: "disk.clean",
       description:
-        "清理本次扫描中用户同意的项目。只能传 disk.scan 返回的 id，keep 会被跳过。不要用 shell 删除缓存或用户文件。",
+        "请求用户批准并执行 disk.plan 返回的清理清单。原样传入同一次扫描 id、项目 id 和预览 token，不能使用 shell 代替清理。",
       parameters: Type.Object({
-        ids: Type.Array(Type.String({ description: "disk.scan 返回的 id" }), {
-          description: "要清理的项目 id",
-        }),
+        scanId: Type.String({ minLength: 1 }),
+        ids: Type.Array(Type.String({ minLength: 1 }), { minItems: 1, maxItems: 30 }),
+        planToken: Type.String({ minLength: 1 }),
       }),
       risk: "confirm",
-      describeApproval: ({ ids }) => ({
-        title: "清理磁盘",
-        detail: disk.describeClean(ids),
-      }),
-      execute: async ({ ids }) => disk.cleanLatest(ids),
+      describeApproval: (input) => {
+        const { items, skipped, volumePath } = disk.confirmClean(input);
+        const lines = items.map(({ path, bytes, mode, action }) => {
+          const label =
+            mode === "recycle"
+              ? "清空回收站"
+              : action === "trash"
+                ? "移入回收站"
+                : mode === "contents"
+                  ? "永久删除目录内容"
+                  : "永久删除";
+          const displayPath = path.replace(
+            /[\p{Cc}\p{Cf}]/gu,
+            (character) => `\\u{${character.codePointAt(0)!.toString(16)}}`,
+          );
+          return `- ${label} · ${formatBytes(bytes)} · ${displayPath}`;
+        });
+        return {
+          title: `清理磁盘 ${volumePath}`,
+          detail: [...lines, ...skipped.map(({ id, reason }) => `- 跳过 ${id} · ${reason}`)].join(
+            "\n",
+          ),
+        };
+      },
+      execute: async (input) => disk.clean(input),
     }),
   );
   registry.register(

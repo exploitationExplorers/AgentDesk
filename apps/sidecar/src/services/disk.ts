@@ -1,7 +1,8 @@
 import { execFile, spawn } from "node:child_process";
-import { statfsSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { statfsSync, type Stats } from "node:fs";
 import { lstat, readdir, realpath, rm } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
 import { completeStructured, type ModelResolver } from "@agentdesk/agent-core";
@@ -11,8 +12,11 @@ import {
   ErrorCode,
   type DiskCandidate,
   type DiskCategory,
+  type DiskCleanCommitRequest,
+  type DiskCleanPlan,
   type DiskCleanRequest,
   type DiskCleanResult,
+  type DiskDirectoryUsage,
   type DiskMode,
   type DiskScan,
   type DiskStatus,
@@ -30,6 +34,7 @@ import {
   formatBytes,
   genericCacheRoots,
   isProtectedPath,
+  isProtectedVolumePath,
   isSafeDeletionTarget,
   isStrictChild,
   pathKey,
@@ -62,7 +67,8 @@ interface InternalItem {
   hasGit: boolean;
   daysSinceUsed: number | null;
   truncated: boolean;
-  mtimeMs: number;
+  identity?: string;
+  contentsIdentity?: string;
 }
 
 interface StoredScan {
@@ -79,6 +85,7 @@ interface Measured {
   newestMs: number;
   truncated: boolean;
   hasGit: boolean;
+  identity: string;
 }
 
 const ReviewSchema = z.object({
@@ -116,6 +123,7 @@ export class DiskService {
   private readonly systemTrash: boolean;
   private readonly volumes?: VolumeRoot[];
   private latest: StoredScan | null = null;
+  private cleaning = false;
 
   constructor(
     private readonly settings: SettingsService,
@@ -198,7 +206,71 @@ export class DiskService {
     return scan ? this.toPublic(scan) : null;
   }
 
+  async inspectDirectory(volumePath: string, directory: string): Promise<DiskDirectoryUsage> {
+    const status = await this.status(volumePath);
+    const volume = { path: status.volumePath, label: status.label };
+    const roots = status.volumes.map((entry) => ({ path: entry.volumePath, label: entry.label }));
+    const owner = volumeForPath(directory, roots, this.env);
+    if (
+      !isAbsolute(directory) ||
+      !owner ||
+      pathKey(owner.path, this.env.platform) !== pathKey(volume.path, this.env.platform)
+    )
+      throw new AppError(ErrorCode.BadRequest, "请选择当前磁盘内的目录");
+    const target = resolve(directory);
+    const userRoot = userContentRoots(this.env).find(
+      ({ path }) =>
+        pathKey(path, this.env.platform) === pathKey(target, this.env.platform) ||
+        isStrictChild(path, target, this.env.platform),
+    )?.path;
+    const prefixes = this.prefixes();
+    const boundary = userRoot ?? volume.path;
+    let dependencyRoot: string | undefined;
+    for (
+      let ancestor = target;
+      isStrictChild(boundary, ancestor, this.env.platform);
+      ancestor = dirname(ancestor)
+    ) {
+      if (basename(ancestor).toLowerCase() === "node_modules") dependencyRoot = ancestor;
+    }
+    if (isProtectedVolumePath(target, boundary, this.env, prefixes, !!userRoot, dependencyRoot))
+      throw new AppError(ErrorCode.BadRequest, "该目录不在可分析范围内");
+    try {
+      const [stat, actual] = await Promise.all([lstat(target), realpath(target)]);
+      if (
+        !stat.isDirectory() ||
+        pathKey(actual, this.env.platform) !== pathKey(target, this.env.platform)
+      )
+        throw new Error("目录无效");
+      if (dependencyRoot && !(await lstat(join(dirname(dependencyRoot), "package.json"))).isFile())
+        throw new Error("缺少项目清单");
+      const [{ usage, partial }, git] = await Promise.all([
+        inspectVolume(
+          volume,
+          roots,
+          this.env,
+          prefixes,
+          this.limits,
+          { left: this.limits.maxEntriesPerItem },
+          target,
+          userRoot,
+          dependencyRoot,
+        ),
+        inspectDiskRepository(target),
+      ]);
+      return {
+        path: target,
+        usage: usage.slice(0, 200),
+        partial: partial || usage.length > 200,
+        git,
+      };
+    } catch {
+      throw new AppError(ErrorCode.BadRequest, "无法读取该目录，请检查路径和访问权限");
+    }
+  }
+
   async scan(volumePath?: string): Promise<DiskScan> {
+    if (this.cleaning) throw new AppError(ErrorCode.Conflict, "清理完成后再扫描磁盘");
     const status = await this.status(volumePath);
     const roots = status.volumes.map((volume) => ({
       path: volume.volumePath,
@@ -328,6 +400,7 @@ export class DiskService {
       status,
       usage: inventory.usage,
     };
+    if (this.cleaning) throw new AppError(ErrorCode.Conflict, "清理完成后再扫描磁盘");
     this.latest = stored;
     return this.toPublic(stored);
   }
@@ -341,7 +414,7 @@ export class DiskService {
     const ranked = [...scan.items].sort((a, b) => b.bytes - a.bytes).slice(0, 40);
     const payload = ranked.map((item) => ({
       id: item.id,
-      path: item.path,
+      title: item.title,
       bytes: item.bytes,
       daysSinceUsed: item.daysSinceUsed,
       tier: item.tier,
@@ -364,7 +437,9 @@ export class DiskService {
 只输出 JSON。`,
         prompt: JSON.stringify({
           volume: scan.status,
-          usage: scan.usage.slice(0, 20),
+          usage: scan.usage
+            .slice(0, 20)
+            .map(({ title, bytes, truncated }) => ({ title, bytes, truncated })),
           items: payload,
           partial: scan.partial,
         }),
@@ -373,6 +448,8 @@ export class DiskService {
       const message = error instanceof Error ? error.message : "模型复核失败";
       throw new AppError(ErrorCode.ProviderUnavailable, message);
     }
+    this.requireScan(scanId);
+    if (this.cleaning) throw new AppError(ErrorCode.Conflict, "清理期间无法修改本次建议");
     const byId = new Map(parsed.items.map((item) => [item.id, item]));
     for (const item of scan.items) {
       const suggestion = byId.get(item.id);
@@ -386,53 +463,93 @@ export class DiskService {
     return published;
   }
 
-  cleanLatest(ids: string[]): Promise<DiskCleanResult> {
-    const scan = this.freshScan();
-    if (!scan) throw new AppError(ErrorCode.BadRequest, "请先扫描磁盘");
-    return this.clean({ scanId: scan.id, ids });
-  }
-
-  async clean(input: DiskCleanRequest): Promise<DiskCleanResult> {
+  planClean(input: DiskCleanRequest): DiskCleanPlan {
     const scan = this.requireScan(input.scanId);
-    await this.status(scan.status.volumePath);
-    const action = this.settings.get().diskOptionalAction;
-    const result: DiskCleanResult = { freedBytes: 0, cleaned: [], skipped: [] };
-    const wanted = new Set(input.ids);
-    for (const id of wanted) {
+    const optionalAction = this.settings.get().diskOptionalAction;
+    const items: DiskCleanPlan["items"] = [];
+    const skipped: DiskCleanPlan["skipped"] = [];
+    for (const id of [...new Set(input.ids)].sort()) {
       const item = scan.items.find((candidate) => candidate.id === id);
-      if (!item) {
-        result.skipped.push({ id, path: "", reason: "不在本次扫描结果里" });
+      if (!item || !toCandidate(item).selectable || item.hasGit) {
+        skipped.push({
+          id,
+          path: item?.path ?? "",
+          reason: item ? "这一项只展示，不会清理" : "不在本次扫描结果里",
+        });
         continue;
       }
-      const outcome = await this.cleanOne(item, action, scan.status.volumePath);
-      if (outcome.ok) {
+      items.push({
+        id,
+        path: item.path,
+        title: item.title,
+        bytes: item.bytes,
+        mode: item.mode,
+        action:
+          item.mode !== "recycle" && item.tier === "optional" && optionalAction === "trash"
+            ? "trash"
+            : "delete",
+      });
+    }
+    if (
+      items.some((item) => item.mode === "recycle") &&
+      items.some((item) => item.action === "trash")
+    )
+      throw new AppError(ErrorCode.BadRequest, "请分开确认移入回收站和清空回收站");
+    const token = createHash("sha256")
+      .update(JSON.stringify([scan.id, scan.status.volumePath, items, skipped]))
+      .digest("hex");
+    return { token, volumePath: scan.status.volumePath, items, skipped };
+  }
+
+  confirmClean(input: DiskCleanCommitRequest): DiskCleanPlan {
+    const plan = this.planClean(input);
+    if (plan.token !== input.planToken)
+      throw new AppError(ErrorCode.Conflict, "清理清单已变化，请重新预览并确认");
+    return plan;
+  }
+
+  async clean(input: DiskCleanCommitRequest): Promise<DiskCleanResult> {
+    if (this.cleaning) throw new AppError(ErrorCode.Conflict, "正在处理另一份清理清单");
+    this.cleaning = true;
+    try {
+      const scan = this.requireScan(input.scanId);
+      const before = await this.status(scan.status.volumePath);
+      const plan = this.confirmClean(input);
+      const result: DiskCleanResult = {
+        freedBytes: 0,
+        freeBytesBefore: before.freeBytes,
+        cleaned: [],
+        skipped: plan.skipped,
+      };
+      for (const entry of plan.items) {
+        const item = scan.items.find((candidate) => candidate.id === entry.id)!;
+        const outcome = await this.cleanOne(
+          item,
+          entry.action,
+          scan.status.volumePath,
+          before.volumes,
+        );
+        if (!outcome.ok) {
+          result.skipped.push({ id: item.id, path: item.path, reason: outcome.reason });
+          continue;
+        }
         result.cleaned.push({
           id: item.id,
           path: item.path,
           bytes: item.bytes,
           action: outcome.action,
         });
-        // 移入同盘回收站不会立即释放空间。
         if (outcome.action === "delete") result.freedBytes += item.bytes;
         item.bytes = 0;
         item.tier = "keep";
-      } else {
-        result.skipped.push({ id: item.id, path: item.path, reason: outcome.reason });
+        item.ruleTier = "keep";
       }
+      const after = await this.status(scan.status.volumePath).catch(() => undefined);
+      if (after) result.freeBytesAfter = after.freeBytes;
+      return result;
+    } finally {
+      this.cleaning = false;
     }
-    return result;
-  }
-
-  describeClean(ids: string[]): string {
-    const scan = this.freshScan();
-    if (!scan) return "还没有扫描结果";
-    const lines = ids.slice(0, 30).map((id) => {
-      const item = scan.items.find((candidate) => candidate.id === id);
-      if (!item) return `${id}：不在扫描结果里`;
-      return `${item.title}（${formatBytes(item.bytes)}，${item.tier}） ${item.path}`;
-    });
-    const action = this.settings.get().diskOptionalAction === "trash" ? "回收站" : "直接删除";
-    return `可重建缓存会直接删除；需决定的项按设置进入${action}。\n${lines.join("\n")}`;
   }
 
   reveal(scanId: string, id: string): void {
@@ -486,7 +603,7 @@ export class DiskService {
     nextId: () => string,
     volumePath: string,
   ): Promise<InternalItem | null> {
-    let info: { realPath: string; mtimeMs: number } | null = null;
+    let info: { realPath: string; identity: string } | null = null;
     try {
       const st = await lstat(target);
       if (st.isSymbolicLink()) return null;
@@ -495,7 +612,7 @@ export class DiskService {
       if (isProtectedPath(realPath, this.env, prefixes)) return null;
       if (!isSafeDeletionTarget(realPath, this.env, prefixes, st.isFile() ? [volumePath] : []))
         return null;
-      info = { realPath, mtimeMs: st.mtimeMs };
+      info = { realPath, identity: diskIdentity(st) };
     } catch {
       return null;
     }
@@ -540,7 +657,8 @@ export class DiskService {
       hasGit,
       daysSinceUsed: daysSince(measured.newestMs),
       truncated: measured.truncated,
-      mtimeMs: info.mtimeMs,
+      identity: info.identity,
+      contentsIdentity: measured.identity,
     };
   }
 
@@ -608,15 +726,18 @@ export class DiskService {
 
   private async trashItem(nextId: () => string, status: DiskStatus): Promise<InternalItem | null> {
     if (this.env.platform === "win32") {
-      const bytes = await windowsRecycleBytes(status.volumePath);
-      if (bytes === null || bytes < this.limits.knownMinBytes) return null;
-      return this.recycleItem(
-        nextId(),
-        `${status.volumePath} 回收站`,
-        join(status.volumePath, "$RECYCLE.BIN"),
-        bytes,
-        "清空回收站后，里面的文件将无法从资源管理器找回",
-      );
+      const state = await windowsRecycleState(status.volumePath);
+      if (!state || state.bytes < this.limits.knownMinBytes) return null;
+      return {
+        ...this.recycleItem(
+          nextId(),
+          `${status.volumePath} 回收站`,
+          join(status.volumePath, "$RECYCLE.BIN"),
+          state.bytes,
+          `回收站包含 ${state.items} 项。清空后无法从资源管理器找回`,
+        ),
+        contentsIdentity: String(state.items),
+      };
     }
     if (this.env.platform !== "darwin" || !status.isHome) return null;
     const trash = join(this.env.home, ".Trash");
@@ -626,14 +747,18 @@ export class DiskService {
       const realPath = await realpath(trash);
       if (pathKey(realPath, "darwin") !== pathKey(trash, "darwin")) return null;
       const measured = await measure(realPath, { left: this.limits.maxEntriesPerItem });
-      if (!measured || measured.bytes < this.limits.knownMinBytes) return null;
-      return this.recycleItem(
-        nextId(),
-        "废纸篓",
-        trash,
-        measured.bytes,
-        "清空废纸篓后，里面的文件将无法找回",
-      );
+      if (!measured || measured.truncated || measured.bytes < this.limits.knownMinBytes)
+        return null;
+      return {
+        ...this.recycleItem(
+          nextId(),
+          "废纸篓",
+          trash,
+          measured.bytes,
+          "清空废纸篓后，里面的文件将无法找回",
+        ),
+        contentsIdentity: measured.identity,
+      };
     } catch {
       return null;
     }
@@ -663,19 +788,21 @@ export class DiskService {
       hasGit: false,
       daysSinceUsed: null,
       truncated: false,
-      mtimeMs: 0,
     };
   }
 
   private async cleanOne(
     item: InternalItem,
-    optionalAction: "trash" | "delete",
+    action: "trash" | "delete",
     volumePath: string,
+    volumes: DiskVolume[],
   ): Promise<{ ok: true; action: "delete" | "trash" } | { ok: false; reason: string }> {
     if (item.tier === "keep" || item.protected || item.hasGit) {
       return { ok: false, reason: "这一项只展示，不会清理" };
     }
     if (item.mode === "recycle") {
+      const bytes = await this.readTrashBytes(volumePath, item);
+      if (bytes !== item.bytes) return { ok: false, reason: "回收站内容已变化，请重新扫描" };
       const emptied = await this.emptyTrash(volumePath);
       return emptied.ok ? { ok: true, action: "delete" } : { ok: false, reason: emptied.reason };
     }
@@ -684,6 +811,8 @@ export class DiskService {
     try {
       const st = await lstat(item.path);
       if (st.isSymbolicLink()) return { ok: false, reason: "路径是符号链接，已跳过" };
+      if (diskIdentity(st) !== item.identity)
+        return { ok: false, reason: "扫描后项目发生变化，请重新扫描" };
       isFile = st.isFile();
       realPath = await realpath(item.path);
     } catch {
@@ -692,6 +821,13 @@ export class DiskService {
     if (pathKey(realPath, this.env.platform) !== pathKey(item.realPath, this.env.platform)) {
       return { ok: false, reason: "扫描后路径发生了变化" };
     }
+    const owner = volumeForPath(
+      realPath,
+      volumes.map((volume) => ({ path: volume.volumePath, label: volume.label })),
+      this.env,
+    );
+    if (!owner || pathKey(owner.path, this.env.platform) !== pathKey(volumePath, this.env.platform))
+      return { ok: false, reason: "目标所在磁盘已变化" };
     const prefixes = this.prefixes();
     if (
       !isSafeDeletionTarget(realPath, this.env, prefixes, isFile ? [volumePath] : []) ||
@@ -703,25 +839,44 @@ export class DiskService {
       const measured = await measure(
         realPath,
         { left: this.limits.maxEntriesPerItem },
-        (path) => !isProtectedPath(path, this.env, prefixes),
+        (path) =>
+          !isProtectedPath(path, this.env, prefixes) &&
+          !volumes.some(
+            (volume) =>
+              volume.volumePath !== volumePath &&
+              pathKey(path, this.env.platform) === pathKey(volume.volumePath, this.env.platform),
+          ),
       );
       if (!measured || measured.hasGit || measured.truncated) {
         return { ok: false, reason: "目录包含受保护内容或未完整检查，请重新扫描" };
       }
+      if (measured.identity !== item.contentsIdentity)
+        return { ok: false, reason: "扫描后目录内容发生变化，请重新扫描" };
     }
-    const useTrash = item.tier === "optional" && optionalAction === "trash";
     try {
-      if (useTrash) {
+      if (action === "trash") {
         await moveToTrash(realPath, this.env.platform);
         return { ok: true, action: "trash" };
       }
       if (item.mode === "contents") await removeContents(realPath);
-      else await rm(realPath, { recursive: true, force: true });
+      else await rm(realPath, { recursive: !isFile });
       return { ok: true, action: "delete" };
     } catch (error) {
       const message = error instanceof Error ? error.message : "删除失败";
       return { ok: false, reason: message };
     }
+  }
+
+  private async readTrashBytes(volumePath: string, item: InternalItem): Promise<number | null> {
+    if (this.env.platform === "win32") {
+      const state = await windowsRecycleState(volumePath);
+      return state && String(state.items) === item.contentsIdentity ? state.bytes : null;
+    }
+    if (this.env.platform !== "darwin") return null;
+    const measured = await measure(item.path, { left: this.limits.maxEntriesPerItem });
+    return measured && !measured.truncated && measured.identity === item.contentsIdentity
+      ? measured.bytes
+      : null;
   }
 
   private async emptyTrash(
@@ -797,6 +952,53 @@ export class DiskService {
       optionalBytes,
       partial: scan.partial,
     };
+  }
+}
+
+function diskIdentity(stat: Stats): string {
+  return JSON.stringify([stat.dev, stat.ino, stat.mode, stat.size, stat.mtimeMs, stat.ctimeMs]);
+}
+
+async function inspectDiskRepository(directory: string): Promise<DiskDirectoryUsage["git"]> {
+  const marker = await lstat(join(directory, ".git")).catch(() => undefined);
+  if (!marker?.isDirectory() && !marker?.isFile()) return undefined;
+  try {
+    const options = { timeout: 2500, windowsHide: true, maxBuffer: 256 * 1024 };
+    const config = await execFileAsync(
+      "git",
+      ["-C", directory, "config", "--name-only", "--null", "--list"],
+      options,
+    );
+    // status 可能调用仓库配置的外部 clean filter。遇到这种仓库只报告无法核对。
+    if (config.stdout.split("\0").some((key) => key.startsWith("filter."))) return null;
+    const { stdout } = await execFileAsync(
+      "git",
+      [
+        "--no-optional-locks",
+        "-c",
+        "core.fsmonitor=false",
+        "-c",
+        "core.untrackedCache=false",
+        "-c",
+        "core.hooksPath=",
+        "-C",
+        directory,
+        "status",
+        "--porcelain=v2",
+        "--branch",
+        "--untracked-files=normal",
+        "--ignore-submodules=all",
+      ],
+      options,
+    );
+    const lines = stdout.split("\n");
+    const ahead = /^# branch\.ab \+(\d+) -\d+\r?$/m.exec(stdout);
+    return {
+      dirty: lines.some((line) => /^[12u?] /.test(line)),
+      ahead: ahead ? Number(ahead[1]) : null,
+    };
+  } catch {
+    return null;
   }
 }
 
@@ -882,6 +1084,7 @@ async function measure(
       newestMs: rootStat.mtimeMs,
       truncated: false,
       hasGit: false,
+      identity: diskIdentity(rootStat),
     };
   }
   if (!rootStat.isDirectory()) return null;
@@ -889,6 +1092,7 @@ async function measure(
   let newestMs = rootStat.mtimeMs;
   let truncated = false;
   let hasGit = await existsDir(join(target, ".git"));
+  const identity = createHash("sha256").update(diskIdentity(rootStat));
   const stack = [target];
   while (stack.length > 0) {
     const dir = stack.pop()!;
@@ -899,7 +1103,7 @@ async function measure(
       truncated = true;
       continue;
     }
-    for (const entry of entries) {
+    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
       if (budget.left <= 0) {
         truncated = true;
         break;
@@ -918,14 +1122,15 @@ async function measure(
         truncated = true;
         continue;
       }
-      if (entry.isDirectory()) {
-        stack.push(child);
-        continue;
-      }
-      if (!entry.isFile()) continue;
       try {
         const st = await lstat(child);
-        bytes += st.size;
+        if (st.isSymbolicLink() || st.dev !== rootStat.dev || (!st.isDirectory() && !st.isFile())) {
+          truncated = true;
+          continue;
+        }
+        identity.update(JSON.stringify([child, diskIdentity(st)]));
+        if (st.isDirectory()) stack.push(child);
+        else bytes += st.size;
         if (st.mtimeMs > newestMs) newestMs = st.mtimeMs;
       } catch {
         // 被占用或没有权限的文件不计入
@@ -934,7 +1139,7 @@ async function measure(
     }
     if (truncated) break;
   }
-  return { bytes, newestMs, truncated, hasGit };
+  return { bytes, newestMs, truncated, hasGit, identity: identity.digest("hex") };
 }
 
 async function removeContents(dir: string): Promise<void> {
@@ -950,7 +1155,12 @@ async function removeContents(dir: string): Promise<void> {
       failed += 1;
     }
   }
-  if (removed === 0 && failed > 0) throw new Error("文件正在使用，没有删除任何内容");
+  if (failed > 0)
+    throw new Error(
+      removed === 0
+        ? "文件正在使用，没有删除任何内容"
+        : `仅处理了 ${removed} 项，另有 ${failed} 项无法删除`,
+    );
 }
 
 async function moveToTrash(target: string, platform: NodeJS.Platform): Promise<void> {
@@ -992,7 +1202,9 @@ async function moveToTrash(target: string, platform: NodeJS.Platform): Promise<v
   throw new Error("当前系统没有回收站，请在设置里改成直接删除");
 }
 
-async function windowsRecycleBytes(volumePath: string): Promise<number | null> {
+async function windowsRecycleState(
+  volumePath: string,
+): Promise<{ bytes: number; items: number } | null> {
   try {
     const { stdout } = await execFileAsync(
       "powershell.exe",
@@ -1005,7 +1217,7 @@ async function windowsRecycleBytes(volumePath: string): Promise<number | null> {
           "$info = New-Object AgentDeskRecycle+Info",
           "$info.cbSize = [System.Runtime.InteropServices.Marshal]::SizeOf($info)",
           "if ([AgentDeskRecycle]::SHQueryRecycleBin($env:AGENTDESK_RECYCLE_ROOT, [ref]$info) -ne 0) { exit 1 }",
-          "$info.bytes",
+          "'{0} {1}' -f $info.bytes, $info.items",
         ].join("\n"),
       ],
       {
@@ -1014,8 +1226,11 @@ async function windowsRecycleBytes(volumePath: string): Promise<number | null> {
         env: { ...process.env, AGENTDESK_RECYCLE_ROOT: volumePath },
       },
     );
-    const value = Number(String(stdout).trim());
-    return Number.isFinite(value) ? value : null;
+    const match = /^(\d+) (\d+)$/.exec(String(stdout).trim());
+    if (!match) return null;
+    const bytes = Number(match[1]);
+    const items = Number(match[2]);
+    return Number.isSafeInteger(bytes) && Number.isSafeInteger(items) ? { bytes, items } : null;
   } catch {
     return null;
   }

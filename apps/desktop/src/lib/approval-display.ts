@@ -26,6 +26,9 @@ export function chatActionDisplay(approval: Approval) {
     payload.args && typeof payload.args === "object"
       ? (payload.args as Record<string, unknown>)
       : {};
+  if (payload.tool === "disk.clean") {
+    return { title: approval.title, detail: approval.detail };
+  }
   if (payload.tool === "shell.run" || /执行命令|命令[:：]/.test(approval.title + approval.detail)) {
     return {
       title: humanActionTitle(args.purpose, "继续完成当前任务"),
@@ -37,7 +40,6 @@ export function chatActionDisplay(approval: Approval) {
     "fs.write": "将写入任务相关文件。是否继续？",
     "fs.patch": "将修改任务相关文件。是否继续？",
     "deploy.run": "将更新所选服务器上的应用。是否继续部署？",
-    "disk.clean": "将清理已选中的文件。是否继续？",
     "projects.pull": "将更新本地项目文件。是否继续？",
     "browser.open": "将打开浏览器完成这项任务。是否继续？",
     "workflow.run": "将按已选择的流程执行任务。是否继续？",

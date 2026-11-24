@@ -48,4 +48,15 @@ describe("createAutoApprove", () => {
     const result = await autoApprove("shell.run", { command: "rm -rf /" }, "dangerous");
     expect(result).toEqual({ approved: false });
   });
+
+  it("磁盘清理即使存在记住规则也必须本人确认", async () => {
+    rules.add("disk.clean", "", "allow");
+    const autoApprove = createAutoApprove(rules, models, settings);
+    const result = await autoApprove(
+      "disk.clean",
+      { scanId: "scan", ids: [], planToken: "plan" },
+      "confirm",
+    );
+    expect(result).toMatchObject({ approved: false, note: expect.stringMatching(/本人确认/) });
+  });
 });

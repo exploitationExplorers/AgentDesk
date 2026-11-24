@@ -27,7 +27,7 @@ export function ActionPrompt({ approval }: { approval: Approval }) {
         <CircleHelp className="mt-0.5 h-4 w-4 shrink-0 text-muted" />
         <div className="min-w-0">
           <h2 className="break-words text-[14px] font-medium leading-6">{display.title}</h2>
-          <p className="mt-1 whitespace-pre-wrap break-words text-[13px] leading-6 text-muted">
+          <p className="mt-1 max-h-52 overflow-auto whitespace-pre-wrap break-words text-[13px] leading-6 text-muted">
             {display.detail}
           </p>
         </div>

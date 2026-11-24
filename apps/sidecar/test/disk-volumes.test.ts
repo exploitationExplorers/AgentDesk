@@ -86,19 +86,25 @@ describe("磁盘枚举与回收站范围", () => {
         },
       },
     );
-    subprocess.run.mockResolvedValue({ stdout: "32" });
+    subprocess.run.mockResolvedValue({ stdout: "32 2" });
     const report = await disk.scan(data);
     const queryCall = subprocess.run.mock.calls.find((call) =>
       call[1].at(-1).includes("SHQueryRecycleBin"),
     );
     expect(queryCall?.[2].env.AGENTDESK_RECYCLE_ROOT).toBe(data);
     const file = report.items.find((item) => item.mode !== "recycle")!;
-    const moved = await disk.clean({ scanId: report.id, ids: [file.id] });
+    const move = { scanId: report.id, ids: [file.id] };
+    const moved = await disk.clean({ ...move, planToken: disk.planClean(move).token });
     expect(moved.cleaned[0]?.action).toBe("trash");
     expect(moved.freedBytes).toBe(0);
     const recycle = report.items.find((item) => item.mode === "recycle")!;
     expect(recycle.path).toBe(join(data, "$RECYCLE.BIN"));
-    const emptied = await disk.clean({ scanId: report.id, ids: [recycle.id] });
+    const empty = { scanId: report.id, ids: [recycle.id] };
+    const planToken = disk.planClean(empty).token;
+    subprocess.run.mockResolvedValueOnce({ stdout: "32 3" });
+    const stale = await disk.clean({ ...empty, planToken });
+    expect(stale.skipped[0]?.reason).toContain("回收站内容已变化");
+    const emptied = await disk.clean({ ...empty, planToken: disk.planClean(empty).token });
     expect(emptied.freedBytes).toBe(32);
     const clearCall = subprocess.run.mock.calls.find((call) =>
       call[1].at(-1).includes("Clear-RecycleBin"),
