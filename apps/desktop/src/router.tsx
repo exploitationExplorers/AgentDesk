@@ -29,6 +29,15 @@ const collaborationRoute = createRoute({
   path: "/collaboration",
   validateSearch: z.object({ room: z.string().optional() }),
 });
+const sessionHubRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/session-hub",
+  validateSearch: z.object({ session: z.string().max(512).optional() }),
+  component: lazyRouteComponent(
+    () => import("./features/session-hub/SessionHubPage"),
+    "SessionHubPage",
+  ),
+});
 const projectsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/projects",
@@ -173,6 +182,7 @@ const routeTree = rootRoute.addChildren([
   teamRoute,
   collaborationRoute,
   projectsRoute,
+  sessionHubRoute,
   codeRoute,
   deployRoute,
   diskRoute,

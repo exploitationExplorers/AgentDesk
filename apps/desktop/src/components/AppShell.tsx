@@ -5,6 +5,7 @@ import {
   GraduationCap,
   Code2,
   HardDrive,
+  PanelsTopLeft,
   House,
   MessageSquare,
   Menu,
@@ -51,6 +52,7 @@ const NAV: Array<{ to: string; label: string; icon: LucideIcon }> = [
   { to: "/team", label: "团队开发", icon: UsersRound },
   { to: "/", label: "Bot", icon: MessageSquare },
   { to: "/code", label: "编码", icon: Code2 },
+  { to: "/session-hub", label: "会话中心", icon: PanelsTopLeft },
   { to: "/projects", label: "项目", icon: FolderGit2 },
   { to: "/deploy", label: "部署", icon: Rocket },
   { to: "/feed", label: "热榜", icon: Newspaper },
@@ -187,9 +189,11 @@ function WorkbenchShell() {
   return (
     <TooltipProvider>
       <div className="lb-app relative flex h-full min-w-0 flex-col lg:flex-row lg:gap-3 lg:p-3">
-        <div className="pointer-events-none absolute right-3 top-0 z-40 lg:right-5 lg:top-4">
-          <ThemeToggle />
-        </div>
+        {routeSection !== "session-hub" && (
+          <div className="pointer-events-none absolute right-3 top-0 z-40 lg:right-5 lg:top-4">
+            <ThemeToggle />
+          </div>
+        )}
         <div className="lb-glass flex h-12 shrink-0 items-center gap-2 border-b px-3 lg:hidden">
           <button
             type="button"

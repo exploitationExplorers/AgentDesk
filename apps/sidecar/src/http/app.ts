@@ -27,6 +27,7 @@ import { wechatRoutes } from "./routes/wechat";
 import { workflowRoutes } from "./routes/workflows";
 import { createWorkbench } from "./workbench";
 import { projectInsightRoutes } from "./routes/project-insights";
+import { sessionHubRoutes } from "./routes/session-hub";
 import { sessionWorkbenchRoutes } from "./routes/session-workbench";
 import { autoloopRoutes } from "./routes/autoloop";
 
@@ -90,6 +91,7 @@ export function createApp(container: Container, options: { webRoot?: string } = 
   app.post("/api/team/rooms", async (c) =>
     c.json(await container.team.create(await c.req.json()), 201),
   );
+  app.route("/api", sessionHubRoutes(container));
   app.route("/api", sessionWorkbenchRoutes(container));
   app.route("/api", autoloopRoutes(container));
   app.route("/api", projectInsightRoutes(container));

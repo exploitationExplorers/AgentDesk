@@ -221,6 +221,12 @@ agentdesk --help          # 查看全部命令
 - 对选定文件提交、推送，或将电脑上的未提交改动取回到新的云端工作区；各步骤按权限与审批执行。
 - 远程入口与本机 `agentdesk web` 分开配置；详见 [部署与电脑配对](deploy/cloud/README.md)。
 
+### 会话中心
+
+会话中心的页面布局、配色与图标移植自 [Vibe Session Hub v1.0.4](https://github.com/StriverF/vibe-session-hub/tree/v1.0.4)。前端资源随 AgentDesk 构建，会话索引由 AgentDesk 本地服务提供。
+
+从工作台侧栏打开「会话中心」。AgentDesk 直接读取本机的 AgentDesk、Codex、Cursor、Claude Code、Claude Desktop、Gemini、Grok Bot 和 Antigravity 会话，可按工具、目录、分支、关键词或 PR 号搜索，并保存网页会话。Codex 和 Cursor 支持直接唤起客户端，CLI 会话可以复制恢复命令。点击顶部设备名打开「设备索引」，可导出本机的标题、目录和上下文摘要，在另一台 AgentDesk 工作台导入后即可跨设备检索。Mac 用户也可以在此主动开启 iCloud 云盘同步，两台设备的会话中心打开时会交换索引。
+
 ### 工作流、部署与技术发现
 
 - **可视化工作流**：通过画布连接模型、工具与审批，组织可重复执行的流程。

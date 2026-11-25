@@ -12,6 +12,7 @@ export * from "./contracts/collaboration";
 export * from "./contracts/team";
 export * from "./contracts/context";
 export * from "./contracts/workbench";
+export * from "./contracts/session-hub";
 export * from "./contracts/project-insights";
 export * from "./contracts/approval";
 export * from "./contracts/settings";

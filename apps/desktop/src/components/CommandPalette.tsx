@@ -5,6 +5,7 @@ import {
   Code2,
   FolderGit2,
   HardDrive,
+  PanelsTopLeft,
   House,
   MessageSquarePlus,
   Newspaper,
@@ -107,6 +108,12 @@ export function CommandPalette() {
             onSelect={() => go(() => navigate({ to: "/", search: {} }))}
           >
             新对话
+          </Item>
+          <Item
+            icon={<PanelsTopLeft className="h-4 w-4" />}
+            onSelect={() => go(() => navigate({ to: "/session-hub" }))}
+          >
+            会话中心
           </Item>
           <Item
             icon={<FolderGit2 className="h-4 w-4" />}
