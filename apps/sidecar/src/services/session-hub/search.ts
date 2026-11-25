@@ -4,6 +4,7 @@ import { basename, extname, join } from "node:path";
 import { promisify } from "node:util";
 import {
   hubKey,
+  hubManualToolNames,
   parseHubPr,
   type HubIndex,
   type HubResolvedPr,
@@ -36,8 +37,12 @@ export function searchSessions(
     for (const row of device.sessions) {
       if ((filter.tool && row.tool !== filter.tool) || (filter.onlyPr && !row.prs.length)) continue;
       const key = hubKey(device.deviceId, row);
-      const body =
-        corpus.get(key) ?? [row.title, row.prompt, row.summary].filter(Boolean).join("\n");
+      const body = [
+        row.note,
+        corpus.get(key) ?? [row.title, row.prompt, row.summary].filter(Boolean).join("\n"),
+      ]
+        .filter(Boolean)
+        .join("\n");
       const lower = body.toLowerCase(),
         title = row.title.toLowerCase(),
         branch = row.branch.toLowerCase();
@@ -77,6 +82,7 @@ export function searchSessions(
           prText,
           row.directory.toLowerCase(),
           row.url?.toLowerCase() || "",
+          row.manualTool ? hubManualToolNames[row.manualTool].toLowerCase() : "",
         ];
         if (stems?.length) {
           score = 430;

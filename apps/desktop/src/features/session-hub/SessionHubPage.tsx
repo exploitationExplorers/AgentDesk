@@ -1,16 +1,20 @@
 import {
   hubKey,
+  hubManualToolNames,
+  HubLinkFields,
   hubToolNames,
   parseHubPr,
   type HubSearchResult,
   type HubIndex,
   type HubSnapshot,
   type HubTool,
+  type HubWebEntry,
+  type HubRecord,
 } from "@agentdesk/shared";
-import { Button, Dialog, Input } from "@agentdesk/ui";
+import { Button, Dialog } from "@agentdesk/ui";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { Bot, Check, Globe, Laptop, Search } from "lucide-react";
+import { Bot, Globe, Laptop, Search } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import logo from "./assets/logo.png";
 import codex from "./assets/codex.png";
@@ -19,6 +23,8 @@ import claude from "./assets/claude-desktop.png";
 import gemini from "./assets/gemini.png";
 import antigravity from "./assets/antigravity.png";
 import grok from "./assets/grok-bot.png";
+import { SessionLinkDialog } from "./SessionLinkDialog";
+import { ThemeDialog } from "./ThemeDialog";
 import { themes } from "./themes";
 import { http } from "../../lib/http";
 import { isTauri } from "../../lib/tauri";
@@ -44,11 +50,16 @@ function ToolIcon({ tool, size }: { tool: HubTool; size: "xs" | "sm" | "md" | "b
   const Icon = tool === "web" ? Globe : Bot;
   return <Icon aria-hidden className={className} />;
 }
-function ToolBadge({ tool, large }: { tool: HubTool; large?: boolean }) {
+function sessionToolName(row: HubRecord) {
+  return row.manualTool ? hubManualToolNames[row.manualTool] : hubToolNames[row.tool];
+}
+function ToolBadge({ row, large }: { row: HubRecord; large?: boolean }) {
+  const tool =
+    row.manualTool === "cursor" || row.manualTool === "gemini-desktop" ? row.manualTool : row.tool;
   return (
     <span className={`vsh-tool-tag ${large ? "vsh-tool-tag-lg" : ""}`}>
       <ToolIcon tool={tool} size={large ? "md" : "sm"} />
-      {hubToolNames[tool]}
+      {sessionToolName(row)}
     </span>
   );
 }
@@ -134,12 +145,13 @@ type Item = ReturnType<typeof flatten>[number];
 function contextText({ row, device }: Item) {
   return [
     row.title,
-    `${hubToolNames[row.tool]} · ${device.deviceName}`,
+    `${sessionToolName(row)} · ${device.deviceName}`,
     row.directory,
     row.branch,
     row.prs.map((n) => `PR #${n}`).join(" · "),
     row.prompt,
     row.summary,
+    row.note,
     row.url,
   ]
     .filter(Boolean)
@@ -178,7 +190,7 @@ export function SessionHubPage() {
   const [dialog, setDialog] = useState<"web" | "pr" | "devices" | "theme" | null>(null),
     [busy, setBusy] = useState(false),
     [formError, setFormError] = useState("");
-  const [theme, setTheme] = useState(() => {
+  const [theme, setTheme] = useState<string>(() => {
     const saved = localStorage.getItem(themeKey);
     return themes.find((t) => t.id === saved)?.id ?? "prism-aurora";
   });
@@ -259,9 +271,9 @@ export function SessionHubPage() {
     detailRef.current?.scrollTo(0, 0);
   }, [active?.key]);
   const local = active?.device.deviceId === hub.data?.local.deviceId;
-  const [binding, setBinding] = useState("");
+  const [binding, setBinding] = useState<{ key: string; title: string }>();
   function show(next: typeof dialog) {
-    if (next === "pr" && active) setBinding(active.key);
+    if (next === "pr" && active) setBinding({ key: active.key, title: active.row.title });
     setFormError("");
     setDialog(next);
   }
@@ -282,6 +294,29 @@ export function SessionHubPage() {
   const reload = async () => {
     await qc.invalidateQueries({ queryKey: cacheKey });
   };
+  async function saveLink(fields: HubWebEntry) {
+    await run(async () => {
+      const validation = HubLinkFields.safeParse(fields);
+      if (!validation.success) {
+        if (fields.pr !== undefined && fields.pr < 1) throw new Error("PR 编号必须为正整数。");
+        if (fields.url) throw new Error("请输入有效的 http 或 https 网页地址。");
+        throw new Error("请至少填写一项会话信息。");
+      }
+      if (dialog === "pr" && binding) {
+        await http.post("/session-hub/pr", { key: binding.key, ...validation.data });
+      } else {
+        const { key } = await http.post<{ key: string }>("/session-hub/web", fields);
+        setSelection(key);
+        setQuery("");
+        setTool("");
+        setDevice("");
+        setOnlyPr(false);
+      }
+      await reload();
+      show(null);
+      toast("已保存");
+    });
+  }
   function jumpUrl(item: Item) {
     const url = new URL(window.location.href);
     url.hash = `/session-hub?${new URLSearchParams({ session: item.key })}`;
@@ -289,11 +324,15 @@ export function SessionHubPage() {
   }
   async function primary(item: Item) {
     const { row, key } = item;
-    if (row.tool === "web" && row.url) {
+    if (row.url) {
       if (isTauri()) {
         const { openUrl } = await import("@tauri-apps/plugin-opener");
         await openUrl(row.url);
       } else window.open(row.url, "_blank", "noopener,noreferrer");
+      return;
+    }
+    if (row.tool === "web") {
+      await copy(contextText(item));
       return;
     }
     if (item.device.deviceId !== hub.data?.local.deviceId) {
@@ -311,16 +350,17 @@ export function SessionHubPage() {
     }
     await http.post("/session-hub/open", { key });
   }
-  const primaryText =
-    active?.row.tool === "antigravity" && local
-      ? "打开工作区"
-      : active?.row.tool === "web"
-        ? "打开网页会话"
+  const primaryText = active?.row.url
+    ? "打开网页会话"
+    : active?.row.tool === "web"
+      ? "复制上下文摘要"
+      : active?.row.tool === "antigravity" && local
+        ? "打开工作区"
         : !local
           ? "复制跨设备定位码"
           : active?.row.tool === "claude" || active?.row.tool === "gemini"
             ? "复制恢复命令"
-            : `在 ${active ? hubToolNames[active.row.tool] : ""} 中打开会话`;
+            : `在 ${active ? sessionToolName(active.row) : ""} 中打开会话`;
   function keyboard(e: React.KeyboardEvent) {
     if (!active) return;
     const idx = filtered.indexOf(active);
@@ -537,7 +577,7 @@ export function SessionHubPage() {
               onKeyDown={keyboard}
             >
               <span className="vsh-item-top">
-                <ToolBadge tool={item.row.tool} />
+                <ToolBadge row={item.row} />
                 <LocationTag device={item.device} local={item.device === hub.data?.local} />
                 {item.row.prs.slice(0, 3).map((n) => (
                   <span key={n} className="vsh-pr-pill">
@@ -588,7 +628,7 @@ export function SessionHubPage() {
             <article className="vsh-detail-card" key={active.key}>
               <div className="vsh-detail-header">
                 <div className="vsh-detail-badges">
-                  <ToolBadge tool={active.row.tool} large />
+                  <ToolBadge row={active.row} large />
                   <LocationTag device={active.device} local={local} detailed />
                   {active.row.prs.map((n) => {
                     const url = active.row.prLinks?.find((link) => link.endsWith(`/pull/${n}`));
@@ -659,6 +699,7 @@ export function SessionHubPage() {
               {[
                 ["命中片段", hits.get(active.key)?.snippet || ""],
                 ["初始提问", active.row.prompt],
+                ["备注关键词", active.row.note],
                 ["最新进展 / 回复摘要", active.row.summary],
               ]
                 .filter(([, v]) => v)
@@ -674,44 +715,34 @@ export function SessionHubPage() {
           )}
         </div>
       </div>
+      {(dialog === "pr" || dialog === "web") && (
+        <SessionLinkDialog
+          targetTitle={dialog === "pr" ? binding?.title : undefined}
+          syncEnabled={!!(hub.data?.cloud.enabled && hub.data.cloud.available)}
+          busy={busy}
+          error={formError}
+          onSave={(fields) => void saveLink(fields)}
+          onClose={() => show(null)}
+        />
+      )}
+      {dialog === "theme" && (
+        <ThemeDialog
+          selected={theme}
+          onSelect={(id) => {
+            setTheme(id);
+            localStorage.setItem(themeKey, id);
+          }}
+          onClose={() => show(null)}
+        />
+      )}
       <Dialog
-        open={!!dialog}
+        open={dialog === "devices"}
         onOpenChange={(v) => {
           if (!v) show(null);
         }}
-        title={
-          dialog === "theme"
-            ? "配色主题"
-            : dialog === "pr"
-              ? "绑定 PR"
-              : dialog === "web"
-                ? "关联网页会话"
-                : "设备索引"
-        }
+        title="设备索引"
       >
-        {dialog === "theme" ? (
-          <div className="sh-theme-options">
-            {themes.map((t) => (
-              <button
-                key={t.id}
-                aria-pressed={theme === t.id}
-                onClick={() => {
-                  setTheme(t.id);
-                  localStorage.setItem(themeKey, t.id);
-                  show(null);
-                }}
-              >
-                <span
-                  className="sh-theme-preview"
-                  style={{
-                    background: `linear-gradient(110deg, ${t.background} 48%, ${t.accent})`,
-                  }}
-                />
-                {t.name}
-              </button>
-            ))}
-          </div>
-        ) : dialog === "devices" ? (
+        {dialog === "devices" ? (
           <div className="sh-form">
             <p>导出本机的会话标题、目录、PR 和上下文，或导入另一台设备导出的 AgentDesk 索引。</p>
             {(hub.data?.cloud.available || hub.data?.cloud.enabled) && (
@@ -771,67 +802,7 @@ export function SessionHubPage() {
               />
             </div>
           </div>
-        ) : (
-          dialog && (
-            <form
-              key={dialog}
-              className="sh-form"
-              onSubmit={(e) => {
-                e.preventDefault();
-                const data = new FormData(e.currentTarget);
-                void run(async () => {
-                  const pr = data.get("pr") ? Number(data.get("pr")) : undefined;
-                  if (dialog === "pr") await http.post("/session-hub/pr", { key: binding, pr });
-                  else {
-                    const { key } = await http.post<{ key: string }>("/session-hub/web", {
-                      title: data.get("title"),
-                      url: data.get("url"),
-                      pr,
-                    });
-                    setSelection(key);
-                    setQuery("");
-                    setTool("");
-                    setDevice("");
-                    setOnlyPr(false);
-                  }
-                  await reload();
-                  show(null);
-                  toast("已保存");
-                });
-              }}
-            >
-              {dialog === "web" && (
-                <>
-                  {local && active && (
-                    <button
-                      type="button"
-                      className="justify-self-start underline"
-                      onClick={() => show("pr")}
-                    >
-                      为当前会话绑定 PR
-                    </button>
-                  )}
-                  <label>
-                    会话标题
-                    <Input name="title" required maxLength={300} autoFocus />
-                  </label>
-                  <label>
-                    网页地址
-                    <Input name="url" type="url" placeholder="https://" required maxLength={4096} />
-                  </label>
-                </>
-              )}
-              <label>
-                PR 编号{dialog === "web" ? "（选填）" : ""}
-                <Input name="pr" type="number" min={1} max={999999999} required={dialog === "pr"} />
-              </label>
-              <Button type="submit" variant="brand" disabled={busy}>
-                <Check size={14} />
-                保存
-              </Button>
-            </form>
-          )
-        )}
+        ) : null}
         {formError && (
           <p role="alert" className="mt-3 text-sm text-danger">
             {formError}

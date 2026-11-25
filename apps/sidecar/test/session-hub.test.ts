@@ -57,10 +57,15 @@ describe("AgentDesk 会话中心", () => {
       const service = new SessionHub(db, sources);
       const { local } = await service.index();
       const key = hubKey(local.deviceId, local.sessions[0]!);
-      await service.bind(key, 12);
+      await service.bind(key, { pr: 12 });
+      await service.bind(key, { title: "Renamed local", note: "manual-note-token" });
       fail = true;
       const failed = await service.index(true);
-      expect(failed.local.sessions[0]?.prs).toEqual([12]);
+      expect(failed.local.sessions[0]).toMatchObject({
+        prs: [12],
+        title: "Renamed local",
+        note: "manual-note-token",
+      });
       expect(failed.warnings).toHaveLength(1);
       const other = HubSnapshot.parse({
         ...local,
@@ -75,9 +80,22 @@ describe("AgentDesk 会话中心", () => {
       await expect(
         recreated.localRow(hubKey(other.deviceId, other.sessions[0]!)),
       ).rejects.toThrow();
-      const webKey = service.addWeb("issue", "https://example.com/15", 15);
+      const webKey = service.addWeb({
+        url: "https://example.com/15",
+        pr: 15,
+        manualTool: "gemini-web",
+        note: "web-note-token",
+      });
       expect((await service.localRow(webKey)).prs).toEqual([15]);
-      expect(service.addWeb("renamed", "https://example.com/15")).toBe(webKey);
+      expect(service.addWeb({ title: "renamed", url: "https://example.com/15" })).toBe(webKey);
+      expect((await service.search({ query: "web-note-token Gemini" }, false)).hits[0]?.key).toBe(
+        webKey,
+      );
+      const manualKey = service.addWeb({ pr: 42, manualTool: "cursor" });
+      expect(await service.localRow(manualKey)).toMatchObject({
+        title: "PR #42",
+        manualTool: "cursor",
+      });
     } finally {
       db.close();
     }

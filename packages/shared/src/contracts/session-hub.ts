@@ -27,6 +27,36 @@ export const hubToolNames: Record<HubTool, string> = {
 };
 export const HubPr = z.number().int().min(1).max(999999999);
 export const HubWebUrl = z.url({ protocol: /^https?$/ }).max(4096);
+export const HubManualTool = z.enum([
+  "gemini-web",
+  "grok-web",
+  "chatgpt-web",
+  "cursor",
+  "gemini-desktop",
+  "web-link",
+]);
+export const hubManualToolNames = {
+  "gemini-web": "Gemini 网页版",
+  "grok-web": "Grok 网页版",
+  "chatgpt-web": "ChatGPT 网页版",
+  cursor: "Cursor",
+  "gemini-desktop": "Gemini 桌面端",
+  "web-link": "其他链接",
+} satisfies Record<z.infer<typeof HubManualTool>, string>;
+export const HubLinkFields = z
+  .object({
+    pr: HubPr.optional(),
+    title: z.string().trim().min(1).max(300).optional(),
+    url: HubWebUrl.optional(),
+    note: z.string().trim().min(1).max(4000).optional(),
+  })
+  .refine(
+    (fields) => !!(fields.pr || fields.title || fields.url || fields.note),
+    "请至少填写一项会话信息。",
+  );
+export type HubLinkFields = z.infer<typeof HubLinkFields>;
+export const HubWebEntry = HubLinkFields.safeExtend({ manualTool: HubManualTool.optional() });
+export type HubWebEntry = z.infer<typeof HubWebEntry>;
 export const HubRecord = z.object({
   id: z.string().min(1).max(256),
   tool: HubTool,
@@ -46,6 +76,8 @@ export const HubRecord = z.object({
     .max(64)
     .optional(),
   url: HubWebUrl.optional(),
+  manualTool: HubManualTool.optional(),
+  note: z.string().max(4000).optional(),
 });
 export type HubRecord = z.infer<typeof HubRecord>;
 export const HubSnapshot = z.object({

@@ -9,6 +9,8 @@ import {
   hubKey,
   hubToolNames,
   type HubIndex,
+  type HubLinkFields,
+  type HubWebEntry,
   type HubRecord,
   type HubSnapshot,
 } from "@agentdesk/shared";
@@ -20,11 +22,12 @@ import { record } from "./record";
 import { hasCloudDrive, syncDeviceFiles } from "./sync";
 
 type Sources = ReturnType<typeof sessionSources>;
+type Binding = { id: string; prs: number[] } & Pick<HubLinkFields, "title" | "url" | "note">;
 export class SessionHub {
   private readonly device: { id: string; deviceId: string };
   private readonly scans: Collection<{ id: string; records: HubRecord[] }>;
   private readonly web: Collection<HubRecord>;
-  private readonly bindings: Collection<{ id: string; prs: number[] }>;
+  private readonly bindings: Collection<Binding>;
   private readonly peers: Collection<{ id: string; snapshot: HubSnapshot }>;
   private readonly preferences: Collection<{ id: string; enabled: boolean }>;
   private cloudRun?: Promise<number>;
@@ -76,12 +79,14 @@ export class SessionHub {
         this.pending = undefined;
       });
     await this.pending;
-    const prs = new Map(this.bindings.list().map((b) => [b.id, b.prs]));
+    const bindings = new Map(this.bindings.list().map((b) => [b.id, b]));
     const sessions = [...this.scans.list().flatMap((s) => s.records), ...this.web.list()].map(
-      (row) => ({
-        ...row,
-        prs: [...new Set([...row.prs, ...(prs.get(hubKey(this.device.deviceId, row)) || [])])],
-      }),
+      (row) => {
+        const binding = bindings.get(hubKey(this.device.deviceId, row));
+        if (!binding) return row;
+        const { id: _id, prs, ...metadata } = binding;
+        return { ...row, ...metadata, prs: [...new Set([...row.prs, ...prs])] };
+      },
     );
     const local: HubSnapshot = {
       format: "agentdesk-session-index-v1",
@@ -136,27 +141,35 @@ export class SessionHub {
   }
 
   async localRow(key: string) {
-    const { local } = await this.index();
+    const { local } = await this.index(false, false);
     const row = local.sessions.find((r) => hubKey(local.deviceId, r) === key);
     if (!row) throw new AppError(ErrorCode.NotFound, "未找到本机会话，请重新同步索引。");
     return row;
   }
-  async bind(key: string, pr: number) {
+  async bind(key: string, fields: HubLinkFields) {
     const row = await this.localRow(key);
-    const prs = [...new Set([...(this.bindings.get(key)?.prs || []), pr])];
+    const { pr, ...metadata } = fields;
+    const previous = this.bindings.get(key);
+    const prs = [...new Set([...(previous?.prs ?? []), ...(pr ? [pr] : [])])];
     if (new Set([...row.prs, ...prs]).size > 64)
       throw new AppError(ErrorCode.BadRequest, "每个会话最多关联 64 个 PR。");
-    this.bindings.put({ id: key, prs });
+    this.bindings.put({ ...previous, ...metadata, id: key, prs });
   }
-  addWeb(title: string, url: string, pr?: number) {
-    const row =
-      this.web.list().find((r) => r.url === url) ?? record("web", randomUUID(), { title });
+  addWeb({ title, url, pr, note, manualTool }: HubWebEntry) {
+    const existing = url ? this.web.list().find((r) => r.url === url) : undefined;
+    const label =
+      title ?? existing?.title ?? (note?.slice(0, 300) || (pr ? `PR #${pr}` : url?.slice(0, 300)));
+    const row = existing ?? record("web", randomUUID(), { title: label });
+    const prs = [...new Set([...row.prs, ...(pr ? [pr] : [])])];
+    if (prs.length > 64) throw new AppError(ErrorCode.BadRequest, "每个会话最多关联 64 个 PR。");
     this.web.put({
       ...row,
-      title,
+      title: label ?? row.title,
       url,
+      note: note ?? row.note,
+      manualTool: manualTool ?? row.manualTool,
       updatedAt: Date.now(),
-      prs: [...new Set([...row.prs, ...(pr ? [pr] : [])])],
+      prs,
     });
     return hubKey(this.device.deviceId, row);
   }

@@ -1046,26 +1046,6 @@
 .sh-notice button {
   text-decoration: underline;
 }
-.sh-theme-options {
-  display: grid;
-  gap: 8px;
-  grid-template-columns: repeat(auto-fit, minmax(126px, 1fr));
-}
-.sh-theme-options button {
-  text-align: left;
-  padding: 10px;
-  border: 1px solid var(--ad-border);
-  border-radius: 9px;
-}
-.sh-theme-options button[aria-pressed="true"] {
-  outline: 2px solid var(--ad-brand);
-}
-.sh-theme-preview {
-  display: block;
-  height: 20px;
-  border-radius: 4px;
-  margin-bottom: 8px;
-}
 .sh-device,
 .sh-actions {
   display: flex;
@@ -1138,4 +1118,292 @@
   display: block;
   color: var(--ad-muted);
   margin-top: 4px;
+}
+
+.vsh-link-dialog {
+  inset: 0;
+  margin: auto;
+  width: min(544px, calc(100vw - 32px));
+  max-width: none;
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  color: var(--text);
+  background: var(--surface);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.42);
+}
+.vsh-link-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.52);
+  backdrop-filter: blur(4px);
+}
+.vsh-link-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.vsh-link-header h2 {
+  font-size: 20px;
+  font-weight: 700;
+}
+.vsh-link-close {
+  padding: 2px 6px;
+  color: var(--text-muted);
+  font-size: 15px;
+  cursor: pointer;
+}
+.vsh-link-close:hover {
+  color: var(--text);
+}
+.vsh-link-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.vsh-link-form > :is(.vsh-link-wide, p, footer),
+.vsh-link-form:has(.vsh-link-target) > label {
+  grid-column: 1 / -1;
+}
+@media (max-width: 460px) {
+  .vsh-link-form {
+    grid-template-columns: 1fr;
+  }
+}
+.vsh-link-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+.vsh-link-form input,
+.vsh-link-form select,
+.vsh-link-form textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 400;
+}
+.vsh-link-form :is(input, textarea)::placeholder {
+  color: var(--text-secondary);
+}
+.vsh-link-form :is(input, select, textarea):focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.vsh-link-select {
+  position: relative;
+}
+.vsh-link-select select {
+  appearance: none;
+  padding-inline-end: 28px;
+}
+.vsh-link-select svg {
+  position: absolute;
+  inset-inline-end: 9px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: var(--text);
+}
+.vsh-link-form textarea {
+  min-height: 50px;
+  resize: vertical;
+}
+.vsh-link-target,
+.vsh-link-error {
+  padding: 8px 10px;
+  border-radius: 7px;
+  background: var(--surface-muted);
+  color: var(--text-secondary);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.vsh-link-error {
+  color: var(--amber);
+}
+.vsh-link-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.vsh-link-footer > span {
+  margin-inline-end: auto;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.vsh-theme-dialog {
+  width: min(880px, calc(100vw - 32px));
+  max-width: none;
+  max-height: calc(100dvh - 32px);
+  margin: auto;
+  padding: 28px 32px;
+  overflow-y: auto;
+  border: 1px solid var(--border-strong);
+  border-radius: 24px;
+  color: var(--text);
+  background: var(--surface);
+  box-shadow: 0 20px 55px rgba(0, 0, 0, 0.48);
+}
+.vsh-theme-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.62);
+  backdrop-filter: blur(6px);
+}
+.vsh-theme-dialog-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 20px;
+}
+.vsh-theme-dialog-header h2 {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1.25;
+  font-weight: 700;
+}
+.vsh-theme-dialog-header p {
+  margin: 6px 0 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.35;
+}
+.vsh-theme-dialog-header button {
+  padding: 5px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.vsh-theme-dialog-header button:hover {
+  color: var(--text);
+}
+.vsh-theme-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+.vsh-theme-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 9px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--text);
+  background: var(--surface-muted);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.14s ease,
+    box-shadow 0.14s ease,
+    transform 0.14s ease;
+}
+.vsh-theme-card:hover {
+  border-color: var(--border-strong);
+  transform: translateY(-1px);
+}
+.vsh-theme-card[aria-pressed="true"] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.vsh-theme-preview {
+  display: grid;
+  grid-template-columns: minmax(38px, 28%) minmax(0, 1fr);
+  height: 62px;
+  overflow: hidden;
+  border: 1px solid currentColor;
+  border-color: color-mix(in srgb, currentColor 18%, transparent);
+  border-radius: 8px;
+}
+.vsh-theme-preview-sidebar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, currentColor 11%, transparent);
+}
+.vsh-theme-preview-sidebar > span {
+  width: 16px;
+  height: 16px;
+  border-radius: 5px;
+}
+.vsh-theme-preview-content {
+  display: grid;
+  align-content: center;
+  gap: 6px;
+  padding: 10px;
+}
+.vsh-theme-preview-content > span {
+  width: 78%;
+  height: 6px;
+  border-radius: 3px;
+  background: currentColor;
+}
+.vsh-theme-preview-content > span + span {
+  width: 48%;
+  opacity: 0.42;
+}
+.vsh-theme-card-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.vsh-theme-card-label svg {
+  flex: none;
+  color: var(--text);
+}
+.vsh-theme-card strong {
+  font-size: 16px;
+  line-height: 1.2;
+}
+.vsh-theme-card small {
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.25;
+}
+.vsh-theme-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 22px;
+}
+.vsh-theme-dialog-footer .vsh-btn {
+  min-width: 82px;
+  padding: 10px 20px;
+  border-radius: 16px;
+  font-size: 16px;
+  font-weight: 650;
+}
+@media (max-width: 760px) {
+  .vsh-theme-dialog {
+    padding: 24px 20px;
+    border-radius: 18px;
+  }
+  .vsh-theme-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .vsh-theme-dialog-header h2 {
+    font-size: 23px;
+  }
+  .vsh-theme-dialog-header p {
+    font-size: 13px;
+  }
+}
+@media (max-width: 460px) {
+  .vsh-theme-grid {
+    grid-template-columns: 1fr;
+  }
 }

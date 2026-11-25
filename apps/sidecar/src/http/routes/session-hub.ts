@@ -5,7 +5,7 @@ import { promisify } from "node:util";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
-import { AppError, ErrorCode, HubPr, HubWebUrl, HubSnapshot } from "@agentdesk/shared";
+import { AppError, ErrorCode, HubLinkFields, HubWebEntry, HubSnapshot } from "@agentdesk/shared";
 import type { Container } from "../../container";
 import { SessionHub } from "../../services/session-hub";
 import { sessionSources } from "../../services/session-hub/sources";
@@ -48,15 +48,14 @@ export function sessionHubRoutes(container: Container) {
     return c.body(null, 204);
   });
   app.post("/session-hub/pr", async (c) => {
-    const { key, pr } = z.object({ key: z.string().max(512), pr: HubPr }).parse(await c.req.json());
-    await hub().bind(key, pr);
+    const { key, ...fields } = HubLinkFields.safeExtend({ key: z.string().max(512) }).parse(
+      await c.req.json(),
+    );
+    await hub().bind(key, fields);
     return c.body(null, 204);
   });
   app.post("/session-hub/web", async (c) => {
-    const { title, url, pr } = z
-      .object({ title: z.string().trim().min(1).max(300), url: HubWebUrl, pr: HubPr.optional() })
-      .parse(await c.req.json());
-    return c.json({ key: hub().addWeb(title, url, pr) });
+    return c.json({ key: hub().addWeb(HubWebEntry.parse(await c.req.json())) });
   });
   app.post(
     "/session-hub/import",
