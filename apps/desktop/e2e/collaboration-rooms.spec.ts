@@ -213,6 +213,7 @@ test("首页保留滚动舞台，切换功能预览并通过统一入口访问�
   await page.mouse.wheel(0, -chapterHeight / 2);
   await waitForProgress(1.5);
   const midway = (await phone.boundingBox())!.x;
+  await page.screenshot({ path: testInfo.outputPath("desk-handoff.png") });
   expect(midway - bounds!.x).toBeGreaterThan(200);
   await page.mouse.wheel(0, -chapterHeight / 2);
   await waitForProgress(1);

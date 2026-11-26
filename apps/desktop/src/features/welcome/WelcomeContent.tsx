@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { Link } from "@tanstack/react-router";
+import { WelcomeLink } from "./WelcomeLink";
 import codePreview from "./previews/code.jpg";
 import workflowPreview from "./previews/workflow.jpg";
 import { FeatureShowcase } from "./FeatureShowcase";
@@ -1168,37 +1168,37 @@ export function WelcomeContent({ scrollTo }: { scrollTo: (id: string) => void })
             <div>
               <p className="fh">工作台</p>
               <p>
-                <Link to="/">Bot 对话</Link>
+                <WelcomeLink to="/">Bot 对话</WelcomeLink>
               </p>
               <p>
-                <Link to="/projects">项目</Link>
+                <WelcomeLink to="/projects">项目</WelcomeLink>
               </p>
               <p>
-                <Link to="/session-hub">会话中心</Link>
+                <WelcomeLink to="/session-hub">会话中心</WelcomeLink>
               </p>
             </div>
             <div>
               <p className="fh">开发与交付</p>
               <p>
-                <Link to="/code">编码</Link>
+                <WelcomeLink to="/code">编码</WelcomeLink>
               </p>
               <p>
-                <Link to="/team">团队开发</Link>
+                <WelcomeLink to="/team">团队开发</WelcomeLink>
               </p>
               <p>
-                <Link to="/deploy">部署</Link>
+                <WelcomeLink to="/deploy">部署</WelcomeLink>
               </p>
             </div>
             <div>
               <p className="fh">探索</p>
               <p>
-                <Link to="/workflows">工作流</Link>
+                <WelcomeLink to="/workflows">工作流</WelcomeLink>
               </p>
               <p>
-                <Link to="/automations">自动化</Link>
+                <WelcomeLink to="/automations">自动化</WelcomeLink>
               </p>
               <p>
-                <Link to="/learning">成长中心</Link>
+                <WelcomeLink to="/learning">成长中心</WelcomeLink>
               </p>
             </div>
             <div>

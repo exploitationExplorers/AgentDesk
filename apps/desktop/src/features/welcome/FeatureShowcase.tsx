@@ -1,4 +1,4 @@
-import { Link } from "@tanstack/react-router";
+import { WelcomeLink } from "./WelcomeLink";
 import { ArrowUpRight } from "lucide-react";
 import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { DeskScene, frameCamera } from "./DeskScene";
@@ -114,10 +114,10 @@ export function FeatureShowcase() {
           </a>
         )}
         {scene.links.map(([label, to]) => (
-          <Link key={to} to={to}>
+          <WelcomeLink key={to} to={to}>
             {label}
             <ArrowUpRight size={15} aria-hidden />
-          </Link>
+          </WelcomeLink>
         ))}
       </div>
     </div>

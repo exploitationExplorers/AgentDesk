@@ -48,7 +48,7 @@ export const scenes = [
   },
   {
     kind: "phone",
-    camera: { radius: 115, pitch: 1.16, yaw: 0.04, targetHeight: 2 },
+    camera: { radius: 103, pitch: 1.54, yaw: 0, targetHeight: 0 },
     title: "手机工作台",
     headline: ["在手机上，", "接着工作。"],
     icon: Smartphone,

@@ -8,6 +8,7 @@ node_modules
 !/CLAUDE.md
 dist
 dist-cloud
+dist-welcome
 dist-team
 .team-data/
 bin

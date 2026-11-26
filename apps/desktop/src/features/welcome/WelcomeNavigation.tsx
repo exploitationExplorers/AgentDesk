@@ -1,4 +1,4 @@
-import { Link } from "@tanstack/react-router";
+import { WelcomeLink } from "./WelcomeLink";
 import { useEffect, useRef, useState } from "react";
 
 function Globe() {
@@ -149,9 +149,7 @@ export function WelcomeNavigation({ scrollTo }: { scrollTo: (id: string) => void
               </li>
             </ul>
           </div>
-          <Link className="btn btn-dark" to="/">
-            进入工作台
-          </Link>
+          <WelcomeLink className="btn btn-dark" to="/" install />
         </div>
         <button
           ref={openerRef}
@@ -261,9 +259,7 @@ export function WelcomeNavigation({ scrollTo }: { scrollTo: (id: string) => void
           </div>
         </nav>
         <div className="mm-foot">
-          <Link className="btn" to="/" onClick={closeMobile}>
-            进入工作台
-          </Link>
+          <WelcomeLink className="btn" to="/" onClick={closeMobile} install />
         </div>
       </div>
     </>
@@ -273,14 +269,10 @@ export function WelcomeNavigation({ scrollTo }: { scrollTo: (id: string) => void
 export function WelcomeActions({ scrollTo }: { scrollTo: (id: string) => void }) {
   return (
     <div className="signup-cta">
-      <Link className="btn btn-dark m-email" to="/">
-        进入工作台
-      </Link>
+      <WelcomeLink className="btn btn-dark m-email" to="/" install />
       <div className="signup">
         <span className="signup-caption">从一个问题开始</span>
-        <Link className="btn btn-dark welcome-workbench-button" to="/">
-          进入工作台
-        </Link>
+        <WelcomeLink className="btn btn-dark welcome-workbench-button" to="/" install />
       </div>
       <p className="g-or">或</p>
       <button type="button" className="g-btn" onClick={() => scrollTo("cases")}>

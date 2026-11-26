@@ -1,3 +1,4 @@
+import { laneFor, mobileDeskX, runAcrossDesk } from "./desk-choreography";
 import { scenes } from "./showcase-scenes";
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
@@ -47,15 +48,40 @@ function paperTexture() {
   return texture;
 }
 
-const crewPositions: Record<string, [number, number, number]> = {
-  "bot-claude-body": [4.8, 1.72, -4.7],
-  "bot-codex-body": [-4.9, 1.72, -4],
-  "bot-qwen-body": [-11.8, 1.56, 9],
-  "bot-pi-body": [-8.1, 1.56, 9.5],
-  "bot-antigravity-body": [-4.5, 1.56, 9.4],
-  "bot-deepseek-body": [2.4, 1.56, 9.6],
-  "bot-copilot-body": [8.7, 1.56, 9.2],
-};
+// A printed handoff sheet gives the travelling camera a landmark between devices.
+function handoffSheet() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1024;
+  canvas.height = 512;
+  const ctx = canvas.getContext("2d")!;
+  ctx.fillStyle = "#f2e9d4";
+  ctx.fillRect(0, 0, 1024, 512);
+  ctx.strokeStyle = "#9e9889";
+  ctx.strokeRect(18, 18, 988, 476);
+  ctx.fillStyle = "#6d7267";
+  ctx.font = "24px monospace";
+  ctx.fillText("AgentDesk   /   SESSION HANDOFF", 50, 77);
+  ctx.font = "18px monospace";
+  ctx.setLineDash([6, 8]);
+  ctx.beginPath();
+  ctx.moveTo(126, 249);
+  ctx.lineTo(890, 249);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  for (const [i, label] of ["SESSION", "RUN", "REVIEW"].entries()) {
+    const x = 100 + 345 * i;
+    ctx.fillStyle = "#e4e1d2";
+    ctx.fillRect(x, 190, 143, 118);
+    ctx.strokeRect(x, 190, 143, 118);
+    ctx.fillStyle = "#657869";
+    ctx.fillText(`0${i + 1}`, x + 14, 220);
+    ctx.fillText(label, x + 14, 281);
+  }
+  ctx.fillText("FIG. 02    DESKTOP  /  MOBILE", 50, 451);
+  const map = new THREE.CanvasTexture(canvas);
+  map.colorSpace = THREE.SRGBColorSpace;
+  return map;
+}
 
 export async function mountMacDesk(host: HTMLElement, signal: AbortSignal) {
   const [bytes, home, code, team, workflow, deploy, learning] = await Promise.all([
@@ -78,7 +104,7 @@ export async function mountMacDesk(host: HTMLElement, signal: AbortSignal) {
     resources.add(value);
     return value;
   };
-  const crew: THREE.Object3D[] = [];
+  const crew: { bot: THREE.Object3D; lane: number }[] = [];
   model.traverse((obj: THREE.Object3D) => {
     if (!(obj instanceof THREE.Mesh)) return;
     track(obj.geometry);
@@ -88,12 +114,8 @@ export async function mountMacDesk(host: HTMLElement, signal: AbortSignal) {
     }
     obj.castShadow = true;
     obj.receiveShadow = true;
-    const pos = crewPositions[obj.name];
-    if (pos) {
-      obj.position.set(...pos);
-      obj.rotation.y = 0.18;
-      crew.push(obj);
-    }
+    const lane = laneFor(obj.name);
+    if (lane !== -1) crew.push({ bot: obj, lane });
   });
   const releaseModel = () => {
     for (const resource of resources) resource.dispose();
@@ -125,8 +147,9 @@ export async function mountMacDesk(host: HTMLElement, signal: AbortSignal) {
   sun.shadow.mapSize.set(1024, 1024);
   Object.assign(sun.shadow.camera, { left: -52, right: 40, top: 54, bottom: -42, far: 150 });
   sun.shadow.normalBias = 0.055;
+  sun.shadow.intensity = 0.64;
   sun.shadow.bias = -0.00016;
-  scene.add(sun);
+  scene.add(sun, sun.target);
   const paper = new THREE.Mesh(
     track(new THREE.PlaneGeometry(45, 35)),
     track(new THREE.MeshStandardMaterial({ map: track(paperTexture()), roughness: 1 })),
@@ -136,6 +159,14 @@ export async function mountMacDesk(host: HTMLElement, signal: AbortSignal) {
   paper.position.set(0, -0.09, 2);
   paper.receiveShadow = true;
   scene.add(paper);
+  const sheet = new THREE.Mesh(
+    track(new THREE.PlaneGeometry(24, 12)),
+    track(new THREE.MeshStandardMaterial({ map: track(handoffSheet()), roughness: 1 })),
+  );
+  sheet.rotation.set(-Math.PI / 2, 0, -0.085);
+  sheet.position.set(32, -0.075, -6);
+  sheet.receiveShadow = true;
+  scene.add(sheet);
   const floor = new THREE.Mesh(
     track(new THREE.PlaneGeometry(180, 180)),
     track(new THREE.ShadowMaterial({ opacity: 0.13 })),
@@ -162,12 +193,24 @@ export async function mountMacDesk(host: HTMLElement, signal: AbortSignal) {
     visible = false,
     prev = 0,
     t = 0,
+    phoneWidth = 40,
+    phoneHeight = 28,
     lastTexture = -1,
     lastProgress = -1;
   const resize = new ResizeObserver(() => {
     const w = host.clientWidth,
       h = host.clientHeight;
     if (!w || !h) return;
+    const phone = stage?.querySelector<HTMLElement>(".object-phone");
+    if (phone) {
+      const unitsPerPixel =
+        (2 *
+          scenes.find((s) => s.kind === "phone")!.camera.radius *
+          Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))) /
+        h;
+      phoneWidth = phone.offsetWidth * unitsPerPixel;
+      phoneHeight = phone.offsetHeight * unitsPerPixel;
+    }
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
@@ -178,31 +221,31 @@ export async function mountMacDesk(host: HTMLElement, signal: AbortSignal) {
     if (!visible || document.hidden || signal.aborted) return;
     raf = requestAnimationFrame(render);
     if (now - prev < 32) return;
-    t += Math.min((now - prev) / 1000, 0.05);
+    const delta = Math.min((now - prev) / 1000, 0.05);
     prev = now;
     const progress = Number(stage?.dataset.deskProgress ?? 0);
+    t += delta;
+    const travel = Number(stage?.style.getPropertyValue("--phone-travel") || 0);
+    const sweep = Math.sin(Math.PI * travel);
     const chapter = Math.floor(progress);
     const next = Math.min(chapter + 1, scenes.length - 1);
     const fraction = progress - chapter;
     const blend = THREE.MathUtils.smoothstep(fraction, 0, 1);
     const from = scenes[chapter]!.camera;
     const to = scenes[next]!.camera;
-    const radius = THREE.MathUtils.lerp(from.radius, to.radius, blend);
+    const radius = THREE.MathUtils.lerp(from.radius, to.radius, blend) - 12 * sweep;
     const pitch = THREE.MathUtils.lerp(from.pitch, to.pitch, blend);
-    const yaw = THREE.MathUtils.lerp(from.yaw, to.yaw, blend);
+    const yaw = THREE.MathUtils.lerp(from.yaw, to.yaw, blend) - 0.23 * sweep;
     const targetHeight = THREE.MathUtils.lerp(from.targetHeight, to.targetHeight, blend);
     camera.position.set(
-      Math.sin(yaw) * Math.cos(pitch) * radius,
+      mobileDeskX * travel + Math.sin(yaw) * Math.cos(pitch) * radius,
       targetHeight + Math.sin(pitch) * radius,
       -2 + Math.cos(yaw) * Math.cos(pitch) * radius,
     );
-    camera.lookAt(0, targetHeight, -2);
-    crew.forEach((bot, i) => {
-      const p = crewPositions[bot.name]!;
-      const hop = Math.max(0, Math.sin(t * 3 + i * 1.7));
-      bot.position.y = p[1] + hop ** 3 * 0.48;
-      bot.rotation.z = Math.sin(t * 3 + i) * 0.045;
-    });
+    camera.lookAt(mobileDeskX * travel, targetHeight, -2);
+    sun.position.x = -28 + mobileDeskX * travel;
+    sun.target.position.x = mobileDeskX * travel;
+    for (const { bot, lane } of crew) runAcrossDesk(bot, lane, travel, t, phoneWidth, phoneHeight);
     if (progress !== lastProgress || (chapter === 0 && t - lastTexture > 0.11)) {
       lastTexture = t;
       lastProgress = progress;

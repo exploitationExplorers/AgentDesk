@@ -22,3 +22,18 @@
 .welcome-page .mac-model[data-rendered] .mac-poster {
   visibility: hidden;
 }
+
+/* The live camera travels through world space. Only the flat poster fallback needs the sliding track. */
+.welcome-page .tour-camera-track:has(.mac-model[data-rendered]) {
+  transform: none;
+}
+.welcome-page .tour-camera-track:has(.mac-model[data-rendered]) .object-laptop {
+  opacity: 1;
+}
+.welcome-page .tour-camera-track:has(.mac-model[data-rendered]) .object-phone {
+  left: calc(150% - 100% * var(--phone-travel, 0));
+}
+.welcome-page .tour-camera-track:has(.mac-model[data-rendered]) .object-phone .tour-prop::before,
+.welcome-page .tour-camera-track:has(.mac-model[data-rendered]) .object-phone .tour-crew {
+  display: none;
+}
