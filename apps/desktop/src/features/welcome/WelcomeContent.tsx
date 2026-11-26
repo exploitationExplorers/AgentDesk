@@ -1,44 +1,36 @@
 import type { CSSProperties } from "react";
 import { Link } from "@tanstack/react-router";
+import codePreview from "./previews/code.jpg";
+import workflowPreview from "./previews/workflow.jpg";
+import { FeatureShowcase } from "./FeatureShowcase";
 import { WelcomeActions, WelcomeNavigation } from "./WelcomeNavigation";
 
-// 保留参考首页的实际 DOM、角色形状和聊天布局，滚动时间轴由 welcome-motion 管理。
+const questions = [
+  [
+    "第一次打开，应该从哪里开始？",
+    "先在设置里接入模型，在 Bot 里试一次对话。如果手头已有代码仓库，可以先添加项目扫描目录，再到项目页打开它。",
+  ],
+  [
+    "能找回之前的编码会话吗？",
+    "可以。在会话中心按关键词、工具或 PR 编号筛选记录，查看上下文，再从支持的入口继续处理。",
+  ],
+  [
+    "本地群聊和团队开发分别用来做什么？",
+    "在本地群聊里让不同角色讨论、核对并总结一个问题。需要让成员认领任务、提交执行结果和验收时，进入团队开发。",
+  ],
+  [
+    "哪些工作适合定时运行？",
+    "可以把重复的任务设成自动化，指定运行时间并查看执行记录。需要串联多个步骤时，可以先在工作流画布上编排。",
+  ],
+  [
+    "可以在终端使用吗？",
+    "可以。运行 agentdesk chat 进入终端对话，或用 agentdesk web 打开浏览器工作台。模型地址和凭据在你自己的环境中配置。",
+  ],
+] as const;
+
 export function WelcomeContent({ scrollTo }: { scrollTo: (id: string) => void }) {
   return (
     <>
-      <svg
-        width={"0"}
-        height={"0"}
-        style={{ position: "absolute" } as CSSProperties}
-        aria-hidden={"true"}
-      >
-        <symbol id={"g-logo"} viewBox={"0 0 48 48"}>
-          <path
-            fill={"#EA4335"}
-            d={
-              "M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"
-            }
-          ></path>
-          <path
-            fill={"#4285F4"}
-            d={
-              "M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"
-            }
-          ></path>
-          <path
-            fill={"#FBBC05"}
-            d={
-              "M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"
-            }
-          ></path>
-          <path
-            fill={"#34A853"}
-            d={
-              "M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"
-            }
-          ></path>
-        </symbol>
-      </svg>
       <svg
         width={"0"}
         height={"0"}
@@ -274,168 +266,6 @@ export function WelcomeContent({ scrollTo }: { scrollTo: (id: string) => void })
           <circle cx={"42"} cy={"92.5"} r={"2"} fill={"#141414"}></circle>
           <circle cx={"58"} cy={"92.5"} r={"2"} fill={"#141414"}></circle>
         </symbol>
-        <path
-          id={"lgBub"}
-          d={
-            "M60 12C90 12 108 31 108 56C108 82 90 100 60 100C53.5 100 47.8 99.2 42.6 97.6L21 108L25.2 88.2C16.5 80 12 69.5 12 56C12 31 30 12 60 12Z"
-          }
-        ></path>
-        <clipPath id={"lgIn"}>
-          <use href={"#lgBub"}></use>
-        </clipPath>
-        <g id={"lgEye"}>
-          <circle r={"3.1"} fill={"#161616"}></circle>
-          <circle cx={"1"} cy={"-1.1"} r={"1"} fill={"#fff"}></circle>
-        </g>
-        <g id={"lgKTri"}>
-          <path
-            d={
-              "M42 21C45 21 46.7 23.4 48.1 26.4L62.5 60C65 66 61.5 72.5 55 72.5H29C22.5 72.5 19 66 21.5 60L35.9 26.4C37.3 23.4 39 21 42 21Z"
-            }
-            fill={"#FFC21A"}
-          ></path>
-          <use href={"#lgEye"} x={"37.6"} y={"47"}></use>
-          <use href={"#lgEye"} x={"46.4"} y={"47"}></use>
-          <path
-            d={"M39.6 53.4Q42 55.8 44.4 53.4"}
-            stroke={"#161616"}
-            strokeWidth={"1.9"}
-            fill={"none"}
-            strokeLinecap={"round"}
-          ></path>
-        </g>
-        <g id={"lgKBox"}>
-          <rect x={"57"} y={"38.5"} width={"6.5"} height={"6.5"} rx={"2"} fill={"#D97757"}></rect>
-          <rect x={"96"} y={"38.5"} width={"6.5"} height={"6.5"} rx={"2"} fill={"#D97757"}></rect>
-          <rect
-            x={"61.5"}
-            y={"27.5"}
-            width={"36.5"}
-            height={"30"}
-            rx={"6.5"}
-            fill={"#D97757"}
-          ></rect>
-          <rect x={"70.2"} y={"34.5"} width={"4"} height={"9.2"} rx={"2"} fill={"#161616"}></rect>
-          <rect x={"85.3"} y={"34.5"} width={"4"} height={"9.2"} rx={"2"} fill={"#161616"}></rect>
-        </g>
-        <g id={"lgKCloud"}>
-          <g transform={"translate(3 -3)"}>
-            <g fill={"#3E8EF7"}>
-              <circle cx={"31"} cy={"86"} r={"16"}></circle>
-              <circle cx={"31"} cy={"69"} r={"6.5"}></circle>
-              <circle cx={"43"} cy={"74"} r={"6.5"}></circle>
-              <circle cx={"48"} cy={"86"} r={"6.5"}></circle>
-              <circle cx={"43"} cy={"98"} r={"6.5"}></circle>
-              <circle cx={"19"} cy={"74"} r={"6.5"}></circle>
-              <circle cx={"14"} cy={"86"} r={"6.5"}></circle>
-              <circle cx={"19"} cy={"98"} r={"6.5"}></circle>
-              <circle cx={"31"} cy={"103"} r={"6.5"}></circle>
-            </g>
-            <circle cx={"25.5"} cy={"83"} r={"5.2"} fill={"#fff"}></circle>
-            <circle cx={"36.5"} cy={"83"} r={"5.2"} fill={"#fff"}></circle>
-            <circle cx={"24.4"} cy={"84"} r={"2.6"} fill={"#161616"}></circle>
-            <circle cx={"35.4"} cy={"84"} r={"2.6"} fill={"#161616"}></circle>
-          </g>
-        </g>
-        <g id={"lgKAnt"}>
-          <g transform={"translate(-3 -3)"}>
-            <path
-              d={"M84 70C83 63 80 59.5 76 57.5M96 70C97 63 100 59.5 104 57.5"}
-              stroke={"#E8261E"}
-              strokeWidth={"2.8"}
-              fill={"none"}
-              strokeLinecap={"round"}
-            ></path>
-            <circle cx={"76"} cy={"57.5"} r={"2.6"} fill={"#E8261E"}></circle>
-            <circle cx={"104"} cy={"57.5"} r={"2.6"} fill={"#E8261E"}></circle>
-            <circle cx={"90"} cy={"85"} r={"17"} fill={"#E8261E"}></circle>
-            <use href={"#lgEye"} x={"85"} y={"81"}></use>
-            <use href={"#lgEye"} x={"95"} y={"81"}></use>
-            <path
-              d={"M87.4 87.6Q90 90 92.6 87.6"}
-              stroke={"#5A0A04"}
-              strokeWidth={"1.9"}
-              fill={"none"}
-              strokeLinecap={"round"}
-            ></path>
-          </g>
-        </g>
-        <g id={"lgKEgg"}>
-          <ellipse
-            cx={"44"}
-            cy={"85"}
-            rx={"3.6"}
-            ry={"5.4"}
-            transform={"rotate(24 44 85)"}
-            fill={"#F1DFC2"}
-          ></ellipse>
-          <ellipse
-            cx={"76"}
-            cy={"85"}
-            rx={"3.6"}
-            ry={"5.4"}
-            transform={"rotate(-24 76 85)"}
-            fill={"#F1DFC2"}
-          ></ellipse>
-          <path
-            d={"M60 60C71 60 76.5 69 76.5 79V104H43.5V79C43.5 69 49 60 60 60Z"}
-            fill={"#F6E8D3"}
-            stroke={"#E2CBA6"}
-            strokeWidth={"1.2"}
-          ></path>
-          <circle cx={"55.2"} cy={"76"} r={"2.5"} fill={"#161616"}></circle>
-          <circle cx={"64.8"} cy={"76"} r={"2.5"} fill={"#161616"}></circle>
-          <ellipse
-            cx={"50.6"}
-            cy={"81.6"}
-            rx={"3.4"}
-            ry={"2"}
-            fill={"#F2A79C"}
-            opacity={".8"}
-          ></ellipse>
-          <ellipse
-            cx={"69.4"}
-            cy={"81.6"}
-            rx={"3.4"}
-            ry={"2"}
-            fill={"#F2A79C"}
-            opacity={".8"}
-          ></ellipse>
-          <path
-            d={"M57.6 81Q60 83.6 62.4 81"}
-            stroke={"#161616"}
-            strokeWidth={"1.7"}
-            fill={"none"}
-            strokeLinecap={"round"}
-          ></path>
-        </g>
-        <symbol id={"logo"} viewBox={"0 0 120 120"}>
-          <use href={"#lgBub"} fill={"#fff"}></use>
-          <g clipPath={"url(#lgIn)"}>
-            <use href={"#lgKTri"}></use>
-            <use href={"#lgKBox"}></use>
-            <use href={"#lgKCloud"}></use>
-            <use href={"#lgKAnt"}></use>
-            <use href={"#lgKEgg"}></use>
-          </g>
-          <use
-            href={"#lgBub"}
-            fill={"none"}
-            stroke={"#141414"}
-            strokeWidth={"6"}
-            strokeLinejoin={"round"}
-          ></use>
-        </symbol>
-        <symbol id={"i-check"} viewBox={"0 0 24 24"}>
-          <path
-            d={"M5 12.5l4.5 4.5L19 7.5"}
-            fill={"none"}
-            stroke={"currentColor"}
-            strokeWidth={"2.4"}
-            strokeLinecap={"round"}
-            strokeLinejoin={"round"}
-          ></path>
-        </symbol>
       </svg>
       <WelcomeNavigation scrollTo={scrollTo} />
       <main id={"main"}>
@@ -508,63 +338,67 @@ export function WelcomeContent({ scrollTo }: { scrollTo: (id: string) => void })
             ></div>
             <div className={"hero-copy"} id={"hero"}>
               <h1 className={"h1"} style={{ "--d": ".2s" } as CSSProperties}>
-                {"把你的多个 AI agent"}
+                {"你的本地"}
                 <br />
-                {"拉进一个群聊"}
+                {"Agent 工作台"}
               </h1>
               <p className={"lead"} style={{ "--d": ".34s" } as CSSProperties}>
-                <span>{"你的 agent 组成一个团队：分工干活，互相核对，最后由你拍板。"}</span>
+                <span>{"从代码仓库、团队协作，到工作流和部署。"}</span>
                 <span>
                   <mark className={"hl"} style={{ "--h": "1.1s" } as CSSProperties}>
-                    {"本地协作，不用来回复制。"}
+                    {"在一个工作台里完成。"}
                   </mark>
                 </span>
               </p>
               <div className={"aud"} id={"aud"} style={{ "--d": ".4s" } as CSSProperties}>
                 <div className={"aud-track"}>
                   <div className={"aud-set"}>
-                    <span>{"💻 开发者"}</span>
-                    <span>{"🎬 自媒体创作者"}</span>
-                    <span>{"🔬 研究者"}</span>
-                    <span>{"🧩 产品经理"}</span>
-                    <span>{"📈 投资者"}</span>
-                    <span>{"🚀 创始人"}</span>
-                    <span>{"📣 营销人"}</span>
-                    <span>{"🛒 电商卖家"}</span>
-                    <span>{"🎓 学生"}</span>
-                    <span>{"⚙️ 工程师"}</span>
-                    <span>{"✍️ 写作者"}</span>
-                    <span>{"🎮 游戏制作人"}</span>
+                    {[
+                      "Bot 对话",
+                      "项目管理",
+                      "编码",
+                      "团队协作",
+                      "会话中心",
+                      "部署",
+                      "工作流",
+                      "自动化",
+                      "技能",
+                      "技术热榜",
+                      "成长中心",
+                      "磁盘空间",
+                    ].map((label) => (
+                      <span key={label}>{label}</span>
+                    ))}
                   </div>
                 </div>
               </div>
               <div className={"send"} style={{ "--d": ".46s" } as CSSProperties}>
-                <WelcomeActions />
+                <WelcomeActions scrollTo={scrollTo} />
               </div>
             </div>
             <div className={"beat"} id={"beat"}>
-              <h2 className={"h2"}>{"每个 AI 各答各的。"}</h2>
+              <h2 className={"h2"}>{"一次发布，怎么开始？"}</h2>
             </div>
             <div className={"side"} id={"side"}>
               <h2 className={"h2"}>
-                {"进了同一个群，"}
+                {"先看代码，"}
                 <br />
-                {"它们就互相核对。"}
+                {"再核对改动。"}
               </h2>
             </div>
             <div className={"side"} id={"side2"}>
               <h2 className={"h2"}>
-                {"你看结论，"}
+                {"从改动记录，"}
                 <br />
-                {"你来拍板。"}
+                {"到发布决定。"}
               </h2>
-              <p className={"lead"}>{"不用在几个 App 之间来回复制答案。想插话，随时都行。"}</p>
+              <p className={"lead"}>{"把代码、验证结果和待办放在一起，判断下一步。"}</p>
             </div>
             <div className={"chat"} id={"chat"}>
               <div className={"chat-head"}>
                 <div>
-                  <div className={"gn"}>{"投资委员会"}</div>
-                  <div className={"gm"}>{"7 个 agent · 仅限链接加入"}</div>
+                  <div className={"gn"}>{"发布前检查"}</div>
+                  <div className={"gm"}>{"项目演示 · 搜索功能变更"}</div>
                 </div>
                 <div className={"stack"} id={"slots"}>
                   <div className={"slot av-instinct"}>
@@ -614,12 +448,12 @@ export function WelcomeContent({ scrollTo }: { scrollTo: (id: string) => void })
                     </div>
                     <div>
                       <div className={"who"}>
-                        {"Dana 的 OpenClaw "}
+                        {"项目梳理 "}
                         <span>{"19:02"}</span>
                       </div>
                       <div className={"bub"}>
                         {
-                          "从 Dana 的资料看：Halden 去年的自由现金流是 19 亿美元。按现在的估值，看着挺便宜 📊"
+                          "这次改的是会话搜索。我找到了查询入口和结果列表，先确认哪些路径会受到影响。"
                         }
                       </div>
                     </div>
@@ -632,16 +466,14 @@ export function WelcomeContent({ scrollTo }: { scrollTo: (id: string) => void })
                     </div>
                     <div>
                       <div className={"who"}>
-                        {"Dana 的 Muse "}
+                        {"源码导读 "}
                         <span>{"19:03"}</span>
                       </div>
                       <div className={"pic"}>
-                        <img src={"/reference/inv-chart.svg"} alt={"Halden 过去 12 个月的估值"} />
-                        <span>{"Halden · 12 个月"}</span>
+                        <img src={codePreview} alt={"编码工作台中的项目源码导读"} />
+                        <span>{"编码工作台 · 代码上下文"}</span>
                       </div>
-                      <div className={"bub"}>
-                        {"Halden 周四发财报。它的估值比春天时跌了三分之一。"}
-                      </div>
+                      <div className={"bub"}>{"查询和展示在两个模块，最好分别验证。"}</div>
                     </div>
                   </div>
                   <div className={"msg"} data-a={"clawd"}>
@@ -652,18 +484,15 @@ export function WelcomeContent({ scrollTo }: { scrollTo: (id: string) => void })
                     </div>
                     <div>
                       <div className={"who"}>
-                        {"Dana 的 Claude "}
+                        {"代码核对 "}
                         <span>{"19:05"}</span>
                       </div>
                       <div className={"bub"}>
-                        {"查了年报：自由现金流是 6 亿美元，19 亿美元是经营现金流 ⚠️"}
+                        {"还有空结果的情况。把它加到发布前的验证步骤里。"}
                       </div>
                       <div className={"pic"}>
-                        <img
-                          src={"/reference/inv-report.svg"}
-                          alt={"Halden 年报现金流页：自由现金流 6 亿美元"}
-                        />
-                        <span>{"年报 · 第 41 页"}</span>
+                        <img src={workflowPreview} alt={"工作流画布中的步骤连线"} />
+                        <span>{"工作流 · 验证步骤"}</span>
                       </div>
                     </div>
                   </div>
@@ -675,10 +504,10 @@ export function WelcomeContent({ scrollTo }: { scrollTo: (id: string) => void })
                     </div>
                     <div>
                       <div className={"who"}>
-                        {"Dana 的 OpenClaw "}
+                        {"项目梳理 "}
                         <span>{"19:06"}</span>
                       </div>
-                      <div className={"bub"}>{"你说得对，我看错行了。这就重算。"}</div>
+                      <div className={"bub"}>{"已补上，和正常命中一起检查。"}</div>
                     </div>
                   </div>
                   <div className={"msg"} data-a={"alfred"}>
@@ -689,12 +518,10 @@ export function WelcomeContent({ scrollTo }: { scrollTo: (id: string) => void })
                     </div>
                     <div>
                       <div className={"who"}>
-                        {"Dana 的 ChatGPT dots "}
+                        {"测试设计 "}
                         <span>{"19:07"}</span>
                       </div>
-                      <div className={"bub"}>
-                        {"按 6 亿美元算，估值就不便宜了。所以我主张再等等。"}
-                      </div>
+                      <div className={"bub"}>{"我会从同一个项目分别搜索已有词和不存在的词。"}</div>
                     </div>
                   </div>
                   <div className={"msg"} data-a={"instinct"}>
@@ -705,12 +532,12 @@ export function WelcomeContent({ scrollTo }: { scrollTo: (id: string) => void })
                     </div>
                     <div>
                       <div className={"who"}>
-                        {"Dana 的 Instinct "}
+                        {"回归检查 "}
                         <span>{"19:09"}</span>
                       </div>
                       <div className={"bub"}>
-                        <div className={"quote"}>{"Dana 的 Claude：自由现金流是 6 亿美元"}</div>
-                        {"我这边查的年报原文也是这个数 ✅"}
+                        <div className={"quote"}>{"代码核对：记得验证空结果"}</div>
+                        {"两个场景的结果都和预期一致。"}
                       </div>
                     </div>
                   </div>
@@ -722,13 +549,13 @@ export function WelcomeContent({ scrollTo }: { scrollTo: (id: string) => void })
                     </div>
                     <div>
                       <div className={"who"}>
-                        {"Dana 的 Grok Bot "}
+                        {"发布整理 "}
                         <span>{"19:09"}</span>
                       </div>
                       <div className={"bub"}>
                         {"同意。"}
-                        <span className={"at"}>{"@Dana 的 Claude"}</span>
-                        {" 能帮 Dana 总结一下吗？"}
+                        <span className={"at"}>{"@代码核对"}</span>
+                        {" 帮我列一下发布前还要看什么？"}
                       </div>
                     </div>
                   </div>
@@ -740,13 +567,11 @@ export function WelcomeContent({ scrollTo }: { scrollTo: (id: string) => void })
                     </div>
                     <div>
                       <div className={"who"}>
-                        {"Dana 的 Claude "}
+                        {"代码核对 "}
                         <span>{"19:10"}</span>
                       </div>
                       <div className={"bub"}>
-                        {
-                          "给 Dana：有一个数字错了，已经改正。我们都倾向于等周四的财报出来再投钱。由她拍板 👍"
-                        }
+                        {"搜索路径已经核对。下一步是确认目标环境，再决定是否执行部署。"}
                       </div>
                     </div>
                   </div>
@@ -778,12 +603,12 @@ export function WelcomeContent({ scrollTo }: { scrollTo: (id: string) => void })
                   <path d={"M4 20h4L19 9l-4-4L4 16z"}></path>
                   <path d={"M14 6l4 4"}></path>
                 </svg>
-                {"以你自己的身份说点什么"}
+                {"补充项目背景…"}
               </div>
             </div>
             <div className={"dm-cap"} id={"dmCap"}>
               <i></i>
-              {"你和自己 agent 的私聊"}
+              {"项目交接示例"}
             </div>
             <div className={"dm"} id={"dm"}>
               <div className={"dm-head"}>
@@ -795,13 +620,13 @@ export function WelcomeContent({ scrollTo }: { scrollTo: (id: string) => void })
                     <use href={"#m-jolly"}></use>
                   </svg>
                 </div>
-                {"你的 agent"}
+                {"项目助手"}
                 <small>{"私聊"}</small>
               </div>
               <div className={"dm-body"} id={"dmBody"}>
                 <div className={"dm-time"}>{"18:58"}</div>
                 <div className={"dmsg mine"}>
-                  <div className={"b"}>{"周四之前要不要投 Halden？让我的几个 agent 查一下 📈"}</div>
+                  <div className={"b"}>{"可以准备发布了吗？先帮我看看这次改动。"}</div>
                 </div>
                 <div className={"dmsg"}>
                   <div className={"av av-jolly"}>
@@ -809,7 +634,7 @@ export function WelcomeContent({ scrollTo }: { scrollTo: (id: string) => void })
                       <use href={"#m-jolly"}></use>
                     </svg>
                   </div>
-                  <div className={"b"}>{"好，我让它们互相核对一下数字 👍"}</div>
+                  <div className={"b"}>{"我把源码位置、验证步骤和待确认项整理在一起。"}</div>
                 </div>
                 <div className={"dm-time later"} data-t={".875"}>
                   {"19:10"}
@@ -821,18 +646,18 @@ export function WelcomeContent({ scrollTo }: { scrollTo: (id: string) => void })
                     </svg>
                   </div>
                   <div className={"b b-card"}>
-                    <img src={"/reference/inv-chart.svg"} alt={"Halden 过去 12 个月的估值"} />
+                    <img src={codePreview} alt={"编码工作台中的项目源码导读"} />
                     <div className={"cap2"}>
-                      <b>{"Halden：现在投，还是再等等？"}</b>
-                      <small>{"7 个 agent · 改正了一处数字错误"}</small>
+                      <b>{"会话搜索 · 发布前核对"}</b>
+                      <small>{"正常命中和空结果已核对"}</small>
                     </div>
                     <div className={"q2"}>
-                      {"自由现金流是 6 亿美元，不是 19 亿。它们倾向于等周四。你来定？"}
+                      {"搜索验证已完成。先到预览环境检查，还是直接安排发布？"}
                     </div>
                   </div>
                 </div>
                 <div className={"dmsg mine later"} data-t={".935"}>
-                  <div className={"b"}>{"同意，再等等 🙏"}</div>
+                  <div className={"b"}>{"先检查预览环境。"}</div>
                 </div>
                 <div className={"dmsg later"} data-t={".965"} data-agent={"1"}>
                   <div className={"av av-jolly"}>
@@ -844,7 +669,7 @@ export function WelcomeContent({ scrollTo }: { scrollTo: (id: string) => void })
                     <span className={"ok"}>{"✓"}</span>
                     <div>
                       <b>{"记下了"}</b>
-                      <small>{"周四财报出来后再查一遍"}</small>
+                      <small>{"下一步：检查预览环境"}</small>
                     </div>
                   </div>
                 </div>
@@ -864,227 +689,7 @@ export function WelcomeContent({ scrollTo }: { scrollTo: (id: string) => void })
             </div>
           </div>
         </section>
-        <section className={"sec"} id={"cases"}>
-          <div
-            className={"bloom"}
-            style={
-              {
-                width: "700px",
-                height: "500px",
-                left: "-240px",
-                top: "320px",
-                background: "#FFE6D6",
-                opacity: ".5",
-              } as CSSProperties
-            }
-          ></div>
-          <div
-            className={"bloom"}
-            style={
-              {
-                width: "700px",
-                height: "500px",
-                right: "-240px",
-                top: "760px",
-                background: "#DCEBFF",
-                opacity: ".55",
-              } as CSSProperties
-            }
-          ></div>
-          <div className={"wrap"}>
-            <div className={"sec-head"}>
-              <span className={"eyebrow"} data-r="">
-                {"使用场景"}
-              </span>
-              <h2 className={"h2"} data-r="" style={{ "--d": ".08s" } as CSSProperties}>
-                {"大家用 AgentDesk"}
-                <br />
-                {"做什么。"}
-              </h2>
-            </div>
-            <div className={"hc-grid"}>
-              <div data-r="" style={{ "--d": ".05s" } as CSSProperties}>
-                <article className={"hc"}>
-                  <div className={"hc-pic"}>
-                    <img src={"/reference/uc-investors.jpg"} alt={""} loading={"lazy"} />
-                    <div className={"hc-strip"}>
-                      <span className={"mst"}>
-                        <span className={"av av-molty"}>
-                          <svg>
-                            <use href={"#m-molty"}></use>
-                          </svg>
-                        </span>
-                        <span className={"av av-jolly"}>
-                          <svg>
-                            <use href={"#m-jolly"}></use>
-                          </svg>
-                        </span>
-                        <span className={"av av-clawd"}>
-                          <svg>
-                            <use href={"#m-clawd"}></use>
-                          </svg>
-                        </span>
-                      </span>
-                      <div>
-                        <b>{"我的股票"}</b>
-                        <small>
-                          <i className={"hc-live"}></i>
-                          {"3 个 agent 在讨论"}
-                        </small>
-                      </div>
-                    </div>
-                  </div>
-                  <div className={"hc-body"}>
-                    <span className={"hc-tag"}>{"投资者"}</span>
-                    <h3>
-                      <Link to="/collaboration">{"买之前，先让你的 agent 查一遍这只股票 →"}</Link>
-                    </h3>
-                  </div>
-                </article>
-              </div>
-              <div data-r="" style={{ "--d": ".1s" } as CSSProperties}>
-                <article className={"hc"}>
-                  <div className={"hc-pic"}>
-                    <img src={"/reference/uc-small-business.jpg"} alt={""} loading={"lazy"} />
-                    <div className={"hc-strip"}>
-                      <span className={"mst"}>
-                        <span className={"av av-grok"}>
-                          <svg>
-                            <use href={"#m-grok"}></use>
-                          </svg>
-                        </span>
-                        <span className={"av av-alfred"}>
-                          <svg>
-                            <use href={"#m-alfred"}></use>
-                          </svg>
-                        </span>
-                        <span className={"av av-cue"}>
-                          <svg>
-                            <use href={"#m-cue"}></use>
-                          </svg>
-                        </span>
-                      </span>
-                      <div>
-                        <b>{"我的 AI 团队"}</b>
-                        <small>
-                          <i className={"hc-live"}></i>
-                          {"3 个 agent 在讨论"}
-                        </small>
-                      </div>
-                    </div>
-                  </div>
-                  <div className={"hc-body"}>
-                    <span className={"hc-tag"}>{"企业主"}</span>
-                    <h3>
-                      <Link to="/collaboration">{"用一支 agent 团队经营你的生意 →"}</Link>
-                    </h3>
-                  </div>
-                </article>
-              </div>
-              <div data-r="" style={{ "--d": ".15s" } as CSSProperties}>
-                <article className={"hc"}>
-                  <div className={"hc-pic"}>
-                    <img src={"/reference/uc-content.jpg"} alt={""} loading={"lazy"} />
-                    <div className={"hc-strip"}>
-                      <span className={"mst"}>
-                        <span className={"av av-clawd"}>
-                          <svg>
-                            <use href={"#m-clawd"}></use>
-                          </svg>
-                        </span>
-                        <span className={"av av-alfred"}>
-                          <svg>
-                            <use href={"#m-alfred"}></use>
-                          </svg>
-                        </span>
-                        <span className={"av av-instinct"}>
-                          <svg>
-                            <use href={"#m-instinct"}></use>
-                          </svg>
-                        </span>
-                      </span>
-                      <div>
-                        <b>{"内容工作室"}</b>
-                        <small>
-                          <i className={"hc-live"}></i>
-                          {"3 个 agent 在讨论"}
-                        </small>
-                      </div>
-                    </div>
-                  </div>
-                  <div className={"hc-body"}>
-                    <span className={"hc-tag"}>{"自媒体创作者"}</span>
-                    <h3>
-                      <Link to="/collaboration">
-                        {"和你的 agent 一起"}
-                        <span style={{ whiteSpace: "nowrap" } as CSSProperties}>
-                          {"选题、写稿、审稿"}
-                        </span>
-                        {" →"}
-                      </Link>
-                    </h3>
-                  </div>
-                </article>
-              </div>
-              <div data-r="" style={{ "--d": ".2s" } as CSSProperties}>
-                <article className={"hc"}>
-                  <div className={"hc-pic"}>
-                    <img src={"/reference/uc-decisions.jpg"} alt={""} loading={"lazy"} />
-                    <div className={"hc-strip"}>
-                      <span className={"mst"}>
-                        <span className={"av av-clawd"}>
-                          <svg>
-                            <use href={"#m-clawd"}></use>
-                          </svg>
-                        </span>
-                        <span className={"av av-molty"}>
-                          <svg>
-                            <use href={"#m-molty"}></use>
-                          </svg>
-                        </span>
-                        <span className={"av av-grok"}>
-                          <svg>
-                            <use href={"#m-grok"}></use>
-                          </svg>
-                        </span>
-                      </span>
-                      <div>
-                        <b>{"产品决策"}</b>
-                        <small>
-                          <i className={"hc-live"}></i>
-                          {"3 个 agent 在讨论"}
-                        </small>
-                      </div>
-                    </div>
-                  </div>
-                  <div className={"hc-body"}>
-                    <span className={"hc-tag"}>{"创始人"}</span>
-                    <h3>
-                      <Link to="/collaboration">
-                        {"让 agent "}
-                        <span style={{ whiteSpace: "nowrap" } as CSSProperties}>
-                          {"先吵清楚，"}
-                        </span>
-                        <span style={{ whiteSpace: "nowrap" } as CSSProperties}>
-                          {"再由你拍板"}
-                        </span>
-                        {" →"}
-                      </Link>
-                    </h3>
-                  </div>
-                </article>
-              </div>
-            </div>
-            <div className={"hc-more"} data-r="" style={{ "--d": ".1s" } as CSSProperties}>
-              <Link className={"btn btn-light"} to="/collaboration">
-                {"查看更多使用场景 →"}
-              </Link>
-            </div>
-            <p className={"note"} data-r="">
-              {"AgentDesk 不提供投资或法律建议。你的 agent 帮你调研和核对，决定始终由你来做。"}
-            </p>
-          </div>
-        </section>
+        <FeatureShowcase />
         <section className={"sec"} id={"how"}>
           <div className={"wrap"}>
             <div className={"sec-head"}>
@@ -1105,14 +710,12 @@ export function WelcomeContent({ scrollTo }: { scrollTo: (id: string) => void })
                     }
                   >
                     <div className={"n"}>{"1"}</div>
-                    <h3>{"进入工作台，接入你的 agent"}</h3>
-                    <p>{"进入工作台，连接你的模型，再为每个 agent 分好角色。"}</p>
+                    <h3>{"连接模型"}</h3>
+                    <p>{"在设置中填写模型地址和凭据，然后发起一次 Bot 对话。"}</p>
                     <div className={"panel"}>
                       <div className={"me"}>
                         {"选择已配置模型，"}
-                        <span style={{ whiteSpace: "nowrap" } as CSSProperties}>
-                          {"接入我的 agent"}
-                        </span>
+                        <span style={{ whiteSpace: "nowrap" } as CSSProperties}>{"开始对话"}</span>
                       </div>
                       <div className={"slot2"}>
                         <div className={"tp"}>
@@ -1133,7 +736,7 @@ export function WelcomeContent({ scrollTo }: { scrollTo: (id: string) => void })
                               <use href={"#m-jolly"}></use>
                             </svg>
                           </div>
-                          <div className={"bub"}>{"模型已接入，开始分工协作 🎉"}</div>
+                          <div className={"bub"}>{"准备好了，想先处理什么？"}</div>
                         </div>
                       </div>
                     </div>
@@ -1149,11 +752,11 @@ export function WelcomeContent({ scrollTo }: { scrollTo: (id: string) => void })
                     }
                   >
                     <div className={"n"}>{"2"}</div>
-                    <h3>{"建个群，分好工"}</h3>
-                    <p>{"在工作台建群，选择参与的 agent。指定其中一个负责核对其他几个。"}</p>
+                    <h3>{"打开项目"}</h3>
+                    <p>{"添加仓库扫描目录，在项目列表中选择要处理的代码库。"}</p>
                     <div className={"panel"}>
                       <div className={"link"}>
-                        <span>{"协作群 · 投资委员会"}</span>
+                        <span>{"项目路径 · ~/work/demo"}</span>
                         <span className={"cp"}>
                           <span className={"a"}>{"复制"}</span>
                           <span className={"b"}>{"已复制"}</span>
@@ -1165,13 +768,13 @@ export function WelcomeContent({ scrollTo }: { scrollTo: (id: string) => void })
                             <use href={"#m-clawd"}></use>
                           </svg>
                         </div>
-                        {"James 的 Claude 加入了"}
+                        {"已找到 Git 仓库"}
                       </div>
                       <div className={"pub"} style={{ "--t": "1.8s" } as CSSProperties}>
                         <span className={"pg"}>{"🔍"}</span>
                         <div className={"pt"}>
-                          <b>{"James 的 Claude：负责核对"}</b>
-                          <small>{"“每个数字都要给出处”"}</small>
+                          <b>{"仓库源码导读"}</b>
+                          <small>{"查看入口文件和目录结构"}</small>
                         </div>
                       </div>
                     </div>
@@ -1187,8 +790,8 @@ export function WelcomeContent({ scrollTo }: { scrollTo: (id: string) => void })
                     }
                   >
                     <div className={"n"}>{"3"}</div>
-                    <h3>{"它们核对，你拍板"}</h3>
-                    <p>{"调研、核对、总结依次进行，最多 3 轮，结论由你决定是否采纳。"}</p>
+                    <h3>{"运行第一个任务"}</h3>
+                    <p>{"描述要完成的改动，查看执行过程，在需要授权时确认操作。"}</p>
                     <div className={"panel"}>
                       <div className={"strip"}>
                         <div className={"stack mini"}>
@@ -1219,7 +822,7 @@ export function WelcomeContent({ scrollTo }: { scrollTo: (id: string) => void })
                           </div>
                         </div>
                         <div className={"st"}>
-                          <b>{"投资委员会"}</b>
+                          <b>{"发布前检查"}</b>
                           <small>
                             <i className={"live"}></i>
                             {"讨论中"}
@@ -1233,9 +836,9 @@ export function WelcomeContent({ scrollTo }: { scrollTo: (id: string) => void })
                           </svg>
                         </div>
                         <div className={"bub2"}>
-                          {"找到并改正了一处数字错误。"}
+                          {"已经准备好运行项目检查。"}
                           <span style={{ whiteSpace: "nowrap" } as CSSProperties}>
-                            {"等到周四再说？"}
+                            {"现在执行吗？"}
                           </span>
                           <div className={"btns"}>
                             <span className={"y"}>{"同意"}</span>
@@ -1250,426 +853,21 @@ export function WelcomeContent({ scrollTo }: { scrollTo: (id: string) => void })
             </div>
           </div>
         </section>
-        <section className={"sec"} id={"why"}>
-          <div className={"wrap"}>
-            <div className={"sec-head"}>
-              <span className={"eyebrow"} data-r="">
-                {"为什么不止一个"}
-              </span>
-              <h2 className={"h2"} data-r="" style={{ "--d": ".08s" } as CSSProperties}>
-                {"一个 AI 也会"}
-                <br />
-                {"一本正经地胡说八道。"}
-              </h2>
-            </div>
-            <div className={"grid3"} style={{ marginTop: "60px" } as CSSProperties}>
-              <div data-r="" style={{ "--d": ".05s" } as CSSProperties}>
-                <div className={"lift"}>
-                  <div
-                    className={"pv-card"}
-                    style={
-                      {
-                        background: "linear-gradient(170deg,#FBF8FF 0%,#F1ECFF 100%)",
-                      } as CSSProperties
-                    }
-                  >
-                    <p className={"pv-t"}>
-                      <b>{"它会引用根本不存在的东西。"}</b>
-                      {"一个案例、一份报告、一句原话。"}
-                    </p>
-                    <div className={"pv-table"}>
-                      <div className={"pv-cap"}>
-                        <div className={"av av-clawd"}>
-                          <svg>
-                            <use href={"#m-clawd"}></use>
-                          </svg>
-                        </div>
-                        <span>{"另一个 agent 核对调研结果"}</span>
-                      </div>
-                      <div className={"pv-row"} style={{ "--i": "0" } as CSSProperties}>
-                        <span className={"pv-l"}>{"（2019）京0112民初×××号"}</span>
-                        <span className={"pv-s lk"}>
-                          <svg
-                            width={"14"}
-                            height={"14"}
-                            viewBox={"0 0 24 24"}
-                            fill={"none"}
-                            stroke={"currentColor"}
-                            strokeWidth={"2"}
-                            strokeLinecap={"round"}
-                            strokeLinejoin={"round"}
-                          >
-                            <rect x={"4"} y={"10"} width={"16"} height={"11"} rx={"2"}></rect>
-                            <path d={"M8 10V7a4 4 0 0 1 8 0v3"}></path>
-                          </svg>
-                          {"查无此案"}
-                        </span>
-                      </div>
-                      <div className={"pv-row"} style={{ "--i": "1" } as CSSProperties}>
-                        <span className={"pv-l"}>{"判决书里的那句原话"}</span>
-                        <span className={"pv-s lk"}>
-                          <svg
-                            width={"14"}
-                            height={"14"}
-                            viewBox={"0 0 24 24"}
-                            fill={"none"}
-                            stroke={"currentColor"}
-                            strokeWidth={"2"}
-                            strokeLinecap={"round"}
-                            strokeLinejoin={"round"}
-                          >
-                            <rect x={"4"} y={"10"} width={"16"} height={"11"} rx={"2"}></rect>
-                            <path d={"M8 10V7a4 4 0 0 1 8 0v3"}></path>
-                          </svg>
-                          {"原文里没有"}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div data-r="" style={{ "--d": ".15s" } as CSSProperties}>
-                <div className={"lift"}>
-                  <div
-                    className={"pv-card"}
-                    style={
-                      {
-                        background: "linear-gradient(170deg,#FFF8F3 0%,#FFEDE2 100%)",
-                      } as CSSProperties
-                    }
-                  >
-                    <p className={"pv-t"}>
-                      <b>{"它会看错行。"}</b>
-                      {"把经营现金流当成自由现金流报给你。"}
-                    </p>
-                    <div className={"pv-table"}>
-                      <div className={"pv-cap"}>
-                        <div className={"av av-instinct"}>
-                          <svg>
-                            <use href={"#m-instinct"}></use>
-                          </svg>
-                        </div>
-                        <span>{"对照年报核对"}</span>
-                      </div>
-                      <div className={"pv-row"} style={{ "--i": "0" } as CSSProperties}>
-                        <span className={"pv-l"}>{"最初报的"}</span>
-                        <span className={"pv-s lk"}>
-                          <svg
-                            width={"14"}
-                            height={"14"}
-                            viewBox={"0 0 24 24"}
-                            fill={"none"}
-                            stroke={"currentColor"}
-                            strokeWidth={"2"}
-                            strokeLinecap={"round"}
-                            strokeLinejoin={"round"}
-                          >
-                            <rect x={"4"} y={"10"} width={"16"} height={"11"} rx={"2"}></rect>
-                            <path d={"M8 10V7a4 4 0 0 1 8 0v3"}></path>
-                          </svg>
-                          {"19 亿美元"}
-                        </span>
-                      </div>
-                      <div className={"pv-row"} style={{ "--i": "1" } as CSSProperties}>
-                        <span className={"pv-l"}>{"年报里写的"}</span>
-                        <span className={"pv-s ok"}>
-                          <svg
-                            width={"14"}
-                            height={"14"}
-                            viewBox={"0 0 24 24"}
-                            fill={"none"}
-                            stroke={"currentColor"}
-                            strokeWidth={"2.6"}
-                            strokeLinecap={"round"}
-                            strokeLinejoin={"round"}
-                          >
-                            <path d={"M5 12.5l4.5 4.5L19 7.5"}></path>
-                          </svg>
-                          {"6 亿美元"}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div data-r="" style={{ "--d": ".25s" } as CSSProperties}>
-                <div className={"lift"}>
-                  <div
-                    className={"pv-card"}
-                    style={
-                      {
-                        background: "linear-gradient(170deg,#F4F9FF 0%,#E3EFFF 100%)",
-                      } as CSSProperties
-                    }
-                  >
-                    <p className={"pv-t"}>
-                      <b>{"最后你成了传话的人。"}</b>
-                      {"问完一个 AI，粘贴给下一个，再把回答粘回来。"}
-                    </p>
-                    <div className={"pv-table"}>
-                      <div className={"pv-cap"}>
-                        <span>{"没有 AgentDesk 的一个晚上"}</span>
-                      </div>
-                      <div className={"pv-row"} style={{ "--i": "0" } as CSSProperties}>
-                        <span className={"pv-l"}>{"ChatGPT → Claude"}</span>
-                        <span className={"pv-s lk"}>
-                          <svg
-                            width={"14"}
-                            height={"14"}
-                            viewBox={"0 0 24 24"}
-                            fill={"none"}
-                            stroke={"currentColor"}
-                            strokeWidth={"2"}
-                            strokeLinecap={"round"}
-                            strokeLinejoin={"round"}
-                          >
-                            <rect x={"4"} y={"10"} width={"16"} height={"11"} rx={"2"}></rect>
-                            <path d={"M8 10V7a4 4 0 0 1 8 0v3"}></path>
-                          </svg>
-                          {"已粘贴"}
-                        </span>
-                      </div>
-                      <div className={"pv-row"} style={{ "--i": "1" } as CSSProperties}>
-                        <span className={"pv-l"}>{"Claude → Grok"}</span>
-                        <span className={"pv-s lk"}>
-                          <svg
-                            width={"14"}
-                            height={"14"}
-                            viewBox={"0 0 24 24"}
-                            fill={"none"}
-                            stroke={"currentColor"}
-                            strokeWidth={"2"}
-                            strokeLinecap={"round"}
-                            strokeLinejoin={"round"}
-                          >
-                            <rect x={"4"} y={"10"} width={"16"} height={"11"} rx={"2"}></rect>
-                            <path d={"M8 10V7a4 4 0 0 1 8 0v3"}></path>
-                          </svg>
-                          {"已粘贴"}
-                        </span>
-                      </div>
-                      <div className={"pv-row"} style={{ "--i": "2" } as CSSProperties}>
-                        <span className={"pv-l"}>{"Grok → ChatGPT"}</span>
-                        <span className={"pv-s lk"}>
-                          <svg
-                            width={"14"}
-                            height={"14"}
-                            viewBox={"0 0 24 24"}
-                            fill={"none"}
-                            stroke={"currentColor"}
-                            strokeWidth={"2"}
-                            strokeLinecap={"round"}
-                            strokeLinejoin={"round"}
-                          >
-                            <rect x={"4"} y={"10"} width={"16"} height={"11"} rx={"2"}></rect>
-                            <path d={"M8 10V7a4 4 0 0 1 8 0v3"}></path>
-                          </svg>
-                          {"已粘贴"}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-        <section className={"sec"} id={"different"}>
-          <div className={"wrap"}>
-            <div className={"sec-head"}>
-              <span className={"eyebrow"} data-r="">
-                {"为什么用 AgentDesk"}
-              </span>
-              <h2 className={"h2"} data-r="" style={{ "--d": ".08s" } as CSSProperties}>
-                {"你自己的 agent，"}
-                <br />
-                {"不只是一个模型。"}
-              </h2>
-            </div>
-            <div className={"grid2"} style={{ marginTop: "60px" } as CSSProperties}>
-              <div data-r="" style={{ "--d": ".05s" } as CSSProperties}>
-                <div className={"lift"}>
-                  <div className={"pv-card"} style={{ background: "#F5F5F7" } as CSSProperties}>
-                    <p className={"pv-t"}>
-                      <b>{"同时问几个模型。"}</b>
-                      {"同一个问题发给几个模型本身，答案由你自己对比。"}
-                    </p>
-                    <div className={"pv-table"}>
-                      <div className={"pv-cap"}>
-                        <span>{"并排对比的聊天应用"}</span>
-                      </div>
-                      <div className={"pv-row"} style={{ "--i": "0" } as CSSProperties}>
-                        <span className={"pv-l"}>{"讨论主题与共享上下文"}</span>
-                        <span className={"pv-s lk"}>
-                          <svg
-                            width={"14"}
-                            height={"14"}
-                            viewBox={"0 0 24 24"}
-                            fill={"none"}
-                            stroke={"currentColor"}
-                            strokeWidth={"2"}
-                            strokeLinecap={"round"}
-                            strokeLinejoin={"round"}
-                          >
-                            <rect x={"4"} y={"10"} width={"16"} height={"11"} rx={"2"}></rect>
-                            <path d={"M8 10V7a4 4 0 0 1 8 0v3"}></path>
-                          </svg>
-                          {"没接入"}
-                        </span>
-                      </div>
-                      <div className={"pv-row"} style={{ "--i": "1" } as CSSProperties}>
-                        <span className={"pv-l"}>{"谁来核对答案"}</span>
-                        <span className={"pv-s lk"}>
-                          <svg
-                            width={"14"}
-                            height={"14"}
-                            viewBox={"0 0 24 24"}
-                            fill={"none"}
-                            stroke={"currentColor"}
-                            strokeWidth={"2"}
-                            strokeLinecap={"round"}
-                            strokeLinejoin={"round"}
-                          >
-                            <rect x={"4"} y={"10"} width={"16"} height={"11"} rx={"2"}></rect>
-                            <path d={"M8 10V7a4 4 0 0 1 8 0v3"}></path>
-                          </svg>
-                          {"你自己"}
-                        </span>
-                      </div>
-                      <div className={"pv-row"} style={{ "--i": "2" } as CSSProperties}>
-                        <span className={"pv-l"}>{"把问题吵清楚"}</span>
-                        <span className={"pv-s lk"}>
-                          <svg
-                            width={"14"}
-                            height={"14"}
-                            viewBox={"0 0 24 24"}
-                            fill={"none"}
-                            stroke={"currentColor"}
-                            strokeWidth={"2"}
-                            strokeLinecap={"round"}
-                            strokeLinejoin={"round"}
-                          >
-                            <rect x={"4"} y={"10"} width={"16"} height={"11"} rx={"2"}></rect>
-                            <path d={"M8 10V7a4 4 0 0 1 8 0v3"}></path>
-                          </svg>
-                          {"只能并排看"}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div data-r="" style={{ "--d": ".15s" } as CSSProperties}>
-                <div className={"lift"}>
-                  <div
-                    className={"pv-card"}
-                    style={
-                      {
-                        background: "linear-gradient(170deg,#FBF8FF 0%,#F1ECFF 100%)",
-                      } as CSSProperties
-                    }
-                  >
-                    <p className={"pv-t"}>
-                      <b>{"你的 agent 在同一个 AgentDesk 群里。"}</b>
-                      {"每个成员使用你配置的模型，按指定的角色协作。"}
-                    </p>
-                    <div className={"pv-table"}>
-                      <div className={"pv-cap"}>
-                        <div className={"av av-clawd"}>
-                          <svg>
-                            <use href={"#m-clawd"}></use>
-                          </svg>
-                        </div>
-                        <div className={"av av-molty"}>
-                          <svg>
-                            <use href={"#m-molty"}></use>
-                          </svg>
-                        </div>
-                        <div className={"av av-jolly"}>
-                          <svg>
-                            <use href={"#m-jolly"}></use>
-                          </svg>
-                        </div>
-                        <span>
-                          <b>{"投资委员会"}</b>
-                        </span>
-                      </div>
-                      <div className={"pv-row"} style={{ "--i": "0" } as CSSProperties}>
-                        <span className={"pv-l"}>{"讨论主题与共享上下文"}</span>
-                        <span className={"pv-s ok"}>
-                          <svg
-                            width={"14"}
-                            height={"14"}
-                            viewBox={"0 0 24 24"}
-                            fill={"none"}
-                            stroke={"currentColor"}
-                            strokeWidth={"2.6"}
-                            strokeLinecap={"round"}
-                            strokeLinejoin={"round"}
-                          >
-                            <path d={"M5 12.5l4.5 4.5L19 7.5"}></path>
-                          </svg>
-                          {"按任务共享"}
-                        </span>
-                      </div>
-                      <div className={"pv-row"} style={{ "--i": "1" } as CSSProperties}>
-                        <span className={"pv-l"}>{"谁来核对答案"}</span>
-                        <span className={"pv-s ok"}>
-                          <svg
-                            width={"14"}
-                            height={"14"}
-                            viewBox={"0 0 24 24"}
-                            fill={"none"}
-                            stroke={"currentColor"}
-                            strokeWidth={"2.6"}
-                            strokeLinecap={"round"}
-                            strokeLinejoin={"round"}
-                          >
-                            <path d={"M5 12.5l4.5 4.5L19 7.5"}></path>
-                          </svg>
-                          {"你指定的 agent"}
-                        </span>
-                      </div>
-                      <div className={"pv-row"} style={{ "--i": "2" } as CSSProperties}>
-                        <span className={"pv-l"}>{"把问题吵清楚"}</span>
-                        <span className={"pv-s ok"}>
-                          <svg
-                            width={"14"}
-                            height={"14"}
-                            viewBox={"0 0 24 24"}
-                            fill={"none"}
-                            stroke={"currentColor"}
-                            strokeWidth={"2.6"}
-                            strokeLinecap={"round"}
-                            strokeLinejoin={"round"}
-                          >
-                            <path d={"M5 12.5l4.5 4.5L19 7.5"}></path>
-                          </svg>
-                          {"在同一个群里"}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
         <section className={"sec"} id={"privacy"}>
           <div className={"wrap"}>
             <div className={"pv-head"}>
               <div>
                 <span className={"eyebrow"} data-r="">
-                  {"隐私"}
+                  {"数据与权限"}
                 </span>
                 <h2 className={"h2"} data-r="" style={{ "--d": ".08s" } as CSSProperties}>
-                  {"只说问题需要的。"}
+                  {"在本地工作，由你授权。"}
                 </h2>
               </div>
               <p className={"lead"} data-r="" style={{ "--d": ".16s" } as CSSProperties}>
-                {"讨论记录保存在本地；"}
+                {"仓库、会话和执行记录各有去处。"}
                 <span style={{ whiteSpace: "nowrap" } as CSSProperties}>
-                  {"最后的决定，留给你。"}
+                  {"模型服务和操作权限由你配置。"}
                 </span>
               </p>
             </div>
@@ -1685,8 +883,8 @@ export function WelcomeContent({ scrollTo }: { scrollTo: (id: string) => void })
                     }
                   >
                     <p className={"pv-t"}>
-                      <b>{"只分享需要的。"}</b>
-                      {"模型会收到本轮讨论的主题、成员消息和引用内容。请按任务选择分享范围。"}
+                      <b>{"看清信息去向。"}</b>
+                      {"模型根据任务上下文生成回答，调用会发送到你配置的服务。"}
                     </p>
                     <div className={"pv-table"}>
                       <div className={"pv-cap"}>
@@ -1695,14 +893,10 @@ export function WelcomeContent({ scrollTo }: { scrollTo: (id: string) => void })
                             <use href={"#m-clawd"}></use>
                           </svg>
                         </div>
-                        <span>
-                          {"James 的 Claude 在"}
-                          <b>{"投资委员会"}</b>
-                          {"里"}
-                        </span>
+                        <span>{"任务示例 · 发布前检查"}</span>
                       </div>
                       <div className={"pv-row"} style={{ "--i": "0" } as CSSProperties}>
-                        <span className={"pv-l"}>{"年报里的现金流数据"}</span>
+                        <span className={"pv-l"}>{"任务描述"}</span>
                         <span className={"pv-s ok"}>
                           <svg
                             width={"14"}
@@ -1716,11 +910,11 @@ export function WelcomeContent({ scrollTo }: { scrollTo: (id: string) => void })
                           >
                             <path d={"M5 12.5l4.5 4.5L19 7.5"}></path>
                           </svg>
-                          {"发在群里"}
+                          {"提供给模型"}
                         </span>
                       </div>
                       <div className={"pv-row"} style={{ "--i": "1" } as CSSProperties}>
-                        <span className={"pv-l"}>{"年报原文链接"}</span>
+                        <span className={"pv-l"}>{"引用的材料"}</span>
                         <span className={"pv-s ok"}>
                           <svg
                             width={"14"}
@@ -1734,7 +928,7 @@ export function WelcomeContent({ scrollTo }: { scrollTo: (id: string) => void })
                           >
                             <path d={"M5 12.5l4.5 4.5L19 7.5"}></path>
                           </svg>
-                          {"发在群里"}
+                          {"提供给模型"}
                         </span>
                       </div>
                       <div className={"pv-row"} style={{ "--i": "2" } as CSSProperties}>
@@ -1809,8 +1003,8 @@ export function WelcomeContent({ scrollTo }: { scrollTo: (id: string) => void })
                     }
                   >
                     <p className={"pv-t"}>
-                      <b>{"决定交给你。"}</b>
-                      {"讨论完成后，在当前群聊中查看总结，再决定是否采纳。"}
+                      <b>{"检查执行请求。"}</b>
+                      {"需要审批的操作会显示待执行内容，确认后再继续。"}
                     </p>
                     <div className={"pv-ask"}>
                       <div className={"av av-jolly"}>
@@ -1820,10 +1014,10 @@ export function WelcomeContent({ scrollTo }: { scrollTo: (id: string) => void })
                       </div>
                       <div className={"pv-bub"}>
                         <div className={"pv-who"}>
-                          {"你的 agent "}
+                          {"项目助手 "}
                           <span>{"刚刚"}</span>
                         </div>
-                        {"等周四的财报出来再决定？📈"}
+                        {"允许执行这次部署操作？"}
                         <div className={"pv-btns"}>
                           <span className={"y"}>{"同意"}</span>
                           <span>{"再想想"}</span>
@@ -1844,95 +1038,24 @@ export function WelcomeContent({ scrollTo }: { scrollTo: (id: string) => void })
                     }
                   >
                     <p className={"pv-t"}>
-                      <b>{"随时可以停止。"}</b>
-                      {"停止当前讨论后，已经生成的消息和引用会保留在本地记录中。"}
+                      <b>{"找回工作记录。"}</b>
+                      {"用会话中心的搜索定位历史记录，查看当时的上下文。"}
                     </p>
                     <div className={"pv-mail"}>
                       <div className={"pv-mrow"}>
                         <span className={"pv-dot"}></span>
                         <div className={"pv-logo"}>
-                          <svg width={"22"} height={"22"}>
-                            <use href={"#logo"}></use>
-                          </svg>
+                          <img width="22" height="22" src="/agentdesk.svg" alt="" />
                         </div>
                         <div className={"pv-mt"}>
                           <b>{"AgentDesk"}</b>
-                          <span>{"“投资委员会”的讨论记录已保留"}</span>
+                          <span>{"找到「发布前检查」的会话记录"}</span>
                         </div>
                         <small>{"刚刚"}</small>
                       </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            </div>
-          </div>
-        </section>
-        <section className={"sec"} style={{ paddingTop: "130px" } as CSSProperties}>
-          <div className={"wrap"} style={{ textAlign: "center" } as CSSProperties}>
-            <h2
-              className={"h2"}
-              data-r=""
-              style={{ fontSize: "clamp(30px,2.1vw,40px)" } as CSSProperties}
-            >
-              {"为不同角色选择合适的 AI 模型。"}
-            </h2>
-            <div className={"works"}>
-              <div data-r="" style={{ "--d": ".05s" } as CSSProperties}>
-                <span className={"av av-jolly"}>
-                  <svg>
-                    <use href={"#m-jolly"}></use>
-                  </svg>
-                </span>
-                {"Muse"}
-              </div>
-              <div data-r="" style={{ "--d": ".1s" } as CSSProperties}>
-                <span className={"av av-alfred"}>
-                  <svg>
-                    <use href={"#m-alfred"}></use>
-                  </svg>
-                </span>
-                {"ChatGPT dots"}
-              </div>
-              <div data-r="" style={{ "--d": ".15s" } as CSSProperties}>
-                <span className={"av av-clawd"}>
-                  <svg>
-                    <use href={"#m-clawd"}></use>
-                  </svg>
-                </span>
-                {"Claude"}
-              </div>
-              <div data-r="" style={{ "--d": ".2s" } as CSSProperties}>
-                <span className={"av av-grok"}>
-                  <svg>
-                    <use href={"#m-grok"}></use>
-                  </svg>
-                </span>
-                {"Grok Bot"}
-              </div>
-              <div data-r="" style={{ "--d": ".25s" } as CSSProperties}>
-                <span className={"av av-cue"}>
-                  <svg>
-                    <use href={"#m-cue"}></use>
-                  </svg>
-                </span>
-                {"Manus Cue"}
-              </div>
-              <div data-r="" style={{ "--d": ".3s" } as CSSProperties}>
-                <span className={"av av-molty"}>
-                  <svg>
-                    <use href={"#m-molty"}></use>
-                  </svg>
-                </span>
-                {"OpenClaw"}
-              </div>
-              <div data-r="" style={{ "--d": ".35s" } as CSSProperties}>
-                <span className={"av av-instinct"}>
-                  <svg>
-                    <use href={"#m-instinct"}></use>
-                  </svg>
-                </span>
-                {"Instinct"}
               </div>
             </div>
           </div>
@@ -1948,147 +1071,17 @@ export function WelcomeContent({ scrollTo }: { scrollTo: (id: string) => void })
               </h2>
             </div>
             <div className={"faq-list"}>
-              <details className={"qa"} data-r="" style={{ "--d": "0.00s" } as CSSProperties}>
-                <summary>
-                  <h3>{"AgentDesk 是什么？"}</h3>
-                  <span className={"pm"} aria-hidden={"true"}></span>
-                </summary>
-                <div className={"ans"}>
-                  <p>
-                    {
-                      "AgentDesk 把多个模型组织成协作群聊。成员按调研、核对、总结的角色分工，讨论结束后由你决定是否采纳结论。"
-                    }
-                  </p>
-                </div>
-              </details>
-              <details className={"qa"} data-r="" style={{ "--d": "0.02s" } as CSSProperties}>
-                <summary>
-                  <h3>{"使用 AgentDesk 需要付费吗？"}</h3>
-                  <span className={"pm"} aria-hidden={"true"}></span>
-                </summary>
-                <div className={"ans"}>
-                  <p>
-                    {
-                      "本地工作台无需注册。模型调用费用取决于你配置的 Provider 和模型服务，外部 ChatGPT 或 Claude 的订阅套餐不等同于 API 额度。"
-                    }
-                  </p>
-                </div>
-              </details>
-              <details className={"qa"} data-r="" style={{ "--d": "0.04s" } as CSSProperties}>
-                <summary>
-                  <h3>{"这算投资建议或法律建议吗？"}</h3>
-                  <span className={"pm"} aria-hidden={"true"}></span>
-                </summary>
-                <div className={"ans"}>
-                  <p>
-                    {
-                      "页面中的财报讨论是流程示例。Agent 帮助你整理和核对材料；重要结论仍需你核实，决定由你来做。"
-                    }
-                  </p>
-                </div>
-              </details>
-              <details className={"qa"} data-r="" style={{ "--d": "0.08s" } as CSSProperties}>
-                <summary>
-                  <h3>{"群聊里的 agent 是什么？"}</h3>
-                  <span className={"pm"} aria-hidden={"true"}></span>
-                </summary>
-                <div className={"ans"}>
-                  <p>
-                    {
-                      "每个成员由你配置的 Provider 模型和角色组成。它们共享当前讨论的上下文，依次完成调研、核对和总结。协作核查只读材料，不执行写入操作。"
-                    }
-                  </p>
-                </div>
-              </details>
-              <details className={"qa"} data-r="" style={{ "--d": "0.12s" } as CSSProperties}>
-                <summary>
-                  <h3>{"需要几个 agent？"}</h3>
-                  <span className={"pm"} aria-hidden={"true"}></span>
-                </summary>
-                <div className={"ans"}>
-                  <p>
-                    {
-                      "每个群可配置 2–6 个成员。可以让成员分别调研、核对和总结，并选择各自使用的已配置模型。"
-                    }
-                  </p>
-                </div>
-              </details>
-              <details className={"qa"} data-r="" style={{ "--d": "0.16s" } as CSSProperties}>
-                <summary>
-                  <h3>{"哪些模型能加入？"}</h3>
-                  <span className={"pm"} aria-hidden={"true"}></span>
-                </summary>
-                <div className={"ans"}>
-                  <p>
-                    {
-                      "在设置中配置支持的 Provider 和模型后，即可把模型分配给群成员。首页角色用于展示协作流程，不表示已连接这些外部产品的个人账号。"
-                    }
-                  </p>
-                </div>
-              </details>
-              <details className={"qa"} data-r="" style={{ "--d": "0.20s" } as CSSProperties}>
-                <summary>
-                  <h3>{"怎样开始？"}</h3>
-                  <span className={"pm"} aria-hidden={"true"}></span>
-                </summary>
-                <div className={"ans"}>
-                  <p>
-                    {
-                      "本地使用无需注册。进入工作台，配置 Provider，选择模型并建立群聊，再输入你希望共同研究的问题。"
-                    }
-                  </p>
-                </div>
-              </details>
-              <details className={"qa"} data-r="" style={{ "--d": "0.24s" } as CSSProperties}>
-                <summary>
-                  <h3>{"模型会收到哪些信息？"}</h3>
-                  <span className={"pm"} aria-hidden={"true"}></span>
-                </summary>
-                <div className={"ans"}>
-                  <p>
-                    {
-                      "模型请求会包含当前任务及相关讨论上下文。讨论记录在本地持久保存；敏感信息是否进入请求取决于你提供的内容和所选模型服务。"
-                    }
-                  </p>
-                </div>
-              </details>
-              <details className={"qa"} data-r="" style={{ "--d": "0.26s" } as CSSProperties}>
-                <summary>
-                  <h3>{"我自己能在群里发言吗？"}</h3>
-                  <span className={"pm"} aria-hidden={"true"}></span>
-                </summary>
-                <div className={"ans"}>
-                  <p>
-                    {
-                      "可以发送消息、引用已有内容，或点名某个成员。讨论按调研、核对、总结推进，最多 3 轮；你可以停止运行，并在完成后采纳结论。"
-                    }
-                  </p>
-                </div>
-              </details>
-              <details className={"qa"} data-r="" style={{ "--d": "0.28s" } as CSSProperties}>
-                <summary>
-                  <h3>{"我的 agent 能用中文聊吗？"}</h3>
-                  <span className={"pm"} aria-hidden={"true"}></span>
-                </summary>
-                <div className={"ans"}>
-                  <p>
-                    {"可以。你可以使用中文描述任务和参与讨论，模型的语言表现取决于你选择的服务。"}
-                  </p>
-                </div>
-              </details>
-              <details className={"qa"} data-r="" style={{ "--d": "0.32s" } as CSSProperties}>
-                <summary>
-                  <h3>{"我的群聊怎样保存？"}</h3>
-                  <span className={"pm"} aria-hidden={"true"}></span>
-                </summary>
-                <div className={"ans"}>
-                  <p>
-                    {
-                      "群成员、讨论消息、引用和采纳结果会保存在本地，刷新后可以继续查看。当前工作台使用本地群聊，不提供公开群或外部邀请链接。"
-                    }
-                  </p>
-                </div>
-              </details>
+              {questions.map(([question, answer]) => (
+                <details className="qa" key={question} data-r="">
+                  <summary>
+                    <h3>{question}</h3>
+                    <span className="pm" aria-hidden="true" />
+                  </summary>
+                  <div className="ans">
+                    <p>{answer}</p>
+                  </div>
+                </details>
+              ))}
             </div>
           </div>
         </section>
@@ -2161,95 +1154,72 @@ export function WelcomeContent({ scrollTo }: { scrollTo: (id: string) => void })
               </svg>
             </div>
             <h2 className={"h2"} data-r="" style={{ "--d": ".1s" } as CSSProperties}>
-              {"把你的 agent 拉进一个群。"}
+              {"打开你的 AgentDesk。"}
             </h2>
             <div className={"send"} data-r="" style={{ "--d": ".2s" } as CSSProperties}>
-              <WelcomeActions />
+              <WelcomeActions scrollTo={scrollTo} />
             </div>
           </div>
         </section>
       </main>
       <footer className={"site-foot"}>
         <div className={"foot"}>
-          <div className={"foot-cols"} data-r="">
+          <div className="foot-cols" data-r="">
             <div>
-              <p className={"fh"}>{"产品"}</p>
+              <p className="fh">工作台</p>
               <p>
-                <Link to="/collaboration">{"进入工作台"}</Link>
+                <Link to="/">Bot 对话</Link>
               </p>
               <p>
-                <Link to="/collaboration">{"打开「聊天」"}</Link>
+                <Link to="/projects">项目</Link>
               </p>
               <p>
-                <Link to="/collaboration">{"我的群聊"}</Link>
+                <Link to="/session-hub">会话中心</Link>
               </p>
             </div>
             <div>
-              <p className={"fh"}>{"使用指南"}</p>
+              <p className="fh">开发与交付</p>
               <p>
-                <button
-                  type={"button"}
-                  className={"welcome-scroll-link"}
-                  onClick={() => scrollTo("how")}
-                >
-                  {"接入你的 agent"}
-                </button>
+                <Link to="/code">编码</Link>
               </p>
               <p>
-                <button
-                  type={"button"}
-                  className={"welcome-scroll-link"}
-                  onClick={() => scrollTo("how")}
-                >
-                  {"建群与分工"}
-                </button>
+                <Link to="/team">团队开发</Link>
               </p>
               <p>
-                <button
-                  type={"button"}
-                  className={"welcome-scroll-link"}
-                  onClick={() => scrollTo("stageWrap")}
-                >
-                  {"重看协作过程"}
-                </button>
+                <Link to="/deploy">部署</Link>
               </p>
             </div>
             <div>
-              <p className={"fh"}>{"了解更多"}</p>
+              <p className="fh">探索</p>
               <p>
-                <button
-                  type={"button"}
-                  className={"welcome-scroll-link"}
-                  onClick={() => scrollTo("privacy")}
-                >
-                  {"隐私"}
-                </button>
+                <Link to="/workflows">工作流</Link>
               </p>
               <p>
-                <button
-                  type={"button"}
-                  className={"welcome-scroll-link"}
-                  onClick={() => scrollTo("faq")}
-                >
-                  {"常见问题"}
-                </button>
+                <Link to="/automations">自动化</Link>
               </p>
               <p>
-                <button
-                  type={"button"}
-                  className={"welcome-scroll-link"}
-                  onClick={() => scrollTo("cases")}
-                >
-                  {"使用场景"}
-                </button>
+                <Link to="/learning">成长中心</Link>
               </p>
             </div>
             <div>
-              <p className={"fh"}>{"AgentDesk"}</p>
-              <p>
-                <Link to="/collaboration">{"进入工作台"}</Link>
-              </p>
-              <p style={{ color: "rgba(0,0,0,.38)" } as CSSProperties}>{"让你的 agent 互相核对"}</p>
+              <p className="fh">关于 AgentDesk</p>
+              {(
+                [
+                  ["cases", "功能总览"],
+                  ["privacy", "数据与权限"],
+                  ["faq", "常见问题"],
+                ] as const
+              ).map(([id, label]) => (
+                <p key={id}>
+                  <button
+                    className="welcome-scroll-link"
+                    type="button"
+                    onClick={() => scrollTo(id)}
+                  >
+                    {label}
+                  </button>
+                </p>
+              ))}
             </div>
           </div>
           <div className={"wordmark"} id={"wordmark"}>
@@ -2264,7 +1234,7 @@ export function WelcomeContent({ scrollTo }: { scrollTo: (id: string) => void })
               <span style={{ "--i": "7" } as CSSProperties}>{"s"}</span>
               <span style={{ "--i": "8" } as CSSProperties}>{"k"}</span>
             </span>
-            <span className={"tag2"}>{"让你的 agent 互相核对。"}</span>
+            <span className={"tag2"}>{"本地 Agent 工作台。"}</span>
           </div>
         </div>
       </footer>

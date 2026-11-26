@@ -98,12 +98,13 @@ export function WelcomeNavigation({ scrollTo }: { scrollTo: (id: string) => void
           aria-label="AgentDesk 首页"
           onClick={() => scrollTo("stageWrap")}
         >
-          <svg>
-            <use href="#logo" />
-          </svg>
+          <img className="welcome-brand-mark" src="/agentdesk.svg" alt="" />
           <span className="wm">AgentDesk</span>
         </button>
         <nav className="nav-links" aria-label="首页导航">
+          <button className="welcome-scroll-link" type="button" onClick={() => scrollTo("cases")}>
+            功能总览
+          </button>
           <button className="welcome-scroll-link" type="button" onClick={() => scrollTo("how")}>
             使用指南
           </button>
@@ -148,8 +149,8 @@ export function WelcomeNavigation({ scrollTo }: { scrollTo: (id: string) => void
               </li>
             </ul>
           </div>
-          <Link className="btn btn-dark" to="/collaboration">
-            打开「聊天」
+          <Link className="btn btn-dark" to="/">
+            进入工作台
           </Link>
         </div>
         <button
@@ -187,7 +188,7 @@ export function WelcomeNavigation({ scrollTo }: { scrollTo: (id: string) => void
       >
         <div className="mm-top">
           <button className="mm-logo" type="button" onClick={() => navigateSection("stageWrap")}>
-            <img src="/reference/icon.svg" alt="" />
+            <img src="/agentdesk.svg" alt="" />
             AgentDesk
           </button>
           <button
@@ -212,6 +213,9 @@ export function WelcomeNavigation({ scrollTo }: { scrollTo: (id: string) => void
           </button>
         </div>
         <nav className="mm-body">
+          <button type="button" className="mm-link" onClick={() => navigateSection("cases")}>
+            功能总览
+          </button>
           <button type="button" className="mm-link" onClick={() => navigateSection("how")}>
             <span>使用指南</span>
             <svg
@@ -257,8 +261,8 @@ export function WelcomeNavigation({ scrollTo }: { scrollTo: (id: string) => void
           </div>
         </nav>
         <div className="mm-foot">
-          <Link className="btn" to="/collaboration" onClick={closeMobile}>
-            打开「聊天」
+          <Link className="btn" to="/" onClick={closeMobile}>
+            进入工作台
           </Link>
         </div>
       </div>
@@ -266,20 +270,20 @@ export function WelcomeNavigation({ scrollTo }: { scrollTo: (id: string) => void
   );
 }
 
-export function WelcomeActions() {
+export function WelcomeActions({ scrollTo }: { scrollTo: (id: string) => void }) {
   return (
     <div className="signup-cta">
-      <Link className="btn btn-dark m-email" to="/collaboration">
+      <Link className="btn btn-dark m-email" to="/">
         进入工作台
       </Link>
       <div className="signup">
-        <span className="signup-caption">让你的 agent 开始协作</span>
-        <Link className="btn btn-dark welcome-workbench-button" to="/collaboration">
+        <span className="signup-caption">从一个问题开始</span>
+        <Link className="btn btn-dark welcome-workbench-button" to="/">
           进入工作台
         </Link>
       </div>
       <p className="g-or">或</p>
-      <Link className="g-btn" to="/collaboration">
+      <button type="button" className="g-btn" onClick={() => scrollTo("cases")}>
         <svg
           width="20"
           height="20"
@@ -292,8 +296,8 @@ export function WelcomeActions() {
         >
           <path d="M12 5v14M5 12h14" />
         </svg>
-        接入你的 agent
-      </Link>
+        探索功能
+      </button>
     </div>
   );
 }

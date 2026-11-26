@@ -292,7 +292,7 @@ test("无 WebGL 时保留正常界面，原生按压按钮可用键盘操作", a
       this: HTMLCanvasElement,
       ...args: Parameters<typeof original>
     ) {
-      if (args[0] === "webgl2") return null;
+      if (String(args[0]) === "webgl2") return null;
       return Reflect.apply(original, this, args);
     } as typeof original;
   });

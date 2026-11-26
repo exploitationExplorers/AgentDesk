@@ -26,13 +26,13 @@ interface Actor extends ActorDefinition {
 }
 
 const ACTORS: readonly ActorDefinition[] = [
-  { key: "instinct", name: "Instinct", size: 0.78, width: 0.21, top: 0.1, height: 0.85 },
-  { key: "grok", name: "Grok Bot", size: 0.62, width: 0.97, top: 0.01, height: 0.97 },
-  { key: "alfred", name: "ChatGPT dots", size: 0.88, width: 0.82, top: 0.09, height: 0.82 },
-  { key: "jolly", name: "Muse", size: 1.05, width: 0.88, top: 0.07, height: 0.87 },
-  { key: "clawd", name: "Claude", size: 0.8, width: 0.9, top: 0.26, height: 0.55 },
-  { key: "molty", name: "OpenClaw", size: 0.88, width: 0.86, top: 0.06, height: 0.84 },
-  { key: "cue", name: "Manus Cue", size: 0.82, width: 0.87, top: 0.1, height: 0.86 },
+  { key: "instinct", name: "回归检查", size: 0.78, width: 0.21, top: 0.1, height: 0.85 },
+  { key: "grok", name: "发布整理", size: 0.62, width: 0.97, top: 0.01, height: 0.97 },
+  { key: "alfred", name: "测试设计", size: 0.88, width: 0.82, top: 0.09, height: 0.82 },
+  { key: "jolly", name: "源码导读", size: 1.05, width: 0.88, top: 0.07, height: 0.87 },
+  { key: "clawd", name: "代码核对", size: 0.8, width: 0.9, top: 0.26, height: 0.55 },
+  { key: "molty", name: "项目梳理", size: 0.88, width: 0.86, top: 0.06, height: 0.84 },
+  { key: "cue", name: "任务规划", size: 0.82, width: 0.87, top: 0.1, height: 0.86 },
 ];
 const WAVE = [-10, 18, -6, -16, 14, -8, 10];
 const MESSAGE_THRESHOLDS = [0.6, 0.63, 0.66, 0.69, 0.72, 0.8, 0.83, 0.86];

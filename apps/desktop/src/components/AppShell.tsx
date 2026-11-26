@@ -48,8 +48,7 @@ import { ThemeToggle } from "./ThemeToggle";
 
 const NAV: Array<{ to: string; label: string; icon: LucideIcon }> = [
   { to: "/welcome", label: "首页", icon: House },
-  { to: "/collaboration", label: "群聊", icon: UsersRound },
-  { to: "/team", label: "团队开发", icon: UsersRound },
+  { to: "/collaboration", label: "团队协作", icon: UsersRound },
   { to: "/", label: "Bot", icon: MessageSquare },
   { to: "/code", label: "编码", icon: Code2 },
   { to: "/session-hub", label: "会话中心", icon: PanelsTopLeft },

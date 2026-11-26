@@ -87,7 +87,7 @@ test("手机触控、减少动效和无 WebGL 时仍能切换", async ({ page })
       this: HTMLCanvasElement,
       ...args: Parameters<typeof original>
     ) {
-      if (args[0] === "webgl2") return null;
+      if (String(args[0]) === "webgl2") return null;
       return Reflect.apply(original, this, args);
     } as typeof original;
   });

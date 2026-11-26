@@ -505,7 +505,7 @@ export function TeamPage() {
     <div className="collaboration-page team-page">
       <header className="cc-nav">
         <Link to={isTeamHost() ? "/team" : "/welcome"} className="cc-logo">
-          <img className="cc-logo-mark" src="/reference/icon.svg" alt="" />
+          <img className="cc-logo-mark" src="/agentdesk.svg" alt="" />
           <span>AgentDesk</span>
         </Link>
         <div className="cc-nav-right">

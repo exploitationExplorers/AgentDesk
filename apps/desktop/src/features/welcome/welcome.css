@@ -298,7 +298,7 @@
     font-size: 23px;
     gap: 8px;
   }
-  .welcome-page .nav .logo svg,
+  .welcome-page .nav .logo .welcome-brand-mark,
   .welcome-page .gd-nav .logo img {
     width: 30px;
     height: 30px;
@@ -621,12 +621,12 @@
 .welcome-page .g {
   color: inherit;
 }
-.welcome-page .logo svg {
+.welcome-page .logo .welcome-brand-mark {
   width: 34px;
   height: 34px;
   transition: transform 0.5s var(--spring);
 }
-.welcome-page .logo:hover svg {
+.welcome-page .logo:hover .welcome-brand-mark {
   transform: rotate(-8deg) scale(1.06);
 }
 .welcome-page .nav-links {
@@ -2706,7 +2706,9 @@
   z-index: 1;
 }
 .welcome-page .foot-cols {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(4, max-content);
+  justify-content: center;
   gap: clamp(48px, 7.5vw, 120px);
   font-size: 15px;
   color: var(--ink-2);
@@ -2731,6 +2733,7 @@
 }
 .welcome-page .wordmark {
   display: flex;
+  justify-content: center;
   align-items: flex-end;
   gap: 36px;
   padding: 44px 0 56px;
@@ -2756,7 +2759,7 @@
 }
 .welcome-page .wordmark .tag2 {
   white-space: normal;
-  max-width: 8.6em;
+  max-width: none;
   font-size: clamp(30px, 3.1vw, 60px);
   font-weight: 600;
   letter-spacing: -0.035em;
@@ -2794,12 +2797,13 @@
     display: none;
   }
   .welcome-page .foot-cols {
-    flex-wrap: wrap;
-    gap: 32px 48px;
+    grid-template-columns: repeat(2, max-content);
+    gap: 32px clamp(32px, 10vw, 80px);
   }
   .welcome-page .wordmark {
     flex-direction: column;
-    align-items: flex-start;
+    align-items: center;
+    text-align: center;
     gap: 16px;
   }
 }

@@ -153,7 +153,7 @@ test("真实成员接入、建群、三阶段执行、引用、点名与用户�
   expect(errors).toEqual([]);
 });
 
-test("首页滚动舞台、三步引导与手机入口接入实际路由", async ({ page }, testInfo) => {
+test("首页保留滚动舞台，切换功能预览并通过统一入口访问协作", async ({ page }, testInfo) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.setViewportSize({ width: 1440, height: 1000 });
@@ -167,8 +167,66 @@ test("首页滚动舞台、三步引导与手机入口接入实际路由", async
   });
   await expect(page.locator("#chat")).toHaveCSS("opacity", "1");
   await expect(page.locator("#side")).toHaveCSS("opacity", "1");
-  await expect(page.locator('#chat img[src*="inv-report"]')).toBeVisible();
+  await expect(page.getByAltText("工作流画布中的步骤连线")).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("welcome-group-verification.png") });
+  const explorer = page.locator("#cases");
+  await explorer.evaluate((section) =>
+    section.scrollIntoView({ block: "start", behavior: "instant" }),
+  );
+  await expect(explorer.getByRole("link", { name: "打开 Bot" })).toBeInViewport();
+  const directory = explorer.getByRole("navigation", { name: "探索工作台目录" });
+  const codeChapter = directory.getByRole("button", { name: "项目与编码" });
+  await codeChapter.hover();
+  await expect(explorer.getByRole("button", { name: "对话与会话" })).toHaveAttribute(
+    "aria-current",
+    "step",
+  );
+  await codeChapter.click();
+  await expect(codeChapter).toHaveAttribute("aria-current", "step");
+  await expect(explorer.getByRole("link", { name: "编码工作台" })).toBeInViewport();
+  await explorer.getByRole("button", { name: "工作流与自动化" }).press("Enter");
+  await expect(explorer.getByRole("link", { name: "自动化", exact: true })).toBeInViewport();
+  await expect(explorer.getByRole("link", { name: "自动化", exact: true })).toHaveAttribute(
+    "href",
+    /#\/automations$/,
+  );
+  // Revisit the phone from a later chapter to catch overlapping or displaced scenes.
+  await directory.getByRole("button", { name: "手机工作台" }).click();
+  const stage = explorer.locator(".tour-stage");
+  const waitForProgress = (progress: number) =>
+    expect
+      .poll(async () => Number(await stage.getAttribute("data-desk-progress")))
+      .toBeCloseTo(progress, 2);
+  await waitForProgress(2);
+  const phone = explorer.locator(".phone-body");
+  await expect(explorer.locator(".object-phone")).toHaveCSS("opacity", "1");
+  const bounds = await phone.boundingBox();
+  expect(bounds).not.toBeNull();
+  const center = (bounds!.x + bounds!.width / 2) / 1440;
+  expect(center).toBeGreaterThan(0.69);
+  expect(center).toBeLessThan(0.86);
+  await expect(phone).toHaveCSS("transform", "none");
+  await page.screenshot({ path: testInfo.outputPath("phone-layout.png") });
+  // Scrub partway toward the laptop and revisit the same frame from the opposite direction.
+  await page.mouse.move(720, 500);
+  const chapterHeight = (await stage.boundingBox())!.height;
+  await page.mouse.wheel(0, -chapterHeight / 2);
+  await waitForProgress(1.5);
+  const midway = (await phone.boundingBox())!.x;
+  expect(midway - bounds!.x).toBeGreaterThan(200);
+  await page.mouse.wheel(0, -chapterHeight / 2);
+  await waitForProgress(1);
+  expect((await phone.boundingBox())!.x - midway).toBeGreaterThan(200);
+  await page.mouse.wheel(0, chapterHeight / 2);
+  await waitForProgress(1.5);
+  expect(Math.abs((await phone.boundingBox())!.x - midway)).toBeLessThan(2);
+  await codeChapter.click();
+  await waitForProgress(1);
+  await expect(explorer.locator(".object-phone")).toHaveCSS("opacity", "0");
+  const copy = await explorer.locator(".tour-copy").filter({ hasText: "从想法" }).boundingBox();
+  const art = await explorer.locator(".tour-art").boundingBox();
+  expect(copy!.x + copy!.width).toBeLessThanOrEqual(art!.x);
+  await page.screenshot({ path: testInfo.outputPath("coding-layout.png") });
   await page.locator("#how").scrollIntoViewIfNeeded();
   await expect(page.getByRole("heading", { name: "三步就能开始。" })).toBeVisible();
   for (const element of await page.locator("#how [data-r]").all()) {
@@ -180,22 +238,18 @@ test("首页滚动舞台、三步引导与手机入口接入实际路由", async
   await page.getByRole("button", { name: "菜单", exact: true }).click();
   const menu = page.getByRole("dialog", { name: "菜单", exact: true });
   await expect(menu).toBeVisible();
-  await menu
-    .getByRole("link", { name: /聊天|工作台|群聊/ })
-    .last()
-    .click();
-  await expect(page).toHaveURL(/#\/collaboration/);
-  await expect(page.locator(".collaboration-page")).toBeVisible();
-  await expect(page.getByRole("tab", { name: "聊天", exact: true })).toBeVisible();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await page.screenshot({ path: testInfo.outputPath("collaboration-mobile.png") });
-  await page.goto("/#/");
+  await menu.getByRole("link", { name: "进入工作台", exact: true }).click();
+  await expect(page).toHaveURL(/#\/$/);
   await page.getByRole("button", { name: "打开主导航" }).click();
-  await page
-    .getByRole("navigation", { name: "主导航" })
-    .getByRole("link", { name: "群聊", exact: true })
-    .click();
+  const nav = page.getByRole("navigation", { name: "主导航" });
+  await expect(nav.getByRole("link", { name: /^(群聊|团队开发)$/ })).toHaveCount(0);
+  await nav.getByRole("link", { name: "团队协作", exact: true }).click();
   await expect(page).toHaveURL(/#\/collaboration/);
+  await expect(page.getByRole("tab", { name: "聊天", exact: true })).toBeVisible();
+  await page.getByRole("link", { name: "团队开发", exact: true }).click();
+  await expect(page).toHaveURL(/#\/team/);
+  await expect(page.getByRole("link", { name: "本地群聊" })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   expect(errors).toEqual([]);
 });
 

@@ -188,7 +188,7 @@ export function CollaborationPage() {
       <div className="cc-ambient" aria-hidden="true" />
       <header className="cc-nav">
         <Link to="/welcome" className="cc-logo">
-          <img className="cc-logo-mark" src="/reference/icon.svg" alt="" />
+          <img className="cc-logo-mark" src="/agentdesk.svg" alt="" />
           <span>AgentDesk</span>
         </Link>
         <div className="cc-nav-right">

@@ -1,0 +1,942 @@
+.welcome-page .desk-companion {
+  position: absolute;
+  width: 7%;
+  aspect-ratio: 1;
+  pointer-events: none;
+  --body: #61dac0;
+  --shade: #257963;
+  --tilt: -8deg;
+}
+.welcome-page .companion-mint {
+  bottom: 12%;
+  left: 26%;
+}
+.welcome-page .companion-amber {
+  bottom: 11%;
+  right: 24%;
+  --body: #ffae62;
+  --shade: #b8612b;
+  --tilt: 6deg;
+}
+.welcome-page .companion-violet {
+  bottom: 7%;
+  left: 43%;
+  width: 8%;
+  --body: #c3afff;
+  --shade: #705fc4;
+  --tilt: -4deg;
+}
+.welcome-page .desk-contact-shadow {
+  position: absolute;
+  bottom: 1%;
+  left: 9%;
+  width: 84%;
+  height: 15%;
+  border-radius: 50%;
+  background: #413b3b65;
+  filter: blur(0.38cqw);
+  animation: desk-shadow 2.3s var(--delay) infinite;
+}
+.welcome-page .desk-robot {
+  position: absolute;
+  inset: 14% 3% 13%;
+  border-radius: 38% 38% 29% 29%;
+  background:
+    radial-gradient(ellipse at 34% 13%, #fff9, transparent 32%),
+    radial-gradient(ellipse at 32% 28%, var(--body) 33%, var(--shade) 100%);
+  box-shadow: inset -0.35cqw -0.36cqw 0.55cqw #0002;
+  transform-origin: 50% 100%;
+  animation: desk-hop 2.3s var(--delay) infinite;
+}
+.welcome-page .companion-amber .desk-robot {
+  border-radius: 20%;
+}
+.welcome-page .companion-violet .desk-robot {
+  border-radius: 50% 50% 35% 35%;
+}
+.welcome-page .desk-visor {
+  position: absolute;
+  inset: 37% 14% 24%;
+  border-radius: 40%;
+  background: linear-gradient(130deg, #38494d, #17232d 62%);
+  box-shadow: inset 0.08cqw 0.14cqw 0.15cqw #fff5;
+}
+.welcome-page .desk-visor::before,
+.welcome-page .desk-visor::after {
+  content: "";
+  position: absolute;
+  top: 32%;
+  height: 38%;
+  width: 12%;
+  border-radius: 50%;
+  background: #e8fff2;
+}
+.welcome-page .desk-visor::before {
+  left: 24%;
+}
+.welcome-page .desk-visor::after {
+  right: 24%;
+}
+.welcome-page .desk-boot {
+  position: absolute;
+  bottom: -12%;
+  height: 22%;
+  width: 25%;
+  border-radius: 50%;
+  background: linear-gradient(var(--body), var(--shade));
+}
+.welcome-page .desk-boot.left {
+  left: 13%;
+}
+.welcome-page .desk-boot.right {
+  right: 13%;
+}
+.welcome-page .desk-antenna {
+  position: absolute;
+  bottom: 97%;
+  left: 48%;
+  width: 6%;
+  height: 15%;
+  background: var(--shade);
+}
+.welcome-page .desk-antenna::before {
+  content: "";
+  position: absolute;
+  bottom: 85%;
+  left: -65%;
+  width: 230%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--body);
+}
+@keyframes desk-hop {
+  0%,
+  55%,
+  100% {
+    transform: rotate(var(--tilt));
+  }
+  14% {
+    transform: translateY(3%) scale(1.05, 0.91) rotate(var(--tilt));
+  }
+  29% {
+    transform: translateY(-40%) rotate(calc(var(--tilt) * -1));
+  }
+  43% {
+    transform: translateY(1%) scale(1.05, 0.92) rotate(var(--tilt));
+  }
+}
+@keyframes desk-shadow {
+  0%,
+  15%,
+  45%,
+  100% {
+    opacity: 0.85;
+    transform: scaleX(1);
+  }
+  29% {
+    opacity: 0.36;
+    transform: scaleX(0.64);
+  }
+}
+.welcome-page .welcome-explorer {
+  --paper: #f5f4ef;
+  position: relative;
+  isolation: isolate;
+  background: var(--paper);
+  color: #1d211e;
+}
+.welcome-page .tour-stage {
+  height: 100dvh;
+  position: sticky;
+  top: 0;
+  background: linear-gradient(100deg, #f6f5f0 35%, #eeeae0 68%, #ece5d7);
+}
+.welcome-page .tour-art {
+  position: absolute;
+  inset: 0 0 0 43%;
+  overflow: hidden;
+  mask-image: linear-gradient(to right, transparent, black 8%);
+}
+.welcome-page .tour-art::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.28;
+  background-image: radial-gradient(#97988c 0.7px, transparent 1px);
+  background-size: 19px 19px;
+  mask-image: linear-gradient(120deg, transparent 10%, black 65%, transparent);
+}
+.welcome-page .tour-parallax {
+  position: absolute;
+  inset: -1%;
+  transform: translate(calc(var(--mx, 0) * 11px), calc(var(--my, 0) * 8px));
+  transition: transform 0.24s ease-out;
+}
+.welcome-page .tour-camera-track {
+  position: absolute;
+  inset: 0;
+  transform: translate3d(calc(-100% * var(--phone-travel, 0)), 0, 0);
+}
+.welcome-page .tour-object {
+  position: absolute;
+  top: 53%;
+  left: 50%;
+  width: min(100%, 106dvh);
+  aspect-ratio: 1.45;
+  container-type: inline-size;
+  transform: translate(-50%, -50%);
+}
+.welcome-page .tour-prop {
+  position: absolute;
+  inset: 0;
+  font: 500 2cqw/1.4 var(--font);
+}
+.welcome-page .tour-surface {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: #24272a;
+  overflow: hidden;
+  border: 0.3cqw solid #6e7474;
+  border-radius: 2.6cqw;
+  box-shadow:
+    inset 0 0.3cqw 0.2cqw #ffffff60,
+    0 0.65cqw 0 #888e8d,
+    1cqw 3cqw 3.8cqw -1.3cqw #34392c55;
+}
+.welcome-page .tour-surface-head {
+  display: flex;
+  align-items: center;
+  gap: 1cqw;
+  height: 5cqw;
+  padding: 0 2cqw;
+  font-size: 1.8cqw;
+  font-weight: 700;
+  color: #e2e8e3;
+}
+.welcome-page .tour-surface-head svg {
+  width: 2.4cqw;
+  height: 2.4cqw;
+}
+.welcome-page .tour-screen {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.welcome-page .tour-screen img {
+  display: block;
+  height: 100%;
+  width: 100%;
+  object-fit: cover;
+}
+.welcome-page .tour-crew {
+  position: absolute;
+  left: 24%;
+  right: 20%;
+  top: -1%;
+  height: 0;
+}
+.welcome-page .tour-crew .desk-companion {
+  width: 19%;
+  left: 0;
+  bottom: 0;
+}
+.welcome-page .tour-crew .companion-amber {
+  left: 32%;
+}
+.welcome-page .tour-crew .companion-violet {
+  left: 65%;
+}
+.welcome-page .tour-object:not([data-in-view]) :is(.desk-robot, .desk-contact-shadow) {
+  animation-play-state: paused;
+}
+.welcome-page .object-board .tour-surface {
+  inset: 12% 1% -1%;
+  background: #e5e4f0;
+  border-color: #acadb6;
+}
+.welcome-page .object-board .tour-surface-head,
+.welcome-page .object-journal .tour-surface-head {
+  color: #353845;
+}
+.welcome-page .object-board .tour-crew {
+  top: 12%;
+  left: 10%;
+  right: 5%;
+}
+.welcome-page .object-board .tour-screen img {
+  width: 136%;
+  max-width: none;
+  transform: translateX(-22%);
+}
+.welcome-page .object-canvas .tour-surface {
+  inset: 9% 0 4%;
+  padding: 0.7cqw;
+  background: #22222c;
+  border: 0.6cqw solid #a4a29f;
+  border-radius: 3cqw;
+}
+.welcome-page .object-canvas .tour-screen {
+  border-radius: 1cqw;
+}
+.welcome-page .object-canvas .tour-screen img {
+  width: 145%;
+  max-width: none;
+  transform: translateX(-18%);
+}
+.welcome-page .tour-stylus {
+  position: absolute;
+  right: -4%;
+  bottom: 0;
+  width: 1.5cqw;
+  height: 76%;
+  border-radius: 1cqw 1cqw 45% 45%;
+  transform: rotate(7deg);
+  background: linear-gradient(90deg, #adb2b2, #fff 45%, #c9c7bf);
+  box-shadow: 0.7cqw 0.9cqw 1cqw #39382a38;
+}
+.welcome-page .object-console .tour-surface {
+  inset: 8% 1% 10%;
+  border-radius: 2cqw;
+  border: 0.9cqw solid #414644;
+  background: #303330;
+}
+.welcome-page .tour-console-edge {
+  position: absolute;
+  inset: 90% 1% auto;
+  height: 7%;
+  background: linear-gradient(#d6d8d1, #aaafa9);
+  border-radius: 0 0 2cqw 2cqw;
+  display: flex;
+  align-items: center;
+  gap: 0.8cqw;
+  padding: 0 4cqw;
+  box-shadow: 0 1.6cqw 2cqw #45453940;
+}
+.welcome-page .tour-console-edge i {
+  width: 0.85cqw;
+  height: 0.85cqw;
+  border-radius: 50%;
+  background: #72a58b;
+}
+.welcome-page .tour-console-edge span {
+  margin-left: auto;
+  width: 15%;
+  height: 40%;
+  border-radius: 1em;
+  background: repeating-linear-gradient(90deg, #434940 0 0.4cqw, transparent 0.4cqw 1cqw);
+}
+.welcome-page .object-journal .tour-surface {
+  inset: 6% 7% 2%;
+  border: 0.9cqw solid #92b1aa;
+  border-left: 3cqw solid #6a8984;
+  background: #e8efe5;
+  border-radius: 1.1cqw 2.3cqw 2.3cqw 1.1cqw;
+  box-shadow:
+    0 0.55cqw 0 #fff,
+    0 1cqw 0 #d3d1c4,
+    0 1.6cqw 0 #90a8a0,
+    1cqw 3cqw 3.5cqw #494d3f42;
+}
+.welcome-page .tour-bookmark {
+  position: absolute;
+  right: 15%;
+  top: 5%;
+  width: 4cqw;
+  height: 11cqw;
+  background: #df905e;
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 78%, 0 100%);
+}
+.welcome-page .tour-chapters {
+  position: relative;
+  margin-top: -100dvh;
+  pointer-events: none;
+}
+.welcome-page .tour-chapter {
+  height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 0 clamp(52px, 7vw, 120px);
+  padding-right: 55%;
+}
+.welcome-page .tour-copy {
+  width: min(34vw, 520px);
+  position: relative;
+  isolation: isolate;
+}
+.welcome-page .tour-label {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 15px;
+  font-weight: 680;
+}
+.welcome-page .tour-label svg {
+  box-sizing: content-box;
+  background: var(--tint);
+  padding: 7px;
+  border-radius: 9px;
+}
+.welcome-page .tour-copy h3 {
+  margin: clamp(15px, 2.6vh, 30px) 0 18px;
+  font-size: clamp(44px, min(6vw, 9vh), 92px);
+  letter-spacing: -0.065em;
+  font-weight: 780;
+  line-height: 1.09;
+}
+.welcome-page .tour-copy p {
+  max-width: 33ch;
+  margin: 0;
+  line-height: 1.75;
+  font-size: clamp(15px, 1.25vw, 19px);
+  color: #535951;
+}
+.welcome-page .tour-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  align-items: center;
+  margin-top: 22px;
+}
+.welcome-page .tour-links a {
+  color: inherit;
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 14px;
+  font-weight: 650;
+}
+.welcome-page .tour-links a:first-child {
+  background: #222722;
+  color: white;
+  padding: 8px 14px;
+  border-radius: 99px;
+}
+.welcome-page .tour-links a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.welcome-page .tour-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3vw;
+  padding: 15px 20px max(15px, env(safe-area-inset-bottom));
+  background: #f8f8f2ed;
+  border-top: 1px solid #cacbc3;
+}
+.welcome-page .tour-bar h2 {
+  font-size: 16px;
+  font-weight: 720;
+  white-space: nowrap;
+  margin: 0;
+}
+.welcome-page .tour-directory {
+  display: flex;
+  align-items: center;
+  gap: clamp(8px, 1.4vw, 24px);
+}
+.welcome-page .tour-directory button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  color: #62665c;
+  font-size: 13px;
+  background: transparent;
+  padding: 6px 0;
+}
+.welcome-page .tour-directory button[aria-current] {
+  color: #182519;
+  font-weight: 720;
+}
+.welcome-page .tour-directory button[aria-current] span,
+.welcome-page .tour-directory button:hover span {
+  text-decoration: underline;
+  text-underline-offset: 5px;
+}
+.welcome-page .tour-directory button:focus-visible,
+.welcome-page .tour-links a:focus-visible {
+  outline: 2px solid #527a64;
+  outline-offset: 3px;
+}
+.welcome-page .tour-static {
+  max-width: 900px;
+  padding: clamp(65px, 9vw, 110px) 6vw;
+  margin: auto;
+}
+.welcome-page .tour-static h2 {
+  font-size: clamp(32px, 5vw, 58px);
+  font-weight: 750;
+}
+.welcome-page .tour-static .tour-directory {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 18px 0;
+}
+.welcome-page .tour-static .tour-directory button {
+  min-height: 44px;
+}
+.welcome-page .tour-static img {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1.6;
+  object-fit: contain;
+  border-radius: 12px;
+  background: #ededeb;
+}
+.welcome-page .tour-static .tour-copy {
+  width: 100%;
+  margin-top: 24px;
+}
+.welcome-page .tour-static .tour-copy::before {
+  display: none;
+}
+.welcome-page .tour-static h3 {
+  font-size: clamp(32px, 5vw, 56px);
+  margin: 14px 0;
+}
+.welcome-page .tour-static h3 br {
+  display: none;
+}
+@media (max-width: 500px) {
+  .welcome-page .tour-static .tour-directory {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+.welcome-page .device-wallpaper {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse at 90% 4%, #91a5d3, transparent 68%),
+    linear-gradient(140deg, #bac8cb, #e2dacc 59%, #f0caac);
+  color: #222a32;
+}
+.welcome-page .device-menubar {
+  height: 7.5%;
+  padding: 0 2.2cqw;
+  display: flex;
+  align-items: center;
+  gap: 1.3cqw;
+  background: #ffffff61;
+  font-size: 1.2cqw;
+}
+.welcome-page .device-menubar::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 45%;
+  width: 10%;
+  height: 4.7%;
+  background: #17191a;
+  border-radius: 0 0 0.7cqw 0.7cqw;
+}
+.welcome-page .device-window {
+  position: absolute;
+  overflow: hidden;
+  border: 1px solid #ffffffad;
+  border-radius: 1.35cqw;
+  background: #fbfbf6;
+  box-shadow: 0 1.7cqw 3.7cqw #36424d38;
+}
+.welcome-page .session-window {
+  left: 5%;
+  top: 17%;
+  width: 54%;
+  height: 57%;
+}
+.welcome-page .run-window {
+  left: 40%;
+  top: 31%;
+  width: 54%;
+  height: 54%;
+}
+.welcome-page .device-window header {
+  height: 4.3cqw;
+  display: flex;
+  align-items: center;
+  gap: 0.5cqw;
+  background: linear-gradient(#f6f6f2, #ebede7);
+  padding: 0 1.5cqw;
+  color: #576055;
+  font-size: 1.35cqw;
+}
+.welcome-page .device-window header i {
+  width: 0.8cqw;
+  height: 0.8cqw;
+  border-radius: 50%;
+  background: #b6c3b8;
+}
+.welcome-page .device-window header span {
+  margin-left: 1cqw;
+}
+.welcome-page .device-message,
+.welcome-page .device-status {
+  display: flex;
+  align-items: center;
+  gap: 1cqw;
+  padding: 1.45cqw 2.25cqw;
+  font-size: 1.85cqw;
+}
+.welcome-page .device-message svg,
+.welcome-page .device-status svg {
+  width: 2.2cqw;
+  height: 2.2cqw;
+  color: #508069;
+}
+.welcome-page .device-status {
+  font-size: 1.38cqw;
+  color: #556659;
+}
+.welcome-page .device-log {
+  display: grid;
+  gap: 1cqw;
+  padding: 0 2.25cqw;
+  font-size: 1.45cqw;
+  color: #68776a;
+}
+.welcome-page .device-log i {
+  height: 0.65cqw;
+  width: 65%;
+  background: #b8c9bd;
+  border-radius: 1cqw;
+  transform-origin: left;
+}
+.welcome-page .device-log i:nth-of-type(2) {
+  width: 48%;
+  --row-delay: 0.27s;
+}
+.welcome-page .device-log i:nth-of-type(3) {
+  width: 58%;
+  --row-delay: 0.5s;
+}
+.welcome-page .device-diff {
+  margin: 0 2.25cqw;
+  font: 500 1.66cqw/1.65 monospace;
+}
+.welcome-page .device-diff code {
+  display: block;
+  padding-left: 0.7cqw;
+  background: #f3e1d9;
+  color: #875c4e;
+}
+.welcome-page .device-diff code + code {
+  background: #e0ebdf;
+  color: #39634e;
+}
+.welcome-page .device-meter {
+  height: 0.6cqw;
+  background: #e1e6dd;
+  border-radius: 1em;
+  margin: 0 2.25cqw;
+  overflow: hidden;
+}
+.welcome-page .device-meter i {
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform-origin: left;
+  background: #689c8c;
+}
+.welcome-page .device-dock {
+  position: absolute;
+  bottom: 2%;
+  left: 42%;
+  display: flex;
+  gap: 0.8cqw;
+  padding: 0.5cqw 0.8cqw;
+  background: #ffffff91;
+  border-radius: 0.8cqw;
+}
+.welcome-page .device-dock svg {
+  width: 2cqw;
+  height: 2cqw;
+  color: #517567;
+}
+.welcome-page .mac-display .laptop-editor {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  position: absolute;
+  inset: 0;
+  opacity: var(--editor-opacity, 0);
+}
+.welcome-page .object-laptop[data-in-view] .device-window {
+  animation: device-enter 0.8s cubic-bezier(0.2, 0.75, 0.25, 1) both;
+}
+.welcome-page .object-laptop[data-in-view] .run-window {
+  animation-delay: 0.45s;
+}
+.welcome-page .object-laptop[data-in-view] .device-log i,
+.welcome-page .object-laptop[data-in-view] .device-meter i {
+  animation: device-write 5.6s var(--row-delay, 0s) ease-in-out infinite both;
+}
+.welcome-page .object-laptop .device-meter i {
+  --row-delay: 1.2s;
+}
+@keyframes device-enter {
+  from {
+    opacity: 0;
+    transform: translateY(2.5cqw) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes device-write {
+  0%,
+  8% {
+    transform: scaleX(0.05);
+  }
+  54%,
+  95% {
+    transform: scaleX(1);
+  }
+  100% {
+    transform: scaleX(0.05);
+  }
+}
+.welcome-page .object-phone .tour-prop {
+  inset: -6% 0;
+}
+.welcome-page .phone-body {
+  position: absolute;
+  left: 49%;
+  top: 0;
+  height: 100%;
+  aspect-ratio: 0.48;
+  padding: 1.05cqw 0.72cqw 1.4cqw;
+  border-radius: 4.4cqw;
+  background: linear-gradient(125deg, #aea58e, #e4dac1 48%, #9c978a 80%, #bdb59f);
+  box-shadow:
+    inset 0.22cqw 0.22cqw 0.25cqw #f7efda,
+    inset -0.25cqw -0.35cqw 0.3cqw #928674,
+    0.4cqw 0.9cqw 0 #b2a58c,
+    1.4cqw 2.2cqw 2.4cqw #4c422c40;
+}
+.welcome-page .phone-glass {
+  position: relative;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  border: 0.65cqw solid #292b29;
+  border-radius: 3.7cqw;
+  background: #f7f8f3;
+}
+.welcome-page .phone-glass img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.welcome-page .phone-detail {
+  opacity: 0;
+}
+.welcome-page .object-phone[data-in-view] .phone-detail {
+  animation: phone-open 8s ease-in-out infinite;
+}
+@keyframes phone-open {
+  0%,
+  38%,
+  100% {
+    opacity: 0;
+    transform: translateX(6%);
+  }
+  47%,
+  87% {
+    opacity: 1;
+    transform: none;
+  }
+}
+.welcome-page .device-drawing {
+  position: absolute;
+  top: 17%;
+  left: 4%;
+  width: 28%;
+  height: 64%;
+  color: #9e9888;
+  border-inline: 1px solid #bbb5a6;
+  transform: rotate(-3deg);
+}
+.welcome-page .drawing-outline {
+  position: absolute;
+  inset: 0 8%;
+  border: 0.4cqw double currentColor;
+  outline: 1px solid currentColor;
+  outline-offset: 0.5cqw;
+  border-radius: 2.8cqw;
+  padding: 4cqw 1.8cqw;
+}
+.welcome-page .drawing-outline i {
+  display: block;
+  height: 18%;
+  margin: 1.1cqw 0;
+  border: 1px solid currentColor;
+  border-radius: 0.6cqw;
+  background: repeating-linear-gradient(0deg, transparent 0 1.15cqw, #9f978866 1.2cqw 1.35cqw);
+}
+.welcome-page .device-drawing span {
+  position: absolute;
+  top: 106%;
+  width: 100%;
+  text-align: center;
+  font: 1.4cqw monospace;
+}
+.welcome-page .object-phone .tour-crew {
+  inset: 0;
+  height: auto;
+}
+.welcome-page .object-phone .desk-companion {
+  width: 7.5%;
+  left: 23%;
+  bottom: 12%;
+}
+.welcome-page .object-phone .companion-amber {
+  left: 84%;
+  bottom: 10%;
+}
+.welcome-page .object-phone .companion-violet {
+  left: 37%;
+  bottom: 78%;
+}
+.welcome-page .object-phone .tour-prop::before {
+  content: "";
+  position: absolute;
+  inset: -22% -20%;
+  background: radial-gradient(ellipse, #e6d8bfbb, transparent 70%);
+}
+.welcome-page .tour-roadmap {
+  margin: 2vh 0;
+  display: grid;
+  pointer-events: auto;
+  border-top: 1px solid #c6c8bf;
+}
+.welcome-page .tour-roadmap button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  text-align: left;
+  border-bottom: 1px solid #c6c8bf;
+  padding: 0.65em 0;
+  font-weight: 620;
+  font-size: clamp(13px, 1.1vw, 16px);
+}
+.welcome-page .tour-roadmap button:hover {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.welcome-page .tour-static .static-phone {
+  object-fit: contain;
+  max-height: min(55vh, 480px);
+  background: #eae7dc;
+}
+
+.welcome-page .object-laptop {
+  width: min(90%, 86dvh);
+  opacity: clamp(0, calc(5 - 5 * var(--phone-travel, 0)), 1);
+}
+.welcome-page .object-phone {
+  left: 150%;
+  opacity: clamp(0, calc(var(--phone-travel, 0) * 5), 1);
+  transform: translate(-50%, -50%) perspective(1000px)
+    rotateX(calc(50deg * (1 - var(--phone-travel, 0))))
+    scale(calc(0.76 + 0.24 * var(--phone-travel, 0)));
+}
+.welcome-page .object-phone .tour-prop {
+  inset: 0;
+}
+.welcome-page .object-phone .phone-body {
+  left: 46%;
+  top: 10%;
+  height: 87%;
+  padding: 0.55cqw;
+}
+.welcome-page .mobile-blueprint-label {
+  position: absolute;
+  left: 44%;
+  bottom: 93%;
+  width: 33%;
+  display: grid;
+  gap: 0.6cqw;
+  padding: 0.6cqw 1cqw;
+  border: 1px solid #b8af98;
+  color: #776e58;
+  font: 1.45cqw/1.3 monospace;
+  letter-spacing: 0.12em;
+}
+.welcome-page .object-phone .device-drawing {
+  top: 26%;
+  left: 16%;
+  width: 24%;
+  height: 56%;
+  transform: none;
+}
+.welcome-page .object-phone .phone-watch {
+  position: absolute;
+  right: 3%;
+  bottom: 23%;
+  width: 16%;
+  height: 28%;
+  transform: rotate(16deg);
+}
+.welcome-page .object-phone .watch-band {
+  position: absolute;
+  left: 28%;
+  top: -20%;
+  width: 44%;
+  height: 140%;
+  border-radius: 2cqw;
+  background: repeating-linear-gradient(180deg, #c6b99c 0 2.5cqw, #a99d82 2.5cqw 3.2cqw);
+  box-shadow: inset 0 0 0 0.25cqw #e4dac0;
+}
+.welcome-page .object-phone .watch-face {
+  position: absolute;
+  inset: 24% 9%;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 0.6cqw;
+  border: 0.8cqw solid #232625;
+  border-radius: 2.4cqw;
+  background: linear-gradient(145deg, #253b3b, #111b1d);
+  color: #c2f1cf;
+  box-shadow: 0 0.6cqw 1.2cqw #37312642;
+  font: 700 1.4cqw/1.1 sans-serif;
+}
+.welcome-page .object-phone .watch-face b {
+  font-size: 3cqw;
+  line-height: 1;
+}
+.welcome-page .object-phone .tour-crew {
+  inset: 0;
+  height: auto;
+}
+.welcome-page .object-phone .desk-companion {
+  width: 7.5%;
+  left: 24%;
+  bottom: 12%;
+}
+.welcome-page .object-phone .companion-amber {
+  left: 87%;
+  bottom: 8%;
+}
+.welcome-page .object-phone .companion-violet {
+  left: 85%;
+  bottom: 76%;
+}
+.welcome-page .object-phone .companion-mint {
+  left: 16%;
+  bottom: 72%;
+}
