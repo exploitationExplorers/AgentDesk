@@ -1,39 +1,38 @@
 .welcome-page .mac-model {
   position: absolute;
-  inset: -43% -55%;
+  inset: 0;
   pointer-events: none;
 }
 .welcome-page .mac-model canvas {
+  --left-edge: max(0%, calc(41% * (1 - var(--desk-side, 0)) - 27% * var(--desk-open, 0)));
+  --right-edge: min(100%, calc(100% - 41% * var(--desk-side, 0) + 27% * var(--desk-open, 0)));
   display: block;
   width: 100%;
   height: 100%;
   position: absolute;
   inset: 0;
+  mask-image: linear-gradient(
+    to right,
+    transparent var(--left-edge),
+    #000 calc(var(--left-edge) + 7% * (1 - var(--desk-side, 0))),
+    #000 calc(var(--right-edge) - 7% * var(--desk-side, 0)),
+    transparent var(--right-edge)
+  );
 }
 .welcome-page .mac-model .mac-poster {
   position: absolute;
-  top: 50%;
-  left: 50%;
+  top: 53%;
+  left: calc(71.5% - 43% * var(--desk-side, 0) - 57% * var(--phone-travel, 0));
   transform: translate(-50%, -50%);
-  width: 63%;
+  width: min(57%, 108dvh);
   height: auto;
+  opacity: clamp(0, calc(3 - 3 * var(--phone-travel, 0)), 1);
   mask-image: radial-gradient(ellipse, #000 52%, transparent 76%);
 }
 .welcome-page .mac-model[data-rendered] .mac-poster {
   visibility: hidden;
 }
-
-/* The live camera travels through world space. Only the flat poster fallback needs the sliding track. */
-.welcome-page .tour-camera-track:has(.mac-model[data-rendered]) {
-  transform: none;
-}
-.welcome-page .tour-camera-track:has(.mac-model[data-rendered]) .object-laptop {
-  opacity: 1;
-}
-.welcome-page .tour-camera-track:has(.mac-model[data-rendered]) .object-phone {
-  left: calc(150% - 100% * var(--phone-travel, 0));
-}
-.welcome-page .tour-camera-track:has(.mac-model[data-rendered]) .object-phone .tour-prop::before,
-.welcome-page .tour-camera-track:has(.mac-model[data-rendered]) .object-phone .tour-crew {
+.welcome-page .tour-stage:has(.mac-model[data-rendered]) .object-phone .tour-prop::before,
+.welcome-page .tour-stage:has(.mac-model[data-rendered]) .object-phone .tour-crew {
   display: none;
 }

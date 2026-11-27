@@ -1,14 +1,20 @@
-import { laneFor, mobileDeskX, runAcrossDesk } from "./desk-choreography";
-import { scenes } from "./showcase-scenes";
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { laneFor, mobileDeskX, runAcrossDesk } from "./desk-choreography";
+import { phoneIndex, phoneTravel, scenes, tourPoints } from "./showcase-scenes";
 import modelUrl from "./previews/workdesk.glb?url";
 import homeUrl from "./previews/desk-display.jpg";
-import codeUrl from "./previews/code.jpg";
-import teamUrl from "./previews/team-execution.jpg";
-import workflowUrl from "./previews/workflow.jpg";
-import deployUrl from "./previews/deploy.jpg";
-import learningUrl from "./previews/learning.jpg";
+
+const maxPixelRatio = 2;
+const maxCanvasPixels = 4_600_000;
+const phoneScene = scenes[phoneIndex]!;
+
+function demoImages(scene: (typeof scenes)[number]) {
+  const points = tourPoints[scene.kind];
+  return points?.[0]?.image
+    ? points.map((point) => point.image!)
+    : [scene.kind === "laptop" ? homeUrl : scene.kind === "phone" ? scenes[1].image : scene.image];
+}
 
 function image(url: string) {
   const img = new Image();
@@ -83,20 +89,41 @@ function handoffSheet() {
   return map;
 }
 
+function drawHomeScreen(ctx: CanvasRenderingContext2D, home: HTMLImageElement, t: number) {
+  ctx.drawImage(home, 0, 0, 1024, 665);
+  const phase = (t % 7) / 7;
+  ctx.fillStyle = "#efeee6";
+  ctx.fillRect(448, 539, 460, 5);
+  ctx.fillStyle = "#508d7b";
+  ctx.fillRect(448, 539, 460 * Math.min(1, phase * 1.4), 5);
+  if (phase > 0.42 && phase < 0.92) {
+    ctx.fillStyle = "#1e2928";
+    ctx.beginPath();
+    ctx.roundRect(361, 0, 310, 134, 10);
+    ctx.fill();
+    ctx.fillStyle = "#e8f0e9";
+    ctx.font = "bold 18px sans-serif";
+    ctx.fillText("AgentDesk · 任务进度", 381, 36);
+    ctx.font = "15px sans-serif";
+    ctx.fillText("读取会话记录", 381, 73);
+    ctx.fillText("运行测试", 381, 105);
+    ctx.fillStyle = "#80bd9d";
+    ctx.fillRect(525, 63, 112, 5);
+    ctx.fillRect(525, 96, 74, 5);
+  }
+}
+
 export async function mountMacDesk(host: HTMLElement, signal: AbortSignal) {
-  const [bytes, home, code, team, workflow, deploy, learning] = await Promise.all([
+  const urls = scenes.map(demoImages);
+  const [bytes, decoded] = await Promise.all([
     fetch(modelUrl, { signal }).then((r) => {
       if (!r.ok) throw Error("Missing desk model");
       return r.arrayBuffer();
     }),
-    image(homeUrl),
-    image(codeUrl),
-    image(teamUrl),
-    image(workflowUrl),
-    image(deployUrl),
-    image(learningUrl),
+    Promise.all([...new Set(urls.flat())].map(async (url) => [url, await image(url)] as const)),
   ]);
-  const screens = [home, code, code, team, workflow, deploy, learning];
+  const previews = new Map(decoded);
+  const home = previews.get(homeUrl)!;
   signal.throwIfAborted();
   const { scene: model } = await new GLTFLoader().parseAsync(bytes, "");
   const resources = new Set<THREE.Material | THREE.Texture | THREE.BufferGeometry>();
@@ -135,7 +162,6 @@ export async function mountMacDesk(host: HTMLElement, signal: AbortSignal) {
     releaseModel();
     throw error;
   }
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
   renderer.setClearColor(0, 0);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -144,7 +170,7 @@ export async function mountMacDesk(host: HTMLElement, signal: AbortSignal) {
   const sun = new THREE.DirectionalLight(0xfff4e6, 2.0);
   sun.position.set(-28, 55, 22);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(1024, 1024);
+  sun.shadow.mapSize.set(768, 768);
   Object.assign(sun.shadow.camera, { left: -52, right: 40, top: 54, bottom: -42, far: 150 });
   sun.shadow.normalBias = 0.055;
   sun.shadow.intensity = 0.64;
@@ -176,118 +202,224 @@ export async function mountMacDesk(host: HTMLElement, signal: AbortSignal) {
   floor.receiveShadow = true;
   scene.add(floor);
   const surface = document.createElement("canvas");
-  surface.width = 1024;
-  surface.height = 665;
+  surface.width = home.naturalWidth;
+  surface.height = home.naturalHeight;
   const ctx = surface.getContext("2d")!;
-  const texture = track(new THREE.CanvasTexture(surface));
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  ctx.scale(surface.width / 1024, surface.height / 665);
+  drawHomeScreen(ctx, home, 0);
+  const anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  const screenTexture = (texture: THREE.Texture) => {
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.anisotropy = anisotropy;
+    texture.needsUpdate = true;
+    return track(texture);
+  };
+  const homeScreen = screenTexture(new THREE.CanvasTexture(surface));
+  const textures = new Map([[homeUrl, homeScreen as THREE.Texture]]);
+  const screens = urls.map((chapter) =>
+    chapter.map((url) => {
+      let texture = textures.get(url);
+      if (!texture) {
+        texture = screenTexture(new THREE.Texture(previews.get(url)!));
+        textures.set(url, texture);
+      }
+      return texture;
+    }),
+  );
+  const nextScreen = { value: homeScreen };
+  const screenMix = { value: 0 };
+  const mapFit = { value: new THREE.Vector2(1, 1) };
+  const nextFit = { value: new THREE.Vector2(1, 1) };
+  const screenAspect = 29.9 / Math.hypot(18.75748, 5.02605);
+  function fitScreen(texture: THREE.Texture, fit: THREE.Vector2) {
+    const { width, height } = texture.image as HTMLImageElement | HTMLCanvasElement;
+    const ratio = width / height / screenAspect;
+    fit.set(Math.max(1, 1 / ratio), Math.max(1, ratio));
+  }
+  const screenMaterial = track(new THREE.MeshBasicMaterial({ map: homeScreen }));
+  screenMaterial.onBeforeCompile = (shader) => {
+    shader.uniforms.nextScreen = nextScreen;
+    shader.uniforms.screenMix = screenMix;
+    shader.uniforms.mapFit = mapFit;
+    shader.uniforms.nextFit = nextFit;
+    // Blend the original textures on the GPU without resampling them into a canvas on scroll.
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        "#include <map_pars_fragment>",
+        `#include <map_pars_fragment>
+        uniform sampler2D nextScreen;
+        uniform float screenMix;
+        uniform vec2 mapFit;
+        uniform vec2 nextFit;
+        vec4 preview(sampler2D panel, vec2 uv, vec2 fit) {
+          vec2 coord = (uv - 0.5) * fit + 0.5;
+          if (any(lessThan(coord, vec2(0.0))) || any(greaterThan(coord, vec2(1.0)))) {
+            return vec4(0.09, 0.10, 0.105, 1.0);
+          }
+          return texture2D(panel, coord);
+        }`,
+      )
+      .replace(
+        "#include <map_fragment>",
+        `vec4 current = preview(map, vMapUv, mapFit);
+        if (screenMix > 0.0) current = mix(current, preview(nextScreen, vMapUv, nextFit), screenMix);
+        diffuseColor *= current;`,
+      );
+  };
   const display = model.getObjectByName("mac-screen") as THREE.Mesh;
-  display.material = track(new THREE.MeshBasicMaterial({ map: texture }));
+  display.material = screenMaterial;
   display.castShadow = false;
   // The screen sits only 0.004 units above the bezel. Keep depth precision
   // around the desk throughout the orbit so the bezel cannot bleed through.
-  const camera = new THREE.PerspectiveCamera(25, 1, 30, 220);
+  const camera = new THREE.PerspectiveCamera(25, 1, 26, 200);
   const stage = host.closest<HTMLElement>(".tour-stage");
-  let raf = 0,
-    visible = false,
-    prev = 0,
-    t = 0,
-    phoneWidth = 40,
-    phoneHeight = 28,
-    lastTexture = -1,
-    lastProgress = -1;
+  let raf = 0;
+  let visible = false;
+  let previousFrame = 0;
+  let previousProgress = -1;
+  let scrollDirection = 1;
+  let t = 0;
+  let lastHomeUpdate = 0;
+  let width = 1;
+  let height = 1;
+  let projectionHeight = 1;
+  let phoneWidth = 40;
+  let phoneHeight = 28;
+  let displayed: THREE.Texture | undefined;
+  let incoming: THREE.Texture | undefined;
+  let demoChangedAt = 0;
   const resize = new ResizeObserver(() => {
-    const w = host.clientWidth,
-      h = host.clientHeight;
-    if (!w || !h) return;
+    width = host.clientWidth;
+    height = host.clientHeight;
+    if (!width || !height) return;
+    projectionHeight = (Math.min(width * 0.523, height * 0.86) * 1.86) / 1.45;
     const phone = stage?.querySelector<HTMLElement>(".object-phone");
     if (phone) {
       const unitsPerPixel =
-        (2 *
-          scenes.find((s) => s.kind === "phone")!.camera.radius *
-          Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))) /
-        h;
+        (2 * phoneScene.camera.radius * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))) /
+        projectionHeight;
       phoneWidth = phone.offsetWidth * unitsPerPixel;
       phoneHeight = phone.offsetHeight * unitsPerPixel;
     }
-    renderer.setSize(w, h, false);
-    camera.aspect = w / h;
-    camera.updateProjectionMatrix();
+    // The camera covers the whole desk, but only the visible stage allocates backing pixels.
+    const pixelRatio = Math.min(
+      devicePixelRatio,
+      maxPixelRatio,
+      Math.sqrt(maxCanvasPixels / (width * height)),
+    );
+    renderer.setDrawingBufferSize(width, height, pixelRatio);
   });
   resize.observe(host);
+
+  function selectedScreen(index: number) {
+    // The handset has its own display. The Mac keeps the editor preview on the way there.
+    const laptopIndex = index === phoneIndex ? phoneIndex - 1 : index;
+    const chapter = scenes[laptopIndex]!;
+    const selected = Number(stage?.getAttribute(`data-demo-${chapter.kind}`) ?? 0);
+    return screens[laptopIndex]![selected] ?? screens[laptopIndex]![0]!;
+  }
+
   function render(now: number) {
     raf = 0;
     if (!visible || document.hidden || signal.aborted) return;
     raf = requestAnimationFrame(render);
-    if (now - prev < 32) return;
-    const delta = Math.min((now - prev) / 1000, 0.05);
-    prev = now;
     const progress = Number(stage?.dataset.deskProgress ?? 0);
-    t += delta;
-    const travel = Number(stage?.style.getPropertyValue("--phone-travel") || 0);
-    const sweep = Math.sin(Math.PI * travel);
+    const changed = progress !== previousProgress;
+    // Follow scroll at display cadence. Idle hops only need about 30 updates per second.
+    if (!changed && now - previousFrame < 30) return;
+    t += Math.min((now - previousFrame) / 1000, 0.05);
+    previousFrame = now;
+    if (changed && previousProgress >= 0) scrollDirection = Math.sign(progress - previousProgress);
+    previousProgress = progress;
+    const travel = phoneTravel(progress);
     const chapter = Math.floor(progress);
     const next = Math.min(chapter + 1, scenes.length - 1);
     const fraction = progress - chapter;
-    const blend = THREE.MathUtils.smoothstep(fraction, 0, 1);
+    const blend = THREE.MathUtils.smoothstep(fraction, 0.06, 0.97);
+    const crossing = Math.sin(Math.PI * blend);
+    const direction = chapter % 2 === 0 ? -1 : 1;
     const from = scenes[chapter]!.camera;
     const to = scenes[next]!.camera;
-    const radius = THREE.MathUtils.lerp(from.radius, to.radius, blend) - 12 * sweep;
-    const pitch = THREE.MathUtils.lerp(from.pitch, to.pitch, blend);
-    const yaw = THREE.MathUtils.lerp(from.yaw, to.yaw, blend) - 0.23 * sweep;
-    const targetHeight = THREE.MathUtils.lerp(from.targetHeight, to.targetHeight, blend);
-    camera.position.set(
-      mobileDeskX * travel + Math.sin(yaw) * Math.cos(pitch) * radius,
-      targetHeight + Math.sin(pitch) * radius,
-      -2 + Math.cos(yaw) * Math.cos(pitch) * radius,
+    const phoneHandoff = chapter === phoneIndex - 1 || chapter === phoneIndex;
+    const overhead = THREE.MathUtils.smoothstep(travel, 0.22, 0.96);
+    const mac = chapter === phoneIndex - 1 ? from : to;
+    const pose = phoneHandoff ? phoneScene.camera : to;
+    const source = phoneHandoff ? mac : from;
+    const motion = phoneHandoff ? overhead : blend;
+    const radius =
+      THREE.MathUtils.lerp(source.radius, pose.radius, motion) +
+      (phoneHandoff ? 23 : 14) * crossing;
+    const pitch = THREE.MathUtils.lerp(source.pitch, pose.pitch, motion) + 0.08 * crossing;
+    const yaw = THREE.MathUtils.lerp(source.yaw, pose.yaw, motion) + direction * 0.19 * crossing;
+    const targetHeight = THREE.MathUtils.lerp(source.targetHeight, pose.targetHeight, motion);
+    const side = chapter % 2 === 0 ? blend : 1 - blend;
+    // Let the shot temporarily open into the middle while the roster crosses the desk.
+    const center = THREE.MathUtils.lerp(
+      0.715 - 0.43 * side,
+      0.5,
+      phoneHandoff ? 0.28 * crossing : 0,
     );
-    camera.lookAt(mobileDeskX * travel, targetHeight, -2);
-    sun.position.x = -28 + mobileDeskX * travel;
-    sun.target.position.x = mobileDeskX * travel;
-    for (const { bot, lane } of crew) runAcrossDesk(bot, lane, travel, t, phoneWidth, phoneHeight);
-    if (progress !== lastProgress || (chapter === 0 && t - lastTexture > 0.11)) {
-      lastTexture = t;
-      lastProgress = progress;
-      const screen = screens[chapter]!;
-      ctx.drawImage(screen, 0, 0, 1024, 665);
-      if (screen === home) {
-        const phase = (t % 7) / 7;
-        ctx.fillStyle = "#efeee6";
-        ctx.fillRect(448, 539, 460, 5);
-        ctx.fillStyle = "#508d7b";
-        ctx.fillRect(448, 539, 460 * Math.min(1, phase * 1.4), 5);
-        if (phase > 0.42 && phase < 0.92) {
-          ctx.fillStyle = "#1e2928";
-          ctx.beginPath();
-          ctx.roundRect(361, 0, 310, 134, 10);
-          ctx.fill();
-          ctx.fillStyle = "#e8f0e9";
-          ctx.font = "bold 18px sans-serif";
-          ctx.fillText("AgentDesk · 任务进度", 381, 36);
-          ctx.font = "15px sans-serif";
-          ctx.fillText("读取会话记录", 381, 73);
-          ctx.fillText("运行测试", 381, 105);
-          ctx.fillStyle = "#80bd9d";
-          ctx.fillRect(525, 63, 112, 5);
-          ctx.fillRect(525, 96, 74, 5);
-        }
-      }
-      const screenBlend = THREE.MathUtils.smoothstep(fraction, 0.35, 0.68);
-      if (screenBlend && screens[next] !== screen) {
-        ctx.globalAlpha = screenBlend;
-        ctx.drawImage(screens[next]!, 0, 0, 1024, 665);
-        ctx.globalAlpha = 1;
-      }
-      texture.needsUpdate = true;
+    const targetX = mobileDeskX * travel;
+    const targetZ = THREE.MathUtils.lerp(-4.5, -2, travel);
+    camera.setViewOffset(
+      width,
+      projectionHeight,
+      width * (0.5 - center),
+      projectionHeight / 2 - height * 0.53,
+      width,
+      height,
+    );
+    camera.position.set(
+      targetX + Math.sin(yaw) * Math.cos(pitch) * radius,
+      targetHeight + Math.sin(pitch) * radius,
+      targetZ + Math.cos(yaw) * Math.cos(pitch) * radius,
+    );
+    camera.lookAt(targetX, targetHeight, targetZ);
+    sun.position.x = -28 + targetX;
+    sun.target.position.x = targetX;
+    for (const { bot, lane } of crew)
+      runAcrossDesk(bot, lane, progress, t, phoneWidth, phoneHeight, scrollDirection);
+    if (chapter === 0 && t - lastHomeUpdate > 0.11) {
+      drawHomeScreen(ctx, home, t);
+      homeScreen.needsUpdate = true;
+      lastHomeUpdate = t;
     }
+    const chapterMix = THREE.MathUtils.smoothstep(fraction, 0.35, 0.68);
+    const fromScreen = selectedScreen(chapter);
+    const toScreen = selectedScreen(next);
+    const transitionMix = fromScreen === toScreen ? 0 : chapterMix;
+    const selected = selectedScreen(fraction < 0.5 ? chapter : next);
+    if (changed || !displayed) {
+      displayed = selected;
+      incoming = selected;
+      screenMaterial.map = fromScreen;
+      nextScreen.value = toScreen;
+      screenMix.value = transitionMix;
+    } else if (fraction < 0.18 || fraction > 0.82) {
+      if (incoming !== selected) {
+        displayed = incoming ?? selected;
+        incoming = selected;
+        demoChangedAt = t;
+      }
+      screenMaterial.map = displayed;
+      nextScreen.value = selected;
+      screenMix.value =
+        displayed === selected ? 0 : THREE.MathUtils.smoothstep(t - demoChangedAt, 0, 0.28);
+      if (screenMix.value >= 1) displayed = selected;
+    } else {
+      screenMaterial.map = fromScreen;
+      nextScreen.value = toScreen;
+      screenMix.value = transitionMix;
+    }
+    fitScreen(screenMaterial.map, mapFit.value);
+    fitScreen(nextScreen.value, nextFit.value);
     renderer.render(scene, camera);
-    host.setAttribute("data-rendered", "");
+    if (!host.hasAttribute("data-rendered")) host.setAttribute("data-rendered", "");
   }
   function schedule() {
     cancelAnimationFrame(raf);
     if (visible && !document.hidden) {
-      prev = performance.now();
+      previousFrame = performance.now();
       raf = requestAnimationFrame(render);
     }
   }

@@ -36,7 +36,7 @@ export function MacDesk() {
     };
   }, []);
   return (
-    <div className="mac-model" ref={container}>
+    <div className="mac-model" ref={container} aria-hidden="true">
       <img className="mac-poster" src={poster} alt="" loading="lazy" />
     </div>
   );

@@ -154,6 +154,7 @@ test("真实成员接入、建群、三阶段执行、引用、点名与用户�
 });
 
 test("首页保留滚动舞台，切换功能预览并通过统一入口访问协作", async ({ page }, testInfo) => {
+  test.setTimeout(45_000);
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.setViewportSize({ width: 1440, height: 1000 });
@@ -174,6 +175,12 @@ test("首页保留滚动舞台，切换功能预览并通过统一入口访问�
     section.scrollIntoView({ block: "start", behavior: "instant" }),
   );
   await expect(explorer.getByRole("link", { name: "打开 Bot" })).toBeInViewport();
+  await expect(explorer.locator(".mac-model[data-rendered] canvas")).toBeVisible();
+  const stage = explorer.locator(".tour-stage");
+  const waitForProgress = (progress: number) =>
+    expect
+      .poll(async () => Number(await stage.getAttribute("data-desk-progress")))
+      .toBeCloseTo(progress, 2);
   const directory = explorer.getByRole("navigation", { name: "探索工作台目录" });
   const codeChapter = directory.getByRole("button", { name: "项目与编码" });
   await codeChapter.hover();
@@ -182,8 +189,17 @@ test("首页保留滚动舞台，切换功能预览并通过统一入口访问�
     "step",
   );
   await codeChapter.click();
-  await expect(codeChapter).toHaveAttribute("aria-current", "step");
+  await waitForProgress(1);
   await expect(explorer.getByRole("link", { name: "编码工作台" })).toBeInViewport();
+  const demo = explorer.getByRole("group", { name: "场景演示" });
+  const chooseProject = demo.getByRole("button", { name: "选择项目" });
+  await expect(chooseProject).toHaveAttribute("aria-expanded", "true", { timeout: 9_000 });
+  const reviewRun = demo.getByRole("button", { name: "复查执行" });
+  await reviewRun.press("Enter");
+  await expect(reviewRun).toHaveAttribute("aria-expanded", "true");
+  await expect(chooseProject).toHaveAttribute("aria-expanded", "false");
+  await expect(stage).toHaveAttribute("data-demo-editor", "2");
+  await expect(demo.getByRole("button", { name: "继续自动演示" })).toBeVisible();
   await explorer.getByRole("button", { name: "工作流与自动化" }).press("Enter");
   await expect(explorer.getByRole("link", { name: "自动化", exact: true })).toBeInViewport();
   await expect(explorer.getByRole("link", { name: "自动化", exact: true })).toHaveAttribute(
@@ -192,11 +208,6 @@ test("首页保留滚动舞台，切换功能预览并通过统一入口访问�
   );
   // Revisit the phone from a later chapter to catch overlapping or displaced scenes.
   await directory.getByRole("button", { name: "手机工作台" }).click();
-  const stage = explorer.locator(".tour-stage");
-  const waitForProgress = (progress: number) =>
-    expect
-      .poll(async () => Number(await stage.getAttribute("data-desk-progress")))
-      .toBeCloseTo(progress, 2);
   await waitForProgress(2);
   const phone = explorer.locator(".phone-body");
   await expect(explorer.locator(".object-phone")).toHaveCSS("opacity", "1");
@@ -206,18 +217,20 @@ test("首页保留滚动舞台，切换功能预览并通过统一入口访问�
   expect(center).toBeGreaterThan(0.69);
   expect(center).toBeLessThan(0.86);
   await expect(phone).toHaveCSS("transform", "none");
+  await demo.getByRole("button", { name: "接着处理" }).click();
+  await expect(phone.locator(".phone-detail")).toHaveCSS("opacity", "1");
   await page.screenshot({ path: testInfo.outputPath("phone-layout.png") });
   // Scrub partway toward the laptop and revisit the same frame from the opposite direction.
   await page.mouse.move(720, 500);
-  const chapterHeight = (await stage.boundingBox())!.height;
+  const chapterHeight = (await explorer.locator(".tour-chapter").first().boundingBox())!.height;
   await page.mouse.wheel(0, -chapterHeight / 2);
   await waitForProgress(1.5);
   const midway = (await phone.boundingBox())!.x;
   await page.screenshot({ path: testInfo.outputPath("desk-handoff.png") });
-  expect(midway - bounds!.x).toBeGreaterThan(200);
+  expect(Math.abs(midway - bounds!.x)).toBeGreaterThan(40);
   await page.mouse.wheel(0, -chapterHeight / 2);
   await waitForProgress(1);
-  expect((await phone.boundingBox())!.x - midway).toBeGreaterThan(200);
+  expect(Math.abs((await phone.boundingBox())!.x - midway)).toBeGreaterThan(40);
   await page.mouse.wheel(0, chapterHeight / 2);
   await waitForProgress(1.5);
   expect(Math.abs((await phone.boundingBox())!.x - midway)).toBeLessThan(2);
@@ -226,7 +239,7 @@ test("首页保留滚动舞台，切换功能预览并通过统一入口访问�
   await expect(explorer.locator(".object-phone")).toHaveCSS("opacity", "0");
   const copy = await explorer.locator(".tour-copy").filter({ hasText: "从想法" }).boundingBox();
   const art = await explorer.locator(".tour-art").boundingBox();
-  expect(copy!.x + copy!.width).toBeLessThanOrEqual(art!.x);
+  expect(art!.x + art!.width).toBeLessThanOrEqual(copy!.x);
   await page.screenshot({ path: testInfo.outputPath("coding-layout.png") });
   await page.locator("#how").scrollIntoViewIfNeeded();
   await expect(page.getByRole("heading", { name: "三步就能开始。" })).toBeVisible();
@@ -236,6 +249,9 @@ test("首页保留滚动舞台，切换功能预览并通过统一入口访问�
   await page.screenshot({ path: testInfo.outputPath("welcome-three-steps.png") });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/#/welcome");
+  await expect(explorer.locator(".mac-model")).toHaveCount(0);
+  await directory.getByRole("button", { name: "手机工作台" }).click();
+  await expect(explorer.getByAltText("手机远程任务界面")).toBeVisible();
   await page.getByRole("button", { name: "菜单", exact: true }).click();
   const menu = page.getByRole("dialog", { name: "菜单", exact: true });
   await expect(menu).toBeVisible();

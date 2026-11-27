@@ -9,11 +9,14 @@ import {
 } from "lucide-react";
 import mobile from "./previews/mobile-tasks.jpg";
 import desk from "./previews/mac-desk.jpg";
-import code from "./previews/code.jpg";
-import team from "./previews/team-execution.jpg";
-import workflow from "./previews/workflow.jpg";
-import deploy from "./previews/deploy.jpg";
-import learning from "./previews/learning.jpg";
+import code from "./previews/code@2x.webp";
+import team from "../../../../../assets/screenshots/team-execution.png";
+import projects from "./previews/projects@2x.webp";
+import feed from "./previews/feed@2x.webp";
+import interview from "./previews/interview@2x.webp";
+import workflow from "./previews/workflow@2x.webp";
+import deploy from "./previews/deploy@2x.webp";
+import learning from "./previews/learning@2x.webp";
 
 export const scenes = [
   {
@@ -33,7 +36,7 @@ export const scenes = [
   },
   {
     kind: "editor",
-    camera: { radius: 83, pitch: 0.22, yaw: 0.08, targetHeight: 11 },
+    camera: { radius: 81, pitch: 0.13, yaw: 0.08, targetHeight: 13.5 },
     title: "项目与编码",
     headline: ["从想法，", "到代码。"],
     icon: Code2,
@@ -107,7 +110,7 @@ export const scenes = [
   },
   {
     kind: "journal",
-    camera: { radius: 104, pitch: 0.27, yaw: 0.06, targetHeight: 8 },
+    camera: { radius: 91, pitch: 0.24, yaw: 0.06, targetHeight: 9.2 },
     title: "发现与成长",
     headline: ["把发现", "变成进步。"],
     icon: BookOpen,
@@ -122,3 +125,31 @@ export const scenes = [
     ],
   },
 ] as const;
+
+export type TourKind = (typeof scenes)[number]["kind"];
+
+type DemoPoint = { title: string; description: string; image?: string };
+
+export const tourPoints: Partial<Record<TourKind, readonly DemoPoint[]>> = {
+  editor: [
+    { title: "看懂代码", description: "在工作台里浏览目录、源码和 Agent 的分析。", image: code },
+    { title: "选择项目", description: "从项目列表找到要改的仓库。", image: projects },
+    { title: "复查执行", description: "核对 Agent 的执行记录、改动和验证结果。", image: team },
+  ],
+  phone: [
+    { title: "查看任务", description: "离开电脑后，也能看到哪些任务还在运行。" },
+    { title: "接着处理", description: "点进任务，查看执行详情和待确认的操作。" },
+  ],
+  journal: [
+    { title: "安排学习", description: "在成长中心留下计划和学习记录。", image: learning },
+    { title: "发现技术趋势", description: "从技术热榜里挑一个值得深挖的方向。", image: feed },
+    { title: "检验掌握程度", description: "用面试练习复盘知识点和薄弱环节。", image: interview },
+  ],
+};
+
+export const phoneIndex = scenes.findIndex((scene) => scene.kind === "phone");
+
+export function phoneTravel(progress: number) {
+  const near = Math.max(0, Math.min(1, (0.92 - Math.abs(progress - phoneIndex)) / 0.86));
+  return near * near * (3 - 2 * near);
+}

@@ -1,3 +1,4 @@
+import { Github } from "lucide-react";
 import { WelcomeLink } from "./WelcomeLink";
 import { useEffect, useRef, useState } from "react";
 
@@ -110,6 +111,16 @@ export function WelcomeNavigation({ scrollTo }: { scrollTo: (id: string) => void
           </button>
         </nav>
         <div className="nav-right">
+          <a
+            className="nav-github"
+            href="https://github.com/exploitationExplorers/AgentDesk"
+            target="_blank"
+            rel="noreferrer"
+            aria-label="AgentDesk 的 GitHub 仓库"
+            title="GitHub"
+          >
+            <Github size={21} aria-hidden />
+          </a>
           <button className="nav-guides" type="button" onClick={() => scrollTo("how")}>
             使用指南
           </button>

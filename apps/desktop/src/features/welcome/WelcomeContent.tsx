@@ -700,6 +700,25 @@ export function WelcomeContent({ scrollTo }: { scrollTo: (id: string) => void })
                 {"三步就能开始。"}
               </h2>
             </div>
+            {import.meta.env.MODE === "welcome" && (
+              <section
+                id="install"
+                className="workbench-install"
+                tabIndex={-1}
+                aria-labelledby="install-title"
+              >
+                <div>
+                  <h3 id="install-title">安装并打开工作台</h3>
+                  <p>
+                    在电脑上准备好 Node.js 22.12 或更高版本和
+                    Git，打开终端运行下面两行命令。已安装的用户只需运行第二行，工作台会在浏览器中打开。
+                  </p>
+                </div>
+                <pre>
+                  <code>{"npm install -g chuxin-agentdesk\nagentdesk web"}</code>
+                </pre>
+              </section>
+            )}
             <div className={"grid3"} style={{ marginTop: "60px" } as CSSProperties}>
               <div data-r="" style={{ "--d": ".05s" } as CSSProperties}>
                 <div className={"lift"}>
