@@ -47,6 +47,7 @@ import {
   cn,
 } from "@agentdesk/ui";
 import { api } from "../../lib/api";
+import { presentFolder } from "../../lib/paths";
 import { PaginatedGrid } from "../../components/PaginatedGrid";
 import { compactNumber, timeAgo } from "../../lib/format";
 import { toast } from "../../lib/toast";
@@ -672,9 +673,20 @@ function AddProjectDialog({
       onOpenChange(false);
     },
   });
+  const pickPath = useMutation({
+    mutationFn: async () => {
+      const picked = await api.pickProjectDirectory();
+      return picked.path;
+    },
+    onSuccess: (picked) => {
+      if (picked) setPath(picked);
+    },
+    onError: (error: Error) => toast(error.message || "无法打开文件夹选择器", { tone: "danger" }),
+  });
 
   const busy = importRemote.isPending || addPath.isPending;
   const err = importRemote.error?.message || addPath.error?.message || remotes.error?.message;
+  const folder = path ? presentFolder(path) : null;
 
   return (
     <Dialog
@@ -709,7 +721,7 @@ function AddProjectDialog({
           onChange={setMode}
           options={[
             { value: "remote", label: "从平台选择" },
-            { value: "path", label: "本地路径" },
+            { value: "path", label: "本机文件夹" },
           ]}
         />
 
@@ -762,7 +774,7 @@ function AddProjectDialog({
                     selected?.localPath
                       ? `将关联已有本地目录：${selected.localPath}`
                       : selected
-                        ? "本地未找到克隆，将 clone 到第一个扫描目录"
+                        ? "本地还没有这份代码，会克隆到你添加的第一个文件夹"
                         : undefined
                   }
                 >
@@ -787,14 +799,38 @@ function AddProjectDialog({
             )}
           </>
         ) : (
-          <Field label="本地仓库路径">
-            <Input
-              value={path}
-              onChange={(e) => setPath(e.target.value)}
-              placeholder="D:\\jiedan\\billiards-tribe\\manager_react"
-              autoFocus
-            />
-          </Field>
+          <div className="grid gap-3">
+            <p className="text-[12.5px] text-muted">选择本机上的 Git 仓库。</p>
+            {path ? (
+              <div className="flex items-center gap-3 rounded-xl border px-3 py-2.5">
+                <FolderOpen className="h-4 w-4 shrink-0 text-muted" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[13px] font-medium">{folder?.name}</p>
+                  <p className="truncate text-[11.5px] text-subtle" title={path}>
+                    {folder?.location || path}
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  loading={pickPath.isPending}
+                  onClick={() => pickPath.mutate()}
+                >
+                  重新选择
+                </Button>
+              </div>
+            ) : (
+              <Button
+                variant="secondary"
+                className="justify-self-start"
+                loading={pickPath.isPending}
+                onClick={() => pickPath.mutate()}
+              >
+                <FolderOpen className="h-3.5 w-3.5" />
+                选择文件夹
+              </Button>
+            )}
+          </div>
         )}
 
         {err ? <p className="text-[12px] text-danger">{err}</p> : null}
@@ -819,7 +855,7 @@ function StarredSection() {
     onSuccess: (_project, repo) => {
       void queryClient.invalidateQueries({ queryKey: ["starred-repos"] });
       void queryClient.invalidateQueries({ queryKey: ["projects"] });
-      toast(repo.localPath ? "已关联本地仓库" : "已克隆到扫描目录", {
+      toast(repo.localPath ? "已关联本地仓库" : "已克隆到本地", {
         description: repo.fullName,
         tone: "success",
       });
@@ -850,7 +886,7 @@ function StarredSection() {
   return (
     <div>
       <p className="mb-4 text-[13px] text-muted">
-        GitHub 上你已经 Star 的仓库，按最近更新排列，最多 100 个。想对着代码学，可以克隆到扫描目录。
+        GitHub 上你已经 Star 的仓库，按最近更新排列，最多 100 个。想对着代码学，可以克隆到本地。
       </p>
       <div className="mb-5 flex justify-end">
         <div className="relative w-64">
@@ -1027,7 +1063,7 @@ export function ProjectsPage() {
             </Button>
             <Button variant="primary" loading={scan.isPending} onClick={() => scan.mutate()}>
               <RefreshCw className="h-3.5 w-3.5" />
-              扫描项目
+              查找仓库
             </Button>
           </>
         }
@@ -1045,7 +1081,7 @@ export function ProjectsPage() {
         </div>
       ) : null}
       {scan.data ? (
-        <p className="mb-4 text-[12.5px] text-muted">扫描完成：发现 {scan.data.found} 个仓库</p>
+        <p className="mb-4 text-[12.5px] text-muted">已找到 {scan.data.found} 个仓库</p>
       ) : null}
 
       <PageMetrics
@@ -1133,7 +1169,7 @@ export function ProjectsPage() {
           description={
             data.length
               ? "换一个关键词，或重置筛选查看所有项目。"
-              : "在设置中添加扫描目录，再扫描本地仓库。"
+              : "在设置里添加存放代码的文件夹，仓库会显示在这里。"
           }
           action={
             data.length ? (
@@ -1145,7 +1181,13 @@ export function ProjectsPage() {
               >
                 重置筛选
               </Button>
-            ) : undefined
+            ) : (
+              <Button
+                onClick={() => void navigate({ to: "/settings", search: { tab: "general" } })}
+              >
+                添加文件夹
+              </Button>
+            )
           }
         />
       )}

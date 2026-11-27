@@ -40,7 +40,7 @@ export const TOOL_LABELS: Record<string, string> = {
   "projects.activity": "拉取 PR/MR",
   "projects.open": "打开项目",
   "projects.pull": "git pull",
-  "projects.scan": "扫描项目",
+  "projects.scan": "查找仓库",
   "claude.sessions": "Claude 会话",
   "claude.run": "Claude Code 改代码",
   "deploy.list": "查看部署配方",

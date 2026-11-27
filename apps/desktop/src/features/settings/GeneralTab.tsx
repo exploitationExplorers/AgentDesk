@@ -1,10 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Folder, FolderPlus, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { AppSettings } from "@agentdesk/shared";
-import { Button, Card, Field, Input, Segmented, Select, Textarea } from "@agentdesk/ui";
+import { Button, Card, Field, Input, Segmented, Select } from "@agentdesk/ui";
 import { AppMark } from "../../components/AppMark";
 import { api } from "../../lib/api";
 import { saveAvatar } from "../../lib/avatar";
+import { normalizeFolder, presentFolder } from "../../lib/paths";
 import { toast } from "../../lib/toast";
 import { checkForUpdates, isTauri } from "../../lib/tauri";
 import { applyTheme, useUi, type Theme } from "../../stores/ui";
@@ -19,13 +21,11 @@ export function GeneralTab() {
     applyTheme(next);
   };
   const [form, setForm] = useState<AppSettings | null>(null);
-  /** 单独编辑，避免 onChange 时 filter 空行导致无法按回车换行 */
-  const [scanRootsText, setScanRootsText] = useState("");
   useEffect(() => {
-    if (data) {
-      setForm(data);
-      setScanRootsText(data.scanRoots.join("\n"));
-    }
+    if (!data) return;
+    setForm((current) =>
+      current ? { ...current, scanRoots: data.scanRoots, avatar: data.avatar } : data,
+    );
   }, [data]);
 
   const save = useMutation({
@@ -47,15 +47,20 @@ export function GeneralTab() {
     onError: (error: Error) => toast(error.message || "头像更新失败", { tone: "danger" }),
   });
 
+  const saveFolders = useMutation({
+    mutationFn: (scanRoots: string[]) => api.updateSettings({ scanRoots }),
+    onSuccess: (next) => {
+      setForm((current) => (current ? { ...current, scanRoots: next.scanRoots } : next));
+      queryClient.setQueryData<AppSettings>(["settings"], (prev) =>
+        prev ? { ...prev, scanRoots: next.scanRoots } : next,
+      );
+    },
+    onError: (error: Error) => toast(error.message || "文件夹没有保存", { tone: "danger" }),
+  });
+
   if (!form) return null;
 
-  const persist = () => {
-    const scanRoots = scanRootsText
-      .split(/\r?\n/)
-      .map((s) => s.trim())
-      .filter(Boolean);
-    save.mutate({ ...form, scanRoots });
-  };
+  const persist = () => save.mutate(form);
 
   return (
     <div className="grid max-w-3xl gap-5">
@@ -93,18 +98,17 @@ export function GeneralTab() {
       </Card>
       <Card className="grid gap-4 p-5">
         <h3 className="text-[14px] font-semibold">项目</h3>
-        <Field
-          label="扫描目录（每行一个）"
-          hint="会递归查找最多 4 层内的 Git 仓库，自动识别 GitHub / Gitee / GitLab。按 Enter 换行后点保存。"
-        >
-          <Textarea
-            value={scanRootsText}
-            onChange={(e) => setScanRootsText(e.target.value)}
-            rows={4}
-            placeholder={"D:\\agent\nD:\\jiedan\nD:\\qushiyun\\new"}
-            className="font-mono text-[12.5px]"
-          />
-        </Field>
+        <ProjectFolders
+          folders={form.scanRoots}
+          busy={saveFolders.isPending}
+          onChange={(scanRoots, added) =>
+            saveFolders.mutate(scanRoots, {
+              onSuccess: () => {
+                if (added) toast("已添加文件夹", { tone: "success" });
+              },
+            })
+          }
+        />
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Cursor 命令">
             <Input
@@ -217,6 +221,95 @@ export function GeneralTab() {
           </div>
         ) : null}
       </Card>
+    </div>
+  );
+}
+
+function ProjectFolders({
+  folders,
+  busy,
+  onChange,
+}: {
+  folders: string[];
+  busy: boolean;
+  onChange: (folders: string[], added: boolean) => void;
+}) {
+  const pick = useMutation({
+    mutationFn: async () => {
+      const picked = await api.pickProjectDirectory();
+      return picked.path ? normalizeFolder(picked.path) : null;
+    },
+    onSuccess: (path) => {
+      if (!path) return;
+      if (folders.some((folder) => normalizeFolder(folder) === path)) {
+        toast("这个文件夹已经添加过了");
+        return;
+      }
+      onChange([...folders, path], true);
+    },
+    onError: (error: Error) => toast(error.message || "无法打开文件夹选择器", { tone: "danger" }),
+  });
+
+  return (
+    <div>
+      <div className="mb-1.5 flex flex-wrap items-center justify-between gap-3">
+        <h4 className="text-[12px] font-medium text-muted">项目文件夹</h4>
+        <Button
+          size="sm"
+          variant="secondary"
+          loading={pick.isPending}
+          disabled={busy}
+          onClick={() => pick.mutate()}
+        >
+          <FolderPlus className="h-3.5 w-3.5" />
+          添加文件夹
+        </Button>
+      </div>
+      <p className="mb-3 text-[11.5px] leading-5 text-subtle">
+        选择存放代码的文件夹。里面的 Git 仓库会显示在项目里。
+      </p>
+      {folders.length ? (
+        <ul className="overflow-hidden rounded-xl border" aria-label="项目文件夹">
+          {folders.map((folder) => {
+            const { name, location } = presentFolder(folder);
+            return (
+              <li
+                key={folder}
+                className="flex items-center gap-3 border-b px-3 py-2.5 last:border-b-0"
+              >
+                <Folder className="h-4 w-4 shrink-0 text-muted" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[13px] font-medium">{name}</p>
+                  {location ? (
+                    <p className="truncate text-[11.5px] text-subtle" title={folder}>
+                      {location}
+                    </p>
+                  ) : null}
+                </div>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  aria-label={`移除 ${name}`}
+                  disabled={busy}
+                  onClick={() =>
+                    onChange(
+                      folders.filter((item) => item !== folder),
+                      false,
+                    )
+                  }
+                >
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <div className="rounded-xl border border-dashed px-4 py-6 text-center">
+          <p className="text-[13px] font-medium">还没有项目文件夹</p>
+          <p className="mt-1 text-[12.5px] text-muted">添加后，项目页会找到这些位置里的仓库。</p>
+        </div>
+      )}
     </div>
   );
 }

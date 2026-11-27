@@ -197,7 +197,9 @@ export function HomeHero({
                   </li>
                 ))}
                 {projects.data?.length === 0 ? (
-                  <li className="text-[12.5px] text-subtle">在设置中配置扫描目录后自动发现</li>
+                  <li className="text-[12.5px] text-subtle">
+                    在设置里添加文件夹后，项目会显示在这里
+                  </li>
                 ) : null}
               </ul>
             </Link>

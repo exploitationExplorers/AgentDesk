@@ -307,7 +307,7 @@ function ImportDialog({
 }) {
   const queryClient = useQueryClient();
   const [source, setSource] = useState<"cc-switch" | "dotenv">("cc-switch");
-  const [path, setPath] = useState("D:\\AI agent\\langsmith\\.env");
+  const [path, setPath] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
   const scan = useMutation({
     mutationFn: () => api.importCandidates(source, source === "dotenv" ? path : undefined),

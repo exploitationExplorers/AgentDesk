@@ -8,7 +8,7 @@ import { WelcomeActions, WelcomeNavigation } from "./WelcomeNavigation";
 const questions = [
   [
     "第一次打开，应该从哪里开始？",
-    "先在设置里接入模型，在 Bot 里试一次对话。如果手头已有代码仓库，可以先添加项目扫描目录，再到项目页打开它。",
+    "先在设置里接入模型，在 Bot 里试一次对话。如果手头已有代码仓库，可以先在设置里添加项目文件夹，再到项目页打开它。",
   ],
   [
     "能找回之前的编码会话吗？",
@@ -772,7 +772,7 @@ export function WelcomeContent({ scrollTo }: { scrollTo: (id: string) => void })
                   >
                     <div className={"n"}>{"2"}</div>
                     <h3>{"打开项目"}</h3>
-                    <p>{"添加仓库扫描目录，在项目列表中选择要处理的代码库。"}</p>
+                    <p>{"在设置里添加项目文件夹，然后在项目列表中打开要处理的代码库。"}</p>
                     <div className={"panel"}>
                       <div className={"link"}>
                         <span>{"项目路径 · ~/work/demo"}</span>

@@ -124,7 +124,7 @@ export function buildToolRegistry(deps: ToolDeps): ToolRegistry {
     }),
     defineTool({
       name: "projects.scan",
-      description: "重新扫描配置目录下的 Git 仓库",
+      description: "在已添加的文件夹中查找 Git 仓库",
       parameters: Type.Object({}),
       risk: "safe",
       execute: async () => projects.scan(),

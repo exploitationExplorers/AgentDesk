@@ -186,7 +186,7 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
         {
           name: "projectPath",
           label: "本地仓库路径",
-          default: "D:\\qushiyun\\new\\qumall-ui",
+          default: "",
         },
       ],
       nodes: [

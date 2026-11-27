@@ -4,7 +4,7 @@ import { execFile } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { chromium, expect } from "@playwright/test";
@@ -104,7 +104,19 @@ try {
   await expect(page.getByRole("heading", { name: "项目中心", exact: true })).toBeVisible();
   await page.goto(`${origin}/#/settings?tab=general`);
   const scanRoot = join(dataHome, "projects");
-  await page.getByRole("textbox").first().fill(scanRoot);
+  mkdirSync(scanRoot, { recursive: true });
+  const savedPut = await fetch(`${origin}/api/settings`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      "X-AgentDesk-Token": instance.token,
+    },
+    body: JSON.stringify({ scanRoots: [scanRoot] }),
+  });
+  assert.equal(savedPut.ok, true);
+  await page.reload();
+  await expect(page.getByRole("list", { name: "项目文件夹" })).toBeVisible();
+  await expect(page.getByText(basename(scanRoot), { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "保存设置", exact: true }).click();
   await expect(page.getByText("已保存", { exact: true })).toBeVisible();
   const saved = await fetch(`${origin}/api/settings`, {

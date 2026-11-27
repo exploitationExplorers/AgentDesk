@@ -118,7 +118,7 @@ export class ProjectService {
   }> {
     const roots = this.settings.get().scanRoots.filter((r) => existsSync(r));
     if (roots.length === 0)
-      throw new AppError(ErrorCode.BadRequest, "请先在 设置 > 通用 中配置项目扫描目录");
+      throw new AppError(ErrorCode.BadRequest, "请先在设置 > 通用中添加项目文件夹");
     const paths = await findRepositories(roots);
     const known = new Set<string>();
     for (const batch of chunk(paths, 8)) {
@@ -284,8 +284,8 @@ export class ProjectService {
     });
   }
   /**
-   * 从远程仓库导入：优先关联扫描目录中的本地克隆；
-   * 否则 clone 到第一个扫描目录下。
+   * 从远程仓库导入：优先关联已添加文件夹里的本地克隆；
+   * 否则克隆到第一个文件夹下。
    */
   async importRemoteRepo(
     platform: "github" | "gitee" | "gitlab",
@@ -307,7 +307,7 @@ export class ProjectService {
     if (roots.length === 0)
       throw new AppError(
         ErrorCode.BadRequest,
-        "请先在 设置 > 通用 中添加扫描目录，导入时会 clone 到该目录",
+        "请先在设置 > 通用中添加项目文件夹，仓库会克隆到第一个文件夹",
       );
     const repoName =
       fullName
@@ -348,7 +348,7 @@ export class ProjectService {
     if (!adapter) throw new AppError(ErrorCode.BadRequest, `不支持的平台：${platform}`);
     return { adapter, host: account.host, token };
   }
-  /** 扫描目录内所有仓库的 remote → 本地路径 */
+  /** 已添加文件夹内所有仓库的 remote → 本地路径 */
   private async mapLocalRemoteIdentities(hosts: string[]): Promise<Map<string, string>> {
     const map = new Map<string, string>();
     const roots = this.settings.get().scanRoots.filter((r) => existsSync(r));

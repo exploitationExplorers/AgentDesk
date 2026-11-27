@@ -71,7 +71,7 @@ agentdesk chat      # 进入交互式终端对话
 ### 2. 配置模型和项目
 
 1. 在初始化向导或工作台设置中，填写模型接口地址、模型名称和 API Key。
-2. 在工作台设置中添加项目扫描目录；按需配置 GitHub、Gitee 或 GitLab 的平台 Token。
+2. 在工作台设置中添加项目文件夹；按需配置 GitHub、Gitee 或 GitLab 的平台 Token。
 3. 使用自己的模型完成一轮对话，确认连接可用；保存配置本身不会发起模型推理请求。
 
 CLI 初始化支持 OpenAI Chat Completions 和 Anthropic Messages 协议。模型调用产生的费用、网络连接与服务可用性取决于你选择的服务商。
